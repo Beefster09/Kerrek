@@ -1,65 +1,63 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from os import PathLike
 from pathlib import Path
 
 from frontend.lexer import Location, Identifier
 
-struct = dataclass(kw_only=True)
 
-
-@struct
+@dataclass(kw_only=True)
 class File:
-    source: Path
-    imports: list[_Import]
-    declarations: dict[str, Declaration]
+    source: Path | None
+    imports: list[_Import] = field(default_factory=list)
+    declarations: list[Declaration] = field(default_factory=list)
 
 
-@struct
+@dataclass(kw_only=True)
 class Node:
     file: Path
     start: Location
     end: Location
 
 
-@struct
+@dataclass(kw_only=True)
 class _Import(Node):
     collection: Identifier
     package: PathLike
 
 
-@struct
+@dataclass(kw_only=True)
 class ScopedImport(_Import):
     import_name: Identifier
 
 
-@struct
+@dataclass(kw_only=True)
 class NamedImport(_Import):
     names: list[Identifier]
 
 
-@struct
+@dataclass(kw_only=True)
 class AllImport(_Import):
     pass
 
 
-@struct
+@dataclass(kw_only=True)
 class Declaration(Node):
     pass
 
-@struct
+@dataclass(kw_only=True)
 class TypeDecl(Declaration):
     pass
 
 
-@struct
+@dataclass(kw_only=True)
 class DimensionDecl(Declaration):
     name: Identifier
 
 
-@struct
+@dataclass(kw_only=True)
 class UnitDecl(Declaration):
     """
     e.g.
@@ -69,7 +67,7 @@ class UnitDecl(Declaration):
     dimension: Identifier | None = None
 
 
-@struct
+@dataclass(kw_only=True)
 class UnitAlias(Declaration):
     """
     e.g.
@@ -79,7 +77,7 @@ class UnitAlias(Declaration):
     bases: dict[Identifier, int]
 
 
-@struct
+@dataclass(kw_only=True)
 class UnitConversion(Declaration):
     """
     e.g.

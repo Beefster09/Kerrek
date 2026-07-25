@@ -1,8 +1,8 @@
-dimension length
-dimension mass
-dimension time
-dimension angle
-dimension temperature
+unit type length
+unit type mass
+unit type time
+unit type angle
+unit type temperature
 
 
 unit meter: length
@@ -30,7 +30,6 @@ unit mg = gram / 1000
 
 
 unit second: time
-
 unit s is second
 
 unit minute = 60 * second

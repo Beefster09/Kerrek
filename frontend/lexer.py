@@ -59,16 +59,11 @@ class Punctuation(Enum):
     Tick = '`'
     Apostrophe = "'"
 
-    EOL = '<EOL>'
-
     @staticmethod
     def match(fragment: str, start: int) -> Punctuation | None:
         best: Punctuation | None = None
 
         for sym in Punctuation:
-            if sym is Punctuation.EOL:
-                continue
-
             if (
                 fragment.startswith(sym.value, start)
                 and (not best or len(sym.value) > len(best.value))
@@ -76,6 +71,10 @@ class Punctuation(Enum):
                 best = sym
 
         return best
+
+
+class Control(Enum):
+    EOL = '<EOL>'
 
 
 class Keyword(Enum):
@@ -87,9 +86,10 @@ class Keyword(Enum):
     Continue = 'continue'
     Break = 'break'
     Return = 'return'
-    Abort = 'abort'
     Fail = 'fail'
+    Abort = 'abort'
 
+    Defer = 'defer'
     Where = 'where'
     With = 'with'
     Using = 'using'
@@ -106,9 +106,7 @@ class Keyword(Enum):
     Union = 'union'
     Interface = 'interface'
     Func = 'func'
-
     Unit = 'unit'
-    Dimension = 'dimension'
 
     Capability = 'capability'
     Requires = 'requires'
@@ -120,6 +118,7 @@ class Keyword(Enum):
 
     As = 'as'
     Is = 'is'
+
     And = 'and'
     Or = 'or'
     Not = 'not'
@@ -134,6 +133,11 @@ class Keyword(Enum):
     Shared = 'shared'
     Weak = 'weak'
     UnsafePtr = 'unsafe_ptr'
+
+
+@dataclass
+class Garbage:
+    raw: str
 
 
 @dataclass
@@ -255,13 +259,11 @@ class String:
 
 
 @dataclass
-class Garbage:
-    raw: str
-
-
-@dataclass
 class Comment:
     content: str
+
+
+type TokenData = Punctuation | Control | Keyword | Identifier | Numeric | String | Comment | Garbage
 
 
 @dataclass(kw_only=True)
@@ -269,7 +271,7 @@ class Token:
     file: Path
     start: Location
     end: Location
-    what: Punctuation | Keyword | Identifier | Numeric | String | Comment | Garbage
+    what: TokenData
 
     def __str__(self):
         return f"{self.what!r} (in '{self.file}': {self.start} to {self.end})"
@@ -376,5 +378,5 @@ def tokenize(file: Path, include_comments=False) -> Iterator[Token]:
                 file=file,
                 start=line_end,
                 end=line_end,
-                what=Punctuation.EOL,
+                what=Control.EOL,
             )
