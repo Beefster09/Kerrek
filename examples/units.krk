@@ -1,0 +1,55 @@
+dimension length
+dimension mass
+dimension time
+dimension angle
+dimension temperature
+
+
+unit meter: length
+unit m is meter
+
+unit foot: length
+unit ft is foot
+
+unit cm = m / 100
+unit mm = m / 1000
+unit km = 1000 * m
+
+unit inch = foot / 12
+unit yard = 3 * foot
+unit mile = 5280 * foot
+
+unit m = 3.28084 * ft
+
+
+unit kilogram: mass
+unit kg is kilogram
+
+unit gram = kg / 1000
+unit mg = gram / 1000
+
+
+unit second: time
+
+unit s is second
+
+unit minute = 60 * second
+unit hour = 60 * minute
+unit day = 24 * hour
+
+
+unit degrees: angle
+unit radians = 3.14159265358979 * degrees / 180
+unit turn = 360 * degrees
+
+
+unit kelvin: temperature
+unit celsius = kelvin - 273.15
+unit fahrenheit = 9 * celsius / 5 + 32
+
+
+unit newton is kg m / s^2
+unit joule is newton m
+unit watt is joule / s
+unit calorie = 4.184 * joule
+unit btu = 1055 * joule
