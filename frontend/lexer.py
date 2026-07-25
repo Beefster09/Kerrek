@@ -93,15 +93,17 @@ class Keyword(Enum):
     Where = 'where'
     With = 'with'
     Using = 'using'
-    Requires = 'requires'
 
     Context = 'context'
     Temp = 'temp'
 
-    Map = 'map'
-
+    Var = 'var'
+    Const = 'const'
     Type = 'type'
+    Enum = 'enum'
+    Map = 'map'
     Struct = 'struct'
+    Union = 'union'
     Interface = 'interface'
     Func = 'func'
 
@@ -109,6 +111,7 @@ class Keyword(Enum):
     Dimension = 'dimension'
 
     Capability = 'capability'
+    Requires = 'requires'
     Grant = 'grant'
     Revoke = 'revoke'
 
