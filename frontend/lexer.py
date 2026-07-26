@@ -41,10 +41,10 @@ class Punctuation(Enum):
     FatArrow = '=>'
     Plus = '+'
     Minus = '-'
-    Mul = '*'
-    Exp = '**'
-    Div = '/'
-    FloorDiv = '//'
+    Star = '*'
+    DStar = '**'
+    Slash = '/'
+    DSlash = '//'
     Percent = '%'
     Amp = '&'
     Caret = '^'
@@ -151,27 +151,31 @@ class Identifier(str):
         return None
 
 
-class NumberLiteralKind(Enum):
-    Integer = auto()
+class NumberLiteralForm(Enum):
+    DecimalInteger = auto()
+    Hex = auto()
+    Octal = auto()
+    Binary = auto()
     Decimal = auto()
-    BinFloat = auto()
+    Float = auto()
+    HexFloat = auto()
     Rational = auto()
 
 
-INT_PATTERN = re.compile(r'[+-]?[0-9][0-9_]*')
-HEX_PATTERN = re.compile(r'0x[0-9a-fA-F][0-9a-fA-F_]*')
-OCTAL_PATTERN = re.compile(r'0o[0-7][0-7_]*')
-BINARY_PATTERN = re.compile(r'0b[01][01_]*')
-DECIMAL_PATTERN = re.compile(r'[+-]?[0-9][0-9_]*.[0-9][0-9_]*(?:[Ee][+-]?\d+)?f?')
-HEXFLOAT_PATTERN = re.compile(r'[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*.[0-9a-fA-F][0-9a-fA-F_]*(?:[Pp][+-]?[0-9a-fA-F]+)?')
-RATIONAL_PATTERN = re.compile(r'([+-]?[0-9][0-9_]*)/([0-9][0-9_]*)')
+INT_PATTERN = re.compile(r'[+-]?[0-9][0-9_]*\b')
+HEX_PATTERN = re.compile(r'0x[0-9a-fA-F][0-9a-fA-F_]*\b')
+OCTAL_PATTERN = re.compile(r'0o[0-7][0-7_]*\b')
+BINARY_PATTERN = re.compile(r'0b[01][01_]*\b')
+DECIMAL_PATTERN = re.compile(r'[+-]?[0-9][0-9_]*.[0-9][0-9_]*(?:[Ee][+-]?\d+)?f?\b')
+HEXFLOAT_PATTERN = re.compile(r'[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*.[0-9a-fA-F][0-9a-fA-F_]*(?:[Pp][+-]?[0-9a-fA-F]+)?\b')
+RATIONAL_PATTERN = re.compile(r'([+-]?[0-9][0-9_]*)/([0-9][0-9_]*)\b')
 
 
 @dataclass(kw_only=True)
 class Numeric:
     raw: str
     value: int | float | Decimal | Fraction
-    kind: NumberLiteralKind
+    form: NumberLiteralForm
 
     @staticmethod
     def match(line: str, start: int) -> Numeric | None:
@@ -179,7 +183,7 @@ class Numeric:
             return Numeric(
                 raw=m[0],
                 value=Fraction(int(m[1]), int(m[2])),
-                kind=NumberLiteralKind.Rational,
+                form=NumberLiteralForm.Rational,
             )
 
         elif m := DECIMAL_PATTERN.match(line, start):
@@ -188,13 +192,13 @@ class Numeric:
                 return Numeric(
                     raw=raw,
                     value=float(raw),
-                    kind=NumberLiteralKind.BinFloat,
+                    form=NumberLiteralForm.Float,
                 )
             else:
                 return Numeric(
                     raw=raw,
                     value=Decimal(raw),
-                    kind=NumberLiteralKind.Decimal,
+                    form=NumberLiteralForm.Decimal,
                 )
 
         elif m := HEXFLOAT_PATTERN.match(line, start):
@@ -202,20 +206,39 @@ class Numeric:
             return Numeric(
                 raw=raw,
                 value=float.fromhex(raw),
-                kind=NumberLiteralKind.BinFloat,
+                form=NumberLiteralForm.HexFloat,
             )
 
-        elif m := (
-                INT_PATTERN.match(line, start)
-                or HEX_PATTERN.match(line, start)
-                or OCTAL_PATTERN.match(line, start)
-                or BINARY_PATTERN.match(line, start)
-            ):
+        elif m := INT_PATTERN.match(line, start):
             raw = m[0]
             return Numeric(
                 raw=raw,
                 value=int(raw),
-                kind=NumberLiteralKind.Integer,
+                form=NumberLiteralForm.DecimalInteger,
+            )
+
+        elif m := HEX_PATTERN.match(line, start):
+            raw = m[0]
+            return Numeric(
+                raw=raw,
+                value=int(raw),
+                form=NumberLiteralForm.Hex,
+            )
+
+        elif m := OCTAL_PATTERN.match(line, start):
+            raw = m[0]
+            return Numeric(
+                raw=raw,
+                value=int(raw),
+                form=NumberLiteralForm.Octal,
+            )
+
+        elif m := BINARY_PATTERN.match(line, start):
+            raw = m[0]
+            return Numeric(
+                raw=raw,
+                value=int(raw),
+                form=NumberLiteralForm.Binary,
             )
 
         return None
@@ -262,11 +285,11 @@ type TokenData = Punctuation | Control | Keyword | Identifier | Numeric | String
 
 
 @dataclass(kw_only=True)
-class Token:
+class Token[T: TokenData]:
     file: Path
     start: Location
     end: Location
-    what: TokenData
+    what: T
 
     def __str__(self):
         return f"{self.what!r} (in '{self.file}': {self.start} to {self.end})"

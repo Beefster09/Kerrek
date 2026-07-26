@@ -69,7 +69,7 @@ class UnitDecl(Declaration):
     unit meter: length
     """
     name: Identifier
-    dimension: QualifiedName | None = None
+    unit_type: QualifiedName | None = None
 
 
 @dataclass(kw_only=True)
@@ -79,7 +79,7 @@ class UnitAlias(Declaration):
     unit newton is kg m / s^2
     """
     alias: Identifier
-    bases: dict[QualifiedName, int]
+    base: CompoundUnit
 
 
 @dataclass(kw_only=True)
@@ -92,3 +92,14 @@ class UnitConversion(Declaration):
     mult: Decimal | None = None
     src: QualifiedName
     div: Decimal | None = None
+
+
+@dataclass(kw_only=True)
+class UnitComponent(Node):
+    base: QualifiedName
+    exponent: int
+
+
+@dataclass(kw_only=True)
+class CompoundUnit(Node):
+    components: list[UnitComponent]
