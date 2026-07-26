@@ -23,6 +23,11 @@ class Node:
 
 
 @dataclass(kw_only=True)
+class QualifiedName(Node):
+    path: list[Identifier]
+
+
+@dataclass(kw_only=True)
 class _Import(Node):
     collection: Identifier
     package: PathLike
@@ -53,7 +58,7 @@ class TypeDecl(Declaration):
 
 
 @dataclass(kw_only=True)
-class DimensionDecl(Declaration):
+class UnitTypeDecl(Declaration):
     name: Identifier
 
 
@@ -64,7 +69,7 @@ class UnitDecl(Declaration):
     unit meter: length
     """
     name: Identifier
-    dimension: Identifier | None = None
+    dimension: QualifiedName | None = None
 
 
 @dataclass(kw_only=True)
@@ -74,17 +79,16 @@ class UnitAlias(Declaration):
     unit newton is kg m / s^2
     """
     alias: Identifier
-    bases: dict[Identifier, int]
+    bases: dict[QualifiedName, int]
 
 
 @dataclass(kw_only=True)
 class UnitConversion(Declaration):
     """
     e.g.
-    unit fahrenheit = 9 * celsius / 5 + 32
+    unit radians = 3.14159265358979 * degrees / 180
     """
     dest: Identifier
     mult: Decimal | None = None
-    src: Identifier
+    src: QualifiedName
     div: Decimal | None = None
-    offset: Decimal | None = None

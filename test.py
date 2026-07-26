@@ -3,10 +3,10 @@
 from pathlib import Path
 import sys
 
-from frontend import lexer
+from frontend import lexer, parser
 
 if __name__ == '__main__':
     file = Path(sys.argv[1])
 
-    for token in lexer.tokenize(file):
-        print(token)
+    p = parser.Parser(lexer.tokenize(file))
+    print(p.parse())

@@ -74,7 +74,7 @@ class Punctuation(Enum):
 
 
 class Control(Enum):
-    EOL = '<EOL>'
+    EOL = auto()
 
 
 class Keyword(Enum):
@@ -110,8 +110,6 @@ class Keyword(Enum):
 
     Capability = 'capability'
     Requires = 'requires'
-    Grant = 'grant'
-    Revoke = 'revoke'
 
     Import = 'import'
     From = 'from'
@@ -140,10 +138,7 @@ class Garbage:
     raw: str
 
 
-@dataclass
-class Identifier:
-    name: str
-
+class Identifier(str):
     @staticmethod
     def match(line: str, start: int) -> Identifier | None:
         c = line[start]
@@ -337,7 +332,7 @@ def tokenize(file: Path, include_comments=False) -> Iterator[Token]:
 
                 elif ident := Identifier.match(line, i):
                     for kw in Keyword:
-                        if kw.value == ident.name:
+                        if kw.value == ident:
                             yield Token(
                                 file=file,
                                 start=Location(line_no, i + 1),
@@ -350,10 +345,10 @@ def tokenize(file: Path, include_comments=False) -> Iterator[Token]:
                         yield Token(
                             file=file,
                             start=Location(line_no, i + 1),
-                            end=Location(line_no, i + 1 + len(ident.name)),
+                            end=Location(line_no, i + 1 + len(ident)),
                             what=ident,
                         )
-                        i += len(ident.name)
+                        i += len(ident)
 
                 elif sym := Punctuation.match(line, i):
                     yield Token(

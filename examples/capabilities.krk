@@ -1,0 +1,47 @@
+import intrinsics:binfloat { * }
+
+
+capability physics
+capability render
+
+unit meter
+
+
+struct Peasant {
+	name: String
+	position: [2]BinFloat<#meter> requires physics
+	mesh: owned [][3]BinFloat requires! render
+}
+
+func main() {
+	peasants := []Peasant{
+		{"Rather Dashing", {0, 0}, {}},
+		{"North", {0, 20}, {}},
+		{"South", {0, -20}, {}},
+		{"Dennis", {100, 150}, {}},
+	}
+
+	with capability physics {
+		do_physics(peasants)
+	}
+
+	with capability render {
+		render_peasants(peasants)
+	}
+}
+
+func do_physics(peasants: []Peasant)
+	requires physics
+{
+	for peasant in peasants^ {
+		peasant.position += {0.123, 0.456}
+	}
+}
+
+func render_peasants(peasants: []Peasant)
+	requires render
+{
+	for peasant in peasants^ {
+		println(peasant)
+	}
+}
