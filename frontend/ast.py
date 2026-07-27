@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from os import PathLike
 from pathlib import Path
+from types import EllipsisType
 
 from frontend.lexer import Location, Identifier
 
@@ -53,7 +54,11 @@ class Declaration(Node):
     pass
 
 @dataclass(kw_only=True)
-class TypeDecl(Declaration):
+class TypeAlias(Declaration):
+    pass
+
+@dataclass(kw_only=True)
+class DistinctTypeDecl(Declaration):
     pass
 
 
@@ -103,3 +108,51 @@ class UnitComponent(Node):
 @dataclass(kw_only=True)
 class CompoundUnit(Node):
     components: list[UnitComponent]
+
+
+@dataclass(kw_only=True)
+class Expression(Node):
+    pass
+
+
+@dataclass(kw_only=True)
+class TypeExpression(Node):
+    pass
+
+
+@dataclass(kw_only=True)
+class SimpleType(TypeExpression):
+    type_name: QualifiedName
+    unit: CompoundUnit | None = None
+
+
+@dataclass(kw_only=True)
+class CapabilityExpression(Node):
+    pass
+
+
+@dataclass(kw_only=True)
+class Statement(Node):
+    pass
+
+
+@dataclass(kw_only=True)
+class Block(Statement):
+    body: list[Statement]
+
+
+@dataclass(kw_only=True)
+class FormalParameter(Node):
+    name: Identifier
+    type_: TypeExpression
+    default: Expression | None = None
+
+
+@dataclass(kw_only=True)
+class FuncDefinition(Declaration):
+    name: Identifier
+    params: list[FormalParameter]
+    return_types: list[TypeExpression]
+    error_type: TypeExpression | EllipsisType | None = None  # Ellipsis as the error type indicates the function can fail but the error type is void
+    capabilities_required: CapabilityExpression | None = None
+    body: Block

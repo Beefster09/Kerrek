@@ -44,17 +44,8 @@ class Parser:
                 if expected is ...:
                     continue
 
-                tok = self.peek(i)
-
-                if tok is None:
+                if not self.match_one(expected, offset=i):
                     return None
-
-                if isinstance(expected, type):
-                    if not isinstance(tok.what, expected):
-                        return None
-                else:
-                    if tok.what is not expected:
-                        return None
 
             return self._tokens[self.base + offset:self.base + offset + len(tok_sequence)]
 
@@ -127,6 +118,30 @@ class Parser:
                     return self.consume(i)
 
             assert False, 'unreachable'
+
+        def skip(
+            self,
+            *tok_sequence: TokenData | type[TokenData] | EllipsisType,
+        ) -> None:
+            assert tok_sequence
+            for i, expected in enumerate(tok_sequence):
+                if expected is ...:
+                    continue
+
+                if not self.match_one(expected, offset=i):
+                    return
+
+            self.base += len(tok_sequence)
+
+        def skip_all(
+            self,
+            ignore: TokenData | type[TokenData],
+        ) -> None:
+            while True:
+                if not self.match_one(ignore):
+                    return
+
+                self.base += 1
 
         def __bool__(self):
             return self.base < self._size
@@ -212,7 +227,10 @@ class Parser:
             case Keyword.Unit:
                 return self._unit_decl()
 
-            case Control.EOL:
+            case Keyword.Func:
+                return self._func_def()
+
+            case Control.EOL:  # Empty line
                 self.tokens.consume()
                 return None
 
@@ -376,6 +394,150 @@ class Parser:
             components=components,
         )
 
+    def _func_def(self) -> ast.FuncDefinition | None:
+        func_keyword = self.tokens.match_one_and_consume(Keyword.Func)
+        assert func_keyword
+
+        func_name = self.tokens.match_one_and_consume(Identifier)
+
+        if not func_name:
+            self._emit_error("expected function name")
+            return
+
+        params = self._param_list()
+        if not params:
+            self._emit_error("expected a parameter list")
+            return
+
+        if self.tokens.match_one_and_consume(Punctuation.Arrow):
+            return_type = self._type_expr()  # TODO: multiple return types
+
+            if return_type:
+                return_types = [return_type]
+            else:
+                return_types = []
+
+            if self.tokens.match_one_and_consume(Punctuation.Bang):
+                error_type = self._type_expr() or ...
+            else:
+                error_type = None
+        else:
+            return_types = []
+            error_type = None
+
+        # TODO: requires
+
+        body = self._block()
+
+        if not self._eol():
+            self._emit_error("expected end of line after function body")
+
+        if not body:
+            self._emit_error("function body required")
+            return
+
+        return ast.FuncDefinition(
+            file=func_name.file,
+            start=func_keyword.start,
+            end=body.end,
+            name=func_name.what,
+            params=params,
+            return_types=return_types,
+            error_type=error_type,
+            body=body,
+        )
+
+    def _param_list(self) -> list[ast.FormalParameter] | None:
+        if not self.tokens.match_one_and_consume(Punctuation.LParen):
+            return
+
+        params: list[ast.FormalParameter] = []
+
+        while m := self.tokens.match_and_consume(Identifier, Punctuation.Colon):
+            self.tokens.skip(Punctuation.Dollar) # TODO: mark the type as polymorphic
+
+            param_type = self._type_expr()
+            if not param_type:
+                return
+
+            if self.tokens.match_one_and_consume(Punctuation.Assign):
+                default = self._expr()
+            else:
+                default = None
+
+            params.append(ast.FormalParameter(
+                file=m[0].file,
+                start=m[0].start,
+                end=param_type.end,
+                name=m[0].what,
+                type_=param_type,
+                default=default,
+            ))
+
+            if self.tokens.match_and_consume(Punctuation.Comma):
+                self.tokens.skip_all(Control.EOL)
+
+            else:
+                break
+
+        if not self.tokens.match_one_and_consume(Punctuation.RParen):
+            self._emit_error("expected end of parameter list")
+            return
+
+        return params
+
+    def _block(self) -> ast.Block | None:
+        begin = self.tokens.match_one_and_consume(Punctuation.LCurly)
+        if not begin:
+            return
+
+        trailing_junk = self.tokens.consume_until(Punctuation.RCurly)
+        if trailing_junk:
+            self._emit_error("unable to parse content in block body", trailing_junk[0].start, trailing_junk[-1].end)
+
+        end = self.tokens.match_one_and_consume(Punctuation.RCurly)
+        if not end:
+            self._emit_error("block not closed")
+            return
+
+    def _type_expr(self, *, required=True) -> ast.TypeExpression | None:
+        if st := self._simple_type():
+            return st
+
+        if required:
+            self._emit_error("expected a type expression here")
+
+    def _simple_type(self) -> ast.TypeExpression | None:
+        if qualname := self._qualname():
+            base = ast.SimpleType(
+                file=qualname.file,
+                start=qualname.start,
+                end=qualname.end,
+                type_name=qualname,
+            )
+        else:
+            print('haldo', self.tokens.peek())
+            return None
+
+        if lt := self.tokens.match_one_and_consume(Punctuation.LT):
+            base.unit = self._compound_unit(slash_ok=True) or ast.CompoundUnit(
+                file=lt.file,
+                start=lt.end,
+                end=lt.end,
+                components=[],
+            )
+
+            gt = self.tokens.match_one_and_consume(Punctuation.GT)
+            if gt:
+                base.end = gt.end
+            else:
+                base.end = base.unit.end
+                self._emit_error("unit on type not closed")
+
+        return base
+
+    def _expr(self) -> ast.Expression | None:
+        pass
 
     def _qualname(self, required=False) -> ast.QualifiedName | None:
         root = self.tokens.match_one_and_consume(Identifier)
