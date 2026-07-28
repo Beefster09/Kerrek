@@ -6,7 +6,7 @@ from os import PathLike
 from pathlib import Path
 from types import EllipsisType
 
-from frontend.lexer import Location, Identifier
+from frontend.lexer import Location, Identifier, Numeric
 
 
 @dataclass(kw_only=True)
@@ -116,6 +116,17 @@ class Expression(Node):
 
 
 @dataclass(kw_only=True)
+class ScalarExpr(Expression):
+    value: Numeric
+    unit: CompoundUnit | None
+
+
+@dataclass(kw_only=True)
+class SimpleLiteralExpr(Expression):
+    value: str | bool | None
+
+
+@dataclass(kw_only=True)
 class TypeExpression(Node):
     pass
 
@@ -134,6 +145,11 @@ class CapabilityExpression(Node):
 @dataclass(kw_only=True)
 class Statement(Node):
     pass
+
+
+@dataclass(kw_only=True)
+class ReturnStatement(Statement):
+    value: Expression | None
 
 
 @dataclass(kw_only=True)

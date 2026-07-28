@@ -97,7 +97,7 @@ class Keyword(Enum):
     Context = 'context'
     Temp = 'temp'
 
-    Var = 'var'
+    Let = 'let'
     Const = 'const'
     Type = 'type'
     Enum = 'enum'
@@ -131,6 +131,7 @@ class Keyword(Enum):
     Shared = 'shared'
     Weak = 'weak'
     UnsafePtr = 'unsafe_ptr'
+    Mut = 'mut'
 
 
 @dataclass
