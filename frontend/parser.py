@@ -9,6 +9,7 @@ from frontend.lexer import Identifier, Location, Numeric, Punctuation, String, T
 
 CONTINUATION_TOKENS = frozenset([
     Punctuation.Dot,
+
     Punctuation.Plus,
     Punctuation.Minus,
     Punctuation.Star,
@@ -16,6 +17,10 @@ CONTINUATION_TOKENS = frozenset([
     Punctuation.Slash,
     Punctuation.DSlash,
     Punctuation.Percent,
+
+    Keyword.As,
+    Keyword.And,
+    Keyword.Or,
 ])
 
 
@@ -52,6 +57,8 @@ class Parser:
             self,
             *tok_sequence: TokenData | type[TokenData] | EllipsisType,
             offset: int = 0,
+            first_on_same_line: bool = False,
+            rest_on_same_line: bool = False,
         ) -> list[Token] | None:
             assert tok_sequence
             base = self._base + offset
@@ -61,6 +68,11 @@ class Parser:
                     return None
 
                 actual = self._tokens[i]
+
+                if first_on_same_line and i == base and actual.first_on_line:
+                    return None
+                if rest_on_same_line and i > base and actual.first_on_line:
+                    return None
 
                 if expected is ...:
                     continue
@@ -87,12 +99,27 @@ class Parser:
         def match(
             self,
             *tok_sequence: TokenData | type[TokenData] | EllipsisType,
-            offset: int = 0,
+            same_line: bool = False,
+            one_line: bool = False,
         ) -> list[Token] | None:
-            tokens = self._match_seq(*tok_sequence, offset=offset)
+            """match and consume the next tokens if they match the sequence
+
+            if same_line is True, the sequence will only match if all the tokens
+            appeared on the same line as each other *and* the previous token
+
+            if one_line is True, the sequence will only match if all the tokens
+            appeared on the same line
+
+            An ellipsis will match any one token
+            """
+            tokens = self._match_seq(
+                *tok_sequence,
+                first_on_same_line=same_line,
+                rest_on_same_line=same_line or one_line,
+            )
 
             if tokens:
-                self.consume(len(tokens))
+                self.advance(len(tokens))
                 return tokens
 
             return None
@@ -101,20 +128,25 @@ class Parser:
             self,
             expected: E | type[E],
             *,
-            offset: int = 0,
+            same_line: bool = False,
         ) -> Token[E] | None:
-            token = self._match_seq(expected, offset=offset)
+            token = self._match_seq(expected, first_on_same_line=same_line)
 
             if token:
-                self.consume()
+                self.advance()
                 return token[0]
 
             return None
 
-        def consume(self, count: int = 1) -> int:
+        def advance(self, count: int = 1) -> int:
             before = self._base
             self._base = min(self._base + count, self._size)
             return self._base - before
+
+        def rewind(self, count: int = 1) -> int:
+            before = self._base
+            self._base = max(self._base - count, 0)
+            return before - self._base
 
         def skip_line(self):
             for i in range(self._base, self._size):
@@ -130,11 +162,12 @@ class Parser:
             self.start = start
             self.end = end
 
-    def __init__(self, token_stream: Iterable[Token]):
+    def __init__(self, token_stream: Iterable[Token], max_errors=100):
         self.tokens = self.TokenReader(token_stream)
         first_tok = self.tokens.peek()
         self.src = first_tok.file if first_tok else None
         self.errors: list[Parser.Error] = []
+        self.max_errors = max_errors
 
     @overload
     def _emit_error(self, message: str):
@@ -170,6 +203,13 @@ class Parser:
             else:
                 self.errors.append(self.Error(message))
 
+        if len(self.errors) >= self.max_errors:
+            self._report_errors()
+
+    def _report_errors(self):
+        if self.errors:
+            raise ExceptionGroup(f"encountered {len(self.errors)} errors while parsing", self.errors)
+
     def parse(self) -> ast.File:
         if first_tok := self.tokens.peek():
             file = ast.File(source=first_tok.file)
@@ -184,8 +224,7 @@ class Parser:
                 case ast.Declaration():
                     file.declarations.append(stmt)
 
-        if self.errors:
-            raise ExceptionGroup(f"encountered {len(self.errors)} errors while parsing", self.errors)
+        self._report_errors()
 
         return file
 
@@ -219,6 +258,7 @@ class Parser:
                         tok_str = type(tok.what).__name__
 
                 self._emit_error(f"unexpected {tok_str} in '{tok.file}' at {tok.start}")
+                self.tokens.advance()
                 self.tokens.skip_line()
                 return None
 
@@ -316,17 +356,18 @@ class Parser:
                 )
 
         self._emit_error(f"invalid form of unit declaration")
+        self.tokens.advance()
         self.tokens.skip_line()
 
-    def _compound_unit(self, *, slash_ok=False, required=False):
+    def _compound_unit(self, *, slash_ok=False, required=False, same_line=False):
         components: list[ast.UnitComponent] = []
         seen_slash = False
-        while qualname := self._qualname():
+        while qualname := self._qualname(same_line=same_line):
             exponent = 1
             comp_start = qualname.start
             comp_end = qualname.end
 
-            if m := self.tokens.match(Punctuation.Caret, Numeric):
+            if m := self.tokens.match(Punctuation.Caret, Numeric, same_line=True):
                 exp = m[1]
 
                 assert isinstance(exp.what, Numeric)
@@ -340,7 +381,8 @@ class Parser:
             if slash_ok:
                 if seen_slash:
                     exponent = -exponent
-                elif self.tokens.match_one(Punctuation.Slash):
+                elif self.tokens.match(Punctuation.Slash, Identifier, same_line=True):
+                    self.tokens.rewind(1)  # we consumed too many tokens with the last match so undo one
                     seen_slash = True
 
             components.append(ast.UnitComponent(
@@ -374,12 +416,12 @@ class Parser:
             return
 
         params = self._param_list()
-        if not params:
+        if params is None:
             self._emit_error("expected a parameter list")
             return
 
         if self.tokens.match_one(Punctuation.Arrow):
-            return_type = self._type_expr()  # TODO: multiple return types
+            return_type = self._type_expr()  # TODO: multiple return types ?
 
             if return_type:
                 return_types = [return_type]
@@ -514,7 +556,7 @@ class Parser:
         stmt = None
         match tok := self.tokens.peek():
             case Token(what=Keyword.Return):
-                self.tokens.consume()
+                self.tokens.advance()
                 retval = self._expr()
 
                 stmt = ast.ReturnStatement(
@@ -526,6 +568,7 @@ class Parser:
 
             case _:
                 self._emit_error("invalid start of statement")
+                self.tokens.advance()
                 self.tokens.skip_line()
                 return
 
@@ -560,8 +603,10 @@ class Parser:
     def _literal_expr(self):
         match tok := self.tokens.peek():
             case Token(what=Numeric()):
-                self.tokens.consume()
-                unit = self._compound_unit(slash_ok=True)  # TODO: have some context about when slashes are allowed
+                self.tokens.advance()
+
+                unit = self._compound_unit(slash_ok=True, same_line=True)  # TODO: have some context about when slashes are allowed
+
                 return ast.ScalarExpr(
                     file=tok.file,
                     start=tok.start,
@@ -573,8 +618,14 @@ class Parser:
             case Token(what=String()):
                 pass
 
-    def _qualname(self, required=False) -> ast.QualifiedName | None:
-        root = self.tokens.match_one(Identifier)
+    def _qualname(
+        self,
+        *,
+        required=False,
+        same_line=False,
+        one_line=False,
+    ) -> ast.QualifiedName | None:
+        root = self.tokens.match_one(Identifier, same_line=same_line)
 
         if not root:
             if required:
@@ -585,7 +636,7 @@ class Parser:
         start = root.start
         end = root.end
 
-        while m := self.tokens.match(Punctuation.Dot, Identifier):
+        while m := self.tokens.match(Punctuation.Dot, Identifier, same_line=one_line):
             assert isinstance(m[1].what, Identifier)
             path.append(m[1].what)
             end = m[1].end
@@ -604,7 +655,7 @@ class Parser:
 
         match tok.what:
             case Punctuation.Semicolon:
-                self.tokens.consume()
+                self.tokens.advance()
                 return True
 
             case Punctuation.RCurly:

@@ -18,6 +18,7 @@ unit km = 1000 * m
 unit inch = foot / 12
 unit yard = 3 * foot
 unit mile = 5280 * foot
+unit football_field = 120 * yard
 
 unit m = 3.28084 * ft
 
@@ -68,3 +69,12 @@ unit joule is newton m
 unit watt is joule / s
 unit calorie = 4.184 * joule
 unit btu = 1055 * joule
+
+
+unit man
+
+
+func unit_numeric_literals() {
+	city_block := 0.125 mile
+	project_complexity := 100 man * 30 day  \\ 100 man-months
+}
