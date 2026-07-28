@@ -9,6 +9,9 @@ from typing import Iterator, NamedTuple
 import re
 
 
+TAB_WIDTH = 4
+
+
 class Location(NamedTuple):
     line: int
     col: int
@@ -71,10 +74,6 @@ class Punctuation(Enum):
                 best = sym
 
         return best
-
-
-class Control(Enum):
-    EOL = auto()
 
 
 class Keyword(Enum):
@@ -277,12 +276,7 @@ class String:
         return None
 
 
-@dataclass
-class Comment:
-    content: str
-
-
-type TokenData = Punctuation | Control | Keyword | Identifier | Numeric | String | Comment | Garbage
+type TokenData = Punctuation | Keyword | Identifier | Numeric | String | Garbage
 
 
 @dataclass(kw_only=True)
@@ -291,50 +285,35 @@ class Token[T: TokenData]:
     start: Location
     end: Location
     what: T
+    first_on_line: bool
+    comment_before: str | None
 
     def __str__(self):
-        return f"{self.what!r} (in '{self.file}': {self.start} to {self.end})"
+        prefix = "<EOL>\n" if self.first_on_line else ''
+        return f"{prefix}{self.what!r} (in '{self.file}': {self.start} to {self.end})"
 
 
-def tokenize(file: Path, include_comments=False) -> Iterator[Token]:
+def tokenize(file: Path) -> Iterator[Token]:
     with file.open('rt', encoding='utf-8') as fp:
-        multiline_string_start: Location | None = None
-        multiline_string_parts: list[str] = []
+        lines_iter = iter(enumerate(fp, 1))
+        last_comment = None
 
-        for line_no, line in enumerate(fp, 1):
+        for line_no, line in lines_iter:
+            first_token_on_line = True
 
             i = 0
             line_len = len(line)
             while i < line_len:
-                if multiline_string_start:
-                    if line.startswith('"""', i):
-                        multiline_string_parts.append('')  # TODO
-                        yield Token(
-                            file=file,
-                            start=multiline_string_start,
-                            end=Location(line_no, i + 4),
-                            what=String('\n'.join(multiline_string_parts))
-                        )
-                        multiline_string_start = None
-
-                elif line[i].isspace():
+                if line[i].isspace():
                     i += 1
                     continue  # next col
 
                 elif line.startswith(r'\\', i):
-                    if include_comments:
-                        yield Token(
-                            file=file,
-                            start=Location(line_no, i+1),
-                            end=Location(line_no, len(line)),
-                            what=Comment(line[i:])
-                        )
+                    last_comment = line[i:]
                     break  # next line
 
                 elif line.startswith('"""', i):
-                    multiline_string_start = Location(line_no, i+1)
-                    multiline_string_parts = []
-                    i += 3
+                    raise NotImplementedError("multiline strings don't work yet")
 
                 elif string := String.single_line_match(line, i):
                     yield Token(
@@ -342,7 +321,10 @@ def tokenize(file: Path, include_comments=False) -> Iterator[Token]:
                         start=Location(line_no, i + 1),
                         end=Location(line_no, i + 1 + len(string.raw)),
                         what=string,
+                        first_on_line=first_token_on_line,
+                        comment_before=last_comment,
                     )
+                    last_comment = None
                     i += len(string.raw)
 
                 elif num := Numeric.match(line, i):
@@ -351,7 +333,10 @@ def tokenize(file: Path, include_comments=False) -> Iterator[Token]:
                         start=Location(line_no, i + 1),
                         end=Location(line_no, i + 1 + len(num.raw)),
                         what=num,
+                        first_on_line=first_token_on_line,
+                        comment_before=last_comment,
                     )
+                    last_comment = None
                     i += len(num.raw)
 
                 elif ident := Identifier.match(line, i):
@@ -362,7 +347,10 @@ def tokenize(file: Path, include_comments=False) -> Iterator[Token]:
                                 start=Location(line_no, i + 1),
                                 end=Location(line_no, i + 1 + len(kw.value)),
                                 what=kw,
+                                first_on_line=first_token_on_line,
+                                comment_before=last_comment,
                             )
+                            last_comment = None
                             i += len(kw.value)
                             break
                     else:
@@ -371,7 +359,10 @@ def tokenize(file: Path, include_comments=False) -> Iterator[Token]:
                             start=Location(line_no, i + 1),
                             end=Location(line_no, i + 1 + len(ident)),
                             what=ident,
+                            first_on_line=first_token_on_line,
+                            comment_before=last_comment,
                         )
+                        last_comment = None
                         i += len(ident)
 
                 elif sym := Punctuation.match(line, i):
@@ -380,7 +371,10 @@ def tokenize(file: Path, include_comments=False) -> Iterator[Token]:
                         start=Location(line_no, i + 1),
                         end=Location(line_no, i + 1 + len(sym.value)),
                         what=sym,
+                        first_on_line=first_token_on_line,
+                        comment_before=last_comment,
                     )
+                    last_comment = None
                     i += len(sym.value)
 
                 else:
@@ -389,13 +383,10 @@ def tokenize(file: Path, include_comments=False) -> Iterator[Token]:
                         start=Location(line_no, i + 1),
                         end=Location(line_no, i + 2),
                         what=Garbage(line[i]),
+                        first_on_line=first_token_on_line,
+                        comment_before=last_comment,
                     )
+                    last_comment = None
                     i += 1
 
-            line_end = Location(line_no, len(line) + 1)
-            yield Token(
-                file=file,
-                start=line_end,
-                end=line_end,
-                what=Control.EOL,
-            )
+                first_token_on_line = False

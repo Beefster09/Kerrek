@@ -11,9 +11,9 @@ from frontend.lexer import Location, Identifier, Numeric
 
 @dataclass(kw_only=True)
 class File:
-    source: Path | None
-    imports: list[_Import] = field(default_factory=list)
-    declarations: list[Declaration] = field(default_factory=list)
+    source: Path | None = field(repr=False)
+    imports: list[_Import] = field(default_factory=list, repr=False)
+    declarations: list[Declaration] = field(default_factory=list, repr=False)
 
 
 @dataclass(kw_only=True)

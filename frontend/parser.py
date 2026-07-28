@@ -1,11 +1,22 @@
-from contextlib import contextmanager
-from enum import Enum
 import itertools
+from enum import Enum
 from types import EllipsisType
 from typing import Iterable, cast, overload
 
 from frontend import ast
-from frontend.lexer import Control, Identifier, Location, Numeric, Punctuation, String, Token, Keyword, TokenData, NumberLiteralForm
+from frontend.lexer import Identifier, Location, Numeric, Punctuation, String, Token, Keyword, TokenData, NumberLiteralForm
+
+
+CONTINUATION_TOKENS = frozenset([
+    Punctuation.Dot,
+    Punctuation.Plus,
+    Punctuation.Minus,
+    Punctuation.Star,
+    Punctuation.DStar,
+    Punctuation.Slash,
+    Punctuation.DSlash,
+    Punctuation.Percent,
+])
 
 
 class Parser:
@@ -14,22 +25,9 @@ class Parser:
             self._tokens = list(stream)
             self._size = len(self._tokens)
             self._base = 0
-            self._ignoring_eol = False
 
-        def peek(self) -> Token | None:
-            i = self._base
-            while i < self._size:
-                tok = self._tokens[i]
-                if not (self._ignoring_eol and tok.what is Control.EOL):
-                    return tok
-            else:
-                return None
-
-        def what(self) -> TokenData | None:
-            if tok := self.peek():
-                return tok.what
-            else:
-                return None
+        def __bool__(self):
+            return self._base < self._size
 
         def __getitem__(self, idx: int) -> Token:
             real_idx = self._base + idx
@@ -38,37 +36,39 @@ class Parser:
 
             raise IndexError(idx)
 
+        def peek(self) -> Token | None:
+            if self._base < self._size:
+                return self._tokens[self._base]
+            else:
+                return None
+
+        def what(self) -> TokenData | None:
+            if self._base < self._size:
+                return self._tokens[self._base].what
+            else:
+                return None
+
         def _match_seq(
             self,
             *tok_sequence: TokenData | type[TokenData] | EllipsisType,
             offset: int = 0,
-        ) -> tuple[list[Token] | None, int]:
+        ) -> list[Token] | None:
             assert tok_sequence
-            i = self._base + offset
-            result: list[Token] = []
+            base = self._base + offset
 
-            for expected in tok_sequence:
-                actual = None
-                while i < self._size:
-                    tok = self._tokens[i]
-                    i += 1
+            for i, expected in enumerate(tok_sequence, base):
+                if i >= self._size:
+                    return None
 
-                    if not (self._ignoring_eol and tok.what is Control.EOL):
-                        actual = tok
-                        break
-
-                if actual is None:
-                    return None, 0
-
-                result.append(actual)
+                actual = self._tokens[i]
 
                 if expected is ...:
                     continue
 
                 if not self._token_is(actual, expected):
-                    return None, 0
+                    return None
 
-            return result, i - (self._base + offset)
+            return self._tokens[base:base+len(tok_sequence)]
 
         def _token_is[E: TokenData](
             self,
@@ -89,10 +89,10 @@ class Parser:
             *tok_sequence: TokenData | type[TokenData] | EllipsisType,
             offset: int = 0,
         ) -> list[Token] | None:
-            tokens, count = self._match_seq(*tok_sequence, offset=offset)
+            tokens = self._match_seq(*tok_sequence, offset=offset)
 
             if tokens:
-                self.consume(count)
+                self.consume(len(tokens))
                 return tokens
 
             return None
@@ -103,10 +103,10 @@ class Parser:
             *,
             offset: int = 0,
         ) -> Token[E] | None:
-            token, count = self._match_seq(expected, offset=offset)
+            token = self._match_seq(expected, offset=offset)
 
             if token:
-                self.consume(count)
+                self.consume()
                 return token[0]
 
             return None
@@ -116,38 +116,13 @@ class Parser:
             self._base = min(self._base + count, self._size)
             return self._base - before
 
-        def consume_until(self, what: TokenData | type[TokenData]) -> int:
-            return self._consume_until(what)
+        def skip_line(self):
+            for i in range(self._base, self._size):
+                if self._tokens[i].first_on_line:
+                    self._base = i
+                    return
 
-        def consume_while(self, what: TokenData | type[TokenData]) -> int:
-            return self._consume_until(what, invert=False)
-
-        def _consume_until(self, what: TokenData | type[TokenData], invert=False) -> int:
-            if isinstance(what, type):
-                def check(tok: TokenData) -> bool:
-                    return isinstance(tok, what)
-            else:
-                def check(tok: TokenData) -> bool:
-                    return tok is what
-
-            for i in itertools.count(self._base):
-                if i >= self._size:
-                    return self.consume(i)
-
-                if check(self._tokens[i].what) != invert:
-                    return self.consume(i)
-
-            assert False, 'unreachable'
-
-        @contextmanager
-        def ignore_eols(self, ignore=True):
-            before = self._ignoring_eol
-            self._ignoring_eol = ignore
-            yield
-            self._ignoring_eol = before
-
-        def __bool__(self):
-            return self._base < self._size
+            self._base = self._size
 
     class Error(Exception):
         def __init__(self, msg: str, start: Location | None = None, end: Location | None = None):
@@ -160,29 +135,6 @@ class Parser:
         first_tok = self.tokens.peek()
         self.src = first_tok.file if first_tok else None
         self.errors: list[Parser.Error] = []
-
-    def parse(self) -> ast.File:
-        if first_tok := self.tokens.peek():
-            file = ast.File(source=first_tok.file)
-        else:
-            return ast.File(source=None)  # file is empty
-
-        try:
-            while self.tokens:
-                match stmt := self._toplevel_statement():
-                    case ast._Import():
-                        file.imports.append(stmt)
-
-                    case ast.Declaration():
-                        file.declarations.append(stmt)
-
-        except StopIteration:
-            self._emit_error("unexpected end of file")
-
-        if self.errors:
-            raise ExceptionGroup(f"encountered {len(self.errors)} errors while parsing", self.errors)
-
-        return file
 
     @overload
     def _emit_error(self, message: str):
@@ -218,10 +170,28 @@ class Parser:
             else:
                 self.errors.append(self.Error(message))
 
-    def _toplevel_statement(self) -> ast.Node | None:
+    def parse(self) -> ast.File:
+        if first_tok := self.tokens.peek():
+            file = ast.File(source=first_tok.file)
+        else:
+            return ast.File(source=None)  # file is empty
+
+        while self.tokens:
+            match stmt := self._toplevel_decl():
+                case ast._Import():
+                    file.imports.append(stmt)
+
+                case ast.Declaration():
+                    file.declarations.append(stmt)
+
+        if self.errors:
+            raise ExceptionGroup(f"encountered {len(self.errors)} errors while parsing", self.errors)
+
+        return file
+
+    def _toplevel_decl(self) -> ast.Node | None:
         tok = self.tokens.peek()
-        if tok is None:
-            return
+        assert tok
 
         match tok.what:
             case Keyword.Type:
@@ -232,10 +202,6 @@ class Parser:
 
             case Keyword.Func:
                 return self._func_def()
-
-            case Control.EOL:  # Empty line
-                self.tokens.consume()
-                return None
 
             case _:
                 match tok.what:
@@ -253,7 +219,7 @@ class Parser:
                         tok_str = type(tok.what).__name__
 
                 self._emit_error(f"unexpected {tok_str} in '{tok.file}' at {tok.start}")
-                self.tokens.consume_until(Control.EOL)
+                self.tokens.skip_line()
                 return None
 
     def _unit_decl(self):
@@ -262,7 +228,6 @@ class Parser:
             Keyword.Type,
             Identifier,
         ):
-            print("unit type")
             if self._end_of_statement():
                 return ast.UnitTypeDecl(
                     file=m[0].file,
@@ -333,7 +298,7 @@ class Parser:
             Punctuation.Assign,
         ):
             # unit conversion
-            self.tokens.consume_until(Control.EOL)
+            self.tokens.skip_line()
             # TODO
             return
 
@@ -351,7 +316,7 @@ class Parser:
                 )
 
         self._emit_error(f"invalid form of unit declaration")
-        self.tokens.consume_until(Control.EOL)
+        self.tokens.skip_line()
 
     def _compound_unit(self, *, slash_ok=False, required=False):
         components: list[ast.UnitComponent] = []
@@ -408,27 +373,26 @@ class Parser:
             self._emit_error("expected function name")
             return
 
-        with self.tokens.ignore_eols():
-            params = self._param_list()
-            if not params:
-                self._emit_error("expected a parameter list")
-                return
+        params = self._param_list()
+        if not params:
+            self._emit_error("expected a parameter list")
+            return
 
-            if self.tokens.match_one(Punctuation.Arrow):
-                return_type = self._type_expr()  # TODO: multiple return types
+        if self.tokens.match_one(Punctuation.Arrow):
+            return_type = self._type_expr()  # TODO: multiple return types
 
-                if return_type:
-                    return_types = [return_type]
-                else:
-                    return_types = []
-
-                if self.tokens.match_one(Punctuation.Bang):
-                    error_type = self._type_expr() or ...
-                else:
-                    error_type = None
+            if return_type:
+                return_types = [return_type]
             else:
                 return_types = []
+
+            if self.tokens.match_one(Punctuation.Bang):
+                error_type = self._type_expr() or ...
+            else:
                 error_type = None
+        else:
+            return_types = []
+            error_type = None
 
         # TODO: requires
 
@@ -530,35 +494,49 @@ class Parser:
 
         body: list[ast.Statement] = []
 
-        with self.tokens.ignore_eols(False):
-            while stmt := self._statement():
+        while self.tokens:
+            if end := self.tokens.match_one(Punctuation.RCurly):
+                break
+            elif stmt := self._statement():
                 body.append(stmt)
-
-        trailing_junk = self.tokens.consume_until(Punctuation.RCurly)
-        if trailing_junk:
-            first_tok = self.tokens[-trailing_junk]
-            last_tok = self.tokens[-1]
-            self._emit_error("unable to parse content in block body", first_tok.start, last_tok.end)
-
-        end = self.tokens.match_one(Punctuation.RCurly)
-        if not end:
+        else:
             self._emit_error("block not closed")
             return
 
-    def _statement(self) -> ast.Statement | None:
-        self.tokens.consume_while(Control.EOL)  # ignore blank lines
+        return ast.Block(
+            file=begin.file,
+            start=begin.start,
+            end=end.end,
+            body=body,
+        )
 
+    def _statement(self) -> ast.Statement | None:
+        stmt = None
         match tok := self.tokens.peek():
             case Token(what=Keyword.Return):
                 self.tokens.consume()
                 retval = self._expr()
-                if self._end_of_statement():
-                    return ast.ReturnStatement(
-                        file=tok.file,
-                        start=tok.start,
-                        end=retval.end if retval else tok.end,
-                        value=retval,
-                    )
+
+                stmt = ast.ReturnStatement(
+                    file=tok.file,
+                    start=tok.start,
+                    end=retval.end if retval else tok.end,
+                    value=retval,
+                )
+
+            case _:
+                self._emit_error("invalid start of statement")
+                self.tokens.skip_line()
+                return
+
+        assert stmt is not None, "you should have set stmt by now or error-returned, you dolt"
+
+        if self._end_of_statement():
+            return stmt
+        else:
+            self._emit_error("expected end of statement here")
+            self.tokens.skip_line()
+
 
     def _expr(self) -> ast.Expression | None:
         base = self._expr_atom()
@@ -569,8 +547,7 @@ class Parser:
 
     def _expr_atom(self) -> ast.Expression | ast.QualifiedName | None:
         if self.tokens.match_one(Punctuation.LParen):
-            with self.tokens.ignore_eols():
-                inner = self._expr()
+            inner = self._expr()
             self.tokens.match_one(Punctuation.RParen)
             return inner
 
@@ -621,8 +598,12 @@ class Parser:
         )
 
     def _end_of_statement(self) -> bool:
-        match self.tokens[0].what:
-            case Control.EOL, Punctuation.Semicolon:
+        tok = self.tokens.peek()
+        if tok is None:  # EOF
+            return True
+
+        match tok.what:
+            case Punctuation.Semicolon:
                 self.tokens.consume()
                 return True
 
@@ -630,6 +611,6 @@ class Parser:
                 return True
 
             case _:
-                return False
+                return tok.first_on_line and tok.what not in CONTINUATION_TOKENS
 
 

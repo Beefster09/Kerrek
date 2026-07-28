@@ -9,4 +9,6 @@ if __name__ == '__main__':
     file = Path(sys.argv[1])
 
     p = parser.Parser(lexer.tokenize(file))
+    # for token in p.tokens._tokens:
+    #     print(token)
     print(p.parse())
