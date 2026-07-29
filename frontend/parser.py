@@ -1,5 +1,5 @@
 import itertools
-from enum import Enum
+from enum import Enum, auto
 from types import EllipsisType
 from typing import Iterable, cast, overload
 
@@ -7,20 +7,38 @@ from frontend import ast
 from frontend.lexer import Identifier, Location, Numeric, Punctuation, String, Token, Keyword, TokenData, NumberLiteralForm
 
 
+class Associativity(Enum):
+    NonAssociative = auto()
+    Left = auto()
+    Right = auto()
+
+BINOPS = {
+    Punctuation.DStar: (10, ast.Operator.Exponent, Associativity.Right),
+
+    Punctuation.Star: (20, ast.Operator.Multiply, Associativity.Left),
+    Punctuation.Slash: (20, ast.Operator.Divide, Associativity.Left),
+    Punctuation.DSlash: (20, ast.Operator.FloorDivide, Associativity.Left),
+    Punctuation.Percent: (20, ast.Operator.Modulo, Associativity.Left),
+
+    Punctuation.Plus: (30, ast.Operator.Add, Associativity.Left),
+    Punctuation.Minus: (30, ast.Operator.Subtract, Associativity.Left),
+
+    Punctuation.EQ: (40, ast.Operator.Equal, Associativity.NonAssociative),
+    Punctuation.NE: (40, ast.Operator.NotEqual, Associativity.NonAssociative),
+    Punctuation.GT: (40, ast.Operator.Greater, Associativity.NonAssociative),
+    Punctuation.GE: (40, ast.Operator.GreaterEqual, Associativity.NonAssociative),
+    Punctuation.LT: (40, ast.Operator.Less, Associativity.NonAssociative),
+    Punctuation.LE: (40, ast.Operator.LessEqual, Associativity.NonAssociative),
+
+    Keyword.And: (50, ast.Operator.And, Associativity.Left),
+    Keyword.Or: (50, ast.Operator.Or, Associativity.Left),
+}
+
 CONTINUATION_TOKENS = frozenset([
+    *BINOPS,
+
     Punctuation.Dot,
-
-    Punctuation.Plus,
-    Punctuation.Minus,
-    Punctuation.Star,
-    Punctuation.DStar,
-    Punctuation.Slash,
-    Punctuation.DSlash,
-    Punctuation.Percent,
-
     Keyword.As,
-    Keyword.And,
-    Keyword.Or,
 ])
 
 
@@ -44,6 +62,14 @@ class Parser:
         def peek(self) -> Token | None:
             if self._base < self._size:
                 return self._tokens[self._base]
+            else:
+                return None
+
+        def pop(self) -> Token | None:
+            if self._base < self._size:
+                tok = self._tokens[self._base]
+                self._base += 1
+                return tok
             else:
                 return None
 
@@ -494,12 +520,91 @@ class Parser:
 
         return params
 
-    def _type_expr(self, *, required=True) -> ast.TypeExpression | None:
-        if st := self._simple_type():
-            return st
+    def _type_expr(self, *, allow_no_base=False) -> ast.TypeExpression | None:
+        typ = None
 
-        if required:
-            self._emit_error("expected a type expression here")
+        match self.tokens.what():
+            case Punctuation.Caret | Keyword.Owned | Keyword.Shared | Keyword.Weak | Keyword.UnsafePtr:
+                typ = self._pointer_type()
+
+            case Punctuation.LSquare:
+                typ = self._array_type()
+
+            case Keyword.Map:
+                typ = self._map_type()
+
+            case Punctuation.Question:
+                q = self.tokens.pop()
+                assert q
+                if inner := self._type_expr():
+                    typ = ast.OptionalType(
+                        file=q.file,
+                        start=q.start,
+                        end=inner.end,
+                        base=inner,
+                    )
+                else:
+                    self._emit_error("expected a type expression after the optional specifier")
+
+            case Punctuation.LParen:
+                lp = self.tokens.pop()
+                assert lp
+                typ = self._type_expr()
+
+                if typ:
+                    if rp := self.tokens.match_one(Punctuation.RParen):
+                        typ.start = lp.start
+                        typ.end = rp.end
+                    else:
+                        self._emit_error("parenthesized type expression was not closed")
+                else:
+                    self._emit_error("expected a type expression inside the parentheses")
+
+            case _:
+                if st := self._simple_type():
+                    typ = st
+
+        if typ is None and not allow_no_base:
+            return None
+
+        while True:
+            if lt := self.tokens.match_one(Punctuation.LT):
+                unit = self._compound_unit(slash_ok=True) or ast.CompoundUnit(
+                    file=lt.file,
+                    start=lt.end,
+                    end=lt.end,
+                    components=[],
+                )
+
+                if gt := self.tokens.match_one(Punctuation.GT):
+                    typ = ast.TypeWithUnit(
+                        file=unit.file,
+                        start=typ.start if typ else lt.start,
+                        end=gt.end,
+                        base=typ,
+                        unit=unit,
+                    )
+                    continue
+                else:
+                    self._emit_error("unit on type not closed")
+
+            elif at := self.tokens.match_one(Punctuation.At):
+                tag = self._qualname(same_line=True)
+                if tag:
+                    typ = ast.TypeWithTag(
+                        file=tag.file,
+                        start=typ.start if typ else at.start,
+                        end=tag.end,
+                        base=typ,
+                        tag=tag,
+                    )
+                else:
+                    self._emit_error("expected a tag name here")
+
+            else:
+                break
+
+        return typ
 
     def _simple_type(self) -> ast.TypeExpression | None:
         if qualname := self._qualname():
@@ -510,24 +615,49 @@ class Parser:
                 type_name=qualname,
             )
         else:
-            print('haldo', self.tokens.peek())
             return None
 
-        if lt := self.tokens.match_one(Punctuation.LT):
-            base.unit = self._compound_unit(slash_ok=True) or ast.CompoundUnit(
-                file=lt.file,
-                start=lt.end,
-                end=lt.end,
-                components=[],
-            )
-
-            if gt := self.tokens.match_one(Punctuation.GT):
-                base.end = gt.end
-            else:
-                base.end = base.unit.end
-                self._emit_error("unit on type not closed")
-
         return base
+
+    def _pointer_type(self):
+        own: ast.PointerOwnership
+
+        match self.tokens.what():
+            case Punctuation.Caret:
+                own = ast.PointerOwnership.Borrowed
+            case Keyword.Owned:
+                own = ast.PointerOwnership.Owned
+            case Keyword.Shared:
+                own = ast.PointerOwnership.Shared
+            case Keyword.Weak:
+                own = ast.PointerOwnership.Weak
+            case Keyword.UnsafePtr:
+                own = ast.PointerOwnership.Unsafe
+            case _:
+                self._emit_error("invalid prefix of pointer type")
+                return None
+
+        prefix = self.tokens.pop()
+        assert prefix
+
+        nullable = self.tokens.match(Punctuation.Question) is not None
+        if to := self._type_expr():
+            return ast.PointerType(
+                file=prefix.file,
+                start=prefix.start,
+                end=to.end,
+                to=to,
+                ownership=own,
+                nullable=nullable,
+            )
+        else:
+            self._emit_error("pointer type must point to something")
+
+    def _array_type(self):
+        raise NotImplementedError()
+
+    def _map_type(self):
+        raise NotImplementedError()
 
     def _block(self) -> ast.Block | None:
         begin = self.tokens.match_one(Punctuation.LCurly)
@@ -580,22 +710,48 @@ class Parser:
             self._emit_error("expected end of statement here")
             self.tokens.skip_line()
 
-
     def _expr(self) -> ast.Expression | None:
-        base = self._expr_atom()
+        expr = self._expr_atom()
 
-        match self.tokens.what():
-            case Punctuation.Plus, Punctuation.Minus:
-                pass
+        if expr is None:
+            return
 
-    def _expr_atom(self) -> ast.Expression | ast.QualifiedName | None:
-        if self.tokens.match_one(Punctuation.LParen):
+        if binop := self._binop_expr(expr):
+            expr = binop
+
+        if self.tokens.match_one(Keyword.As):
+            if to_type := self._type_expr(allow_no_base=True):
+                return ast.CastExpr(
+                    file=expr.file,
+                    start=expr.start,
+                    end=to_type.end,
+                    expr=expr,
+                    to=to_type,
+                )
+            else:
+                self._emit_error("expected a target type for cast expression")
+
+        return expr
+
+    def _expr_atom(self) -> ast.Expression | None:
+        if lp := self.tokens.match_one(Punctuation.LParen):
             inner = self._expr()
-            self.tokens.match_one(Punctuation.RParen)
+            if inner is None:
+                self._emit_error("expected an expression inside the parentheses")
+                return
+
+            rp = self.tokens.match_one(Punctuation.RParen)
+            if rp is None:
+                self._emit_error("parenthesized expression was not closed", lp)
+                return None
+
+            inner.start = lp.start
+            inner.end = rp.end
+
             return inner
 
         elif qualname := self._qualname():
-            return qualname
+            return ast.QualnameExpr.from_node(qualname, name=qualname)
 
         elif literal := self._literal_expr():
             return literal
@@ -617,6 +773,52 @@ class Parser:
 
             case Token(what=String()):
                 pass
+
+    def _binop_expr(self, lhs: ast.Expression, min_precedence=0) -> ast.Expression | None:
+        while op_tok1 := self.tokens.peek():
+            try:
+                prec1, op, _ = BINOPS[op_tok1.what]
+            except KeyError:
+                return lhs
+
+            if prec1 < min_precedence:
+                return lhs
+
+            self.tokens.advance()
+            rhs = self._expr_atom()
+            if rhs is None:
+                self._emit_error("expected a sub-expression here")
+                return None
+
+            while op_tok2 := self.tokens.peek():
+                try:
+                    prec2, _, assoc = BINOPS[op_tok2.what]
+                except KeyError:
+                    break
+
+                if assoc is Associativity.NonAssociative and prec2 == prec1:
+                    self._emit_error(f"operators {op_tok1.what.value} and {op_tok2.what.value} are not associative")
+                    return None
+
+                if not (
+                    prec2 > prec1
+                    or assoc is Associativity.Right and prec2 == prec1
+                ):
+                    break
+
+                rhs = self._binop_expr(rhs, prec1 + int(prec2 > prec1))
+                assert rhs
+
+            lhs = ast.BinopExpr(
+                file=lhs.file,
+                start=lhs.start,
+                end=rhs.end,
+                lhs=lhs,
+                rhs=rhs,
+                op=op,
+            )
+
+        return lhs
 
     def _qualname(
         self,

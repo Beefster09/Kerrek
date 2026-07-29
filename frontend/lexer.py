@@ -88,6 +88,9 @@ class Keyword(Enum):
     Fail = 'fail'
     Abort = 'abort'
 
+    Assume = 'assume'
+    Assert = 'assert'
+
     Defer = 'defer'
     Where = 'where'
     With = 'with'
@@ -97,7 +100,6 @@ class Keyword(Enum):
     Temp = 'temp'
 
     Let = 'let'
-    Const = 'const'
     Type = 'type'
     Enum = 'enum'
     Map = 'map'
@@ -130,6 +132,8 @@ class Keyword(Enum):
     Shared = 'shared'
     Weak = 'weak'
     UnsafePtr = 'unsafe_ptr'
+
+    Const = 'const'
     Mut = 'mut'
 
 

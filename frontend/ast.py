@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from enum import Enum, auto
 from os import PathLike
 from pathlib import Path
 from types import EllipsisType
@@ -21,6 +22,15 @@ class Node:
     file: Path
     start: Location
     end: Location
+
+    @classmethod
+    def from_node(cls, base: Node, **other):
+        return cls(
+            file=base.file,
+            start=base.start,
+            end=base.end,
+            **other,
+        )
 
 
 @dataclass(kw_only=True)
@@ -116,6 +126,11 @@ class Expression(Node):
 
 
 @dataclass(kw_only=True)
+class QualnameExpr(Expression):
+    name: QualifiedName
+
+
+@dataclass(kw_only=True)
 class ScalarExpr(Expression):
     value: Numeric
     unit: CompoundUnit | None
@@ -126,6 +141,39 @@ class SimpleLiteralExpr(Expression):
     value: str | bool | None
 
 
+class Operator(Enum):
+    Add = auto()
+    Subtract = auto()
+    Multiply = auto()
+    Divide = auto()
+    FloorDivide = auto()
+    Modulo = auto()
+    Exponent = auto()
+
+    Equal = auto()
+    NotEqual = auto()
+    Less = auto()
+    LessEqual = auto()
+    Greater = auto()
+    GreaterEqual = auto()
+
+    And = auto()
+    Or = auto()
+
+
+@dataclass(kw_only=True)
+class BinopExpr(Expression):
+    lhs: Expression
+    rhs: Expression
+    op: Operator
+
+
+@dataclass(kw_only=True)
+class CastExpr(Expression):
+    expr: Expression
+    to: TypeExpression
+
+
 @dataclass(kw_only=True)
 class TypeExpression(Node):
     pass
@@ -134,7 +182,38 @@ class TypeExpression(Node):
 @dataclass(kw_only=True)
 class SimpleType(TypeExpression):
     type_name: QualifiedName
-    unit: CompoundUnit | None = None
+
+
+@dataclass(kw_only=True)
+class OptionalType(TypeExpression):
+    base: TypeExpression
+
+
+class PointerOwnership(Enum):
+    Borrowed = auto()
+    Owned = auto()
+    Shared = auto()
+    Weak = auto()
+    Unsafe = auto()
+
+
+@dataclass(kw_only=True)
+class PointerType(TypeExpression):
+    to: TypeExpression
+    ownership: PointerOwnership
+    nullable: bool
+
+
+@dataclass(kw_only=True)
+class TypeWithUnit(TypeExpression):
+    base: TypeExpression | None  # None means the base type is implicit
+    unit: CompoundUnit
+
+
+@dataclass(kw_only=True)
+class TypeWithTag(TypeExpression):
+    base: TypeExpression | None  # None means the base type is implicit
+    tag: QualifiedName
 
 
 @dataclass(kw_only=True)
