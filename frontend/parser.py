@@ -348,7 +348,7 @@ class Parser:
             Keyword.Is,
         ):
             name = m[1]
-            base = self._compound_unit(slash_ok=True, required=True)
+            base = self._compound_unit(required=True)
             if base and self._end_of_statement():
                 return ast.UnitAlias(
                     file=name.file,
@@ -385,9 +385,9 @@ class Parser:
         self.tokens.advance()
         self.tokens.skip_line()
 
-    def _compound_unit(self, *, slash_ok=False, required=False, same_line=False):
+    def _compound_unit(self, *, required=False, same_line=False):
         components: list[ast.UnitComponent] = []
-        seen_slash = False
+        in_denominator = False
         while qualname := self._qualname(same_line=same_line):
             exponent = 1
             comp_start = qualname.start
@@ -404,12 +404,8 @@ class Parser:
                 else:
                     self._emit_error("a decimal integer literal is required here", exp)
 
-            if slash_ok:
-                if seen_slash:
-                    exponent = -exponent
-                elif self.tokens.match(Punctuation.Slash, Identifier, same_line=True):
-                    self.tokens.rewind(1)  # we consumed too many tokens with the last match so undo one
-                    seen_slash = True
+            if in_denominator:
+                exponent = -exponent
 
             components.append(ast.UnitComponent(
                 file=qualname.file,
@@ -418,6 +414,9 @@ class Parser:
                 base=qualname,
                 exponent=exponent,
             ))
+
+            if self.tokens.match(Keyword.Per):
+                in_denominator = True
 
         if not components:
             if required:
@@ -569,7 +568,7 @@ class Parser:
 
         while True:
             if lt := self.tokens.match_one(Punctuation.LT):
-                unit = self._compound_unit(slash_ok=True) or ast.CompoundUnit(
+                unit = self._compound_unit() or ast.CompoundUnit(
                     file=lt.file,
                     start=lt.end,
                     end=lt.end,
@@ -846,7 +845,7 @@ class Parser:
             case Token(what=Numeric()):
                 self.tokens.advance()
 
-                unit = self._compound_unit(slash_ok=True, same_line=True)  # TODO: have some context about when slashes are allowed
+                unit = self._compound_unit(same_line=True)
 
                 return ast.ScalarExpr(
                     file=tok.file,

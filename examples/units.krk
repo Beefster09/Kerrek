@@ -4,6 +4,10 @@ unit type time
 unit type angle
 unit type temperature
 
+unit type area is length^2
+unit type volume is length^3
+unit type speed is length per time
+
 
 unit meter: length
 unit m is meter
@@ -64,9 +68,9 @@ func fahrenheit_to_celsius(degrees: $T<fahrenheit>) -> T<celsius> {
 }
 
 
-unit newton is kg m / s^2
+unit newton is kg m per s^2
 unit joule is newton m
-unit watt is joule / s
+unit watt is joule per s
 unit calorie = 4.184 * joule
 unit btu = 1055 * joule
 
@@ -77,7 +81,7 @@ unit man
 func how_long_to_complete(num_workers: Number<man>, blocks: Number<>) -> Number<day> {
 	const city_block_len = 0.125 mile
 	const city_block = city_block_len * city_block_len
-	const work_per_square_mile = (100 man * 30 day) / city_block
+	const work_per_square_mile = 100 man * 30 day / city_block
 
 	let square_miles = blocks * city_block
 	return work_per_square_mile * square_miles / num_workers

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from enum import Enum, auto
 from dataclasses import dataclass
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 from typing import Iterator, NamedTuple
-import re
 
 
 TAB_WIDTH = 4
@@ -59,7 +60,6 @@ class Punctuation(Enum):
     Bar = '|'
     Backslash = '\\'
     Tilde = '~'
-    Tick = '`'
     Apostrophe = "'"
 
     @staticmethod
@@ -100,6 +100,8 @@ class Keyword(Enum):
     Temp = 'temp'
 
     Let = 'let'
+    Const = 'const'
+
     Type = 'type'
     Enum = 'enum'
     Map = 'map'
@@ -107,7 +109,11 @@ class Keyword(Enum):
     Union = 'union'
     Interface = 'interface'
     Func = 'func'
+
+    TypeOf = 'type_of'
+
     Unit = 'unit'
+    Per = 'per'
 
     Capability = 'capability'
     Requires = 'requires'
@@ -132,9 +138,6 @@ class Keyword(Enum):
     Shared = 'shared'
     Weak = 'weak'
     UnsafePtr = 'unsafe_ptr'
-
-    Const = 'const'
-    Mut = 'mut'
 
 
 @dataclass
@@ -163,7 +166,6 @@ class NumberLiteralForm(Enum):
     Decimal = auto()
     Float = auto()
     HexFloat = auto()
-    Rational = auto()
 
 
 INT_PATTERN = re.compile(r'[+-]?[0-9][0-9_]*\b')
@@ -172,7 +174,6 @@ OCTAL_PATTERN = re.compile(r'0o[0-7][0-7_]*\b')
 BINARY_PATTERN = re.compile(r'0b[01][01_]*\b')
 DECIMAL_PATTERN = re.compile(r'[+-]?[0-9][0-9_]*.[0-9][0-9_]*(?:[Ee][+-]?\d+)?f?\b')
 HEXFLOAT_PATTERN = re.compile(r'[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*.[0-9a-fA-F][0-9a-fA-F_]*(?:[Pp][+-]?[0-9a-fA-F]+)?\b')
-RATIONAL_PATTERN = re.compile(r'([+-]?[0-9][0-9_]*)/([0-9][0-9_]*)\b')
 
 
 @dataclass(kw_only=True)
@@ -183,14 +184,7 @@ class Numeric:
 
     @staticmethod
     def match(line: str, start: int) -> Numeric | None:
-        if m := RATIONAL_PATTERN.match(line, start):
-            return Numeric(
-                raw=m[0],
-                value=Fraction(int(m[1]), int(m[2])),
-                form=NumberLiteralForm.Rational,
-            )
-
-        elif m := DECIMAL_PATTERN.match(line, start):
+        if m := DECIMAL_PATTERN.match(line, start):
             raw = m[0]
             if raw.endswith('f'):
                 return Numeric(
@@ -306,10 +300,27 @@ def tokenize(file: Path) -> Iterator[Token]:
             first_token_on_line = True
 
             i = 0
+            col = 1
+
+            def advance(chars: int):
+                nonlocal i, col, line
+
+                for j in range(i, i+chars):
+                    c = line[j]
+                    if c == '\t':
+                        tab_stop_width = TAB_WIDTH - (col - 1) % TAB_WIDTH
+                        col += tab_stop_width
+                    elif unicodedata.east_asian_width(c) in 'FW':
+                        col += 2
+                    else:
+                        col += 1
+
+                i += chars
+
             line_len = len(line)
             while i < line_len:
                 if line[i].isspace():
-                    i += 1
+                    advance(1)
                     continue  # next col
 
                 elif line.startswith(r'\\', i):
@@ -322,75 +333,89 @@ def tokenize(file: Path) -> Iterator[Token]:
                 elif string := String.single_line_match(line, i):
                     yield Token(
                         file=file,
-                        start=Location(line_no, i + 1),
-                        end=Location(line_no, i + 1 + len(string.raw)),
+                        start=Location(line_no, col),
+                        end=Location(line_no, col + len(string.raw)),
                         what=string,
                         first_on_line=first_token_on_line,
                         comment_before=last_comment,
                     )
                     last_comment = None
-                    i += len(string.raw)
+                    advance(len(string.raw))
 
                 elif num := Numeric.match(line, i):
                     yield Token(
                         file=file,
-                        start=Location(line_no, i + 1),
-                        end=Location(line_no, i + 1 + len(num.raw)),
+                        start=Location(line_no, col),
+                        end=Location(line_no, col + len(num.raw)),
                         what=num,
                         first_on_line=first_token_on_line,
                         comment_before=last_comment,
                     )
                     last_comment = None
-                    i += len(num.raw)
+                    advance(len(num.raw))
+
+                elif line[i] == '`' and (ident := Identifier.match(line, i+1)):
+                    if line[i+1+len(ident)] == '`':
+                        yield Token(
+                            file=file,
+                            start=Location(line_no, col),
+                            end=Location(line_no, col + len(ident) + 2),
+                            what=ident,
+                            first_on_line=first_token_on_line,
+                            comment_before=last_comment,
+                        )
+                        last_comment = None
+                        advance(len(ident) + 2)
+                        break
 
                 elif ident := Identifier.match(line, i):
                     for kw in Keyword:
                         if kw.value == ident:
                             yield Token(
                                 file=file,
-                                start=Location(line_no, i + 1),
-                                end=Location(line_no, i + 1 + len(kw.value)),
+                                start=Location(line_no, col),
+                                end=Location(line_no, col + len(kw.value)),
                                 what=kw,
                                 first_on_line=first_token_on_line,
                                 comment_before=last_comment,
                             )
                             last_comment = None
-                            i += len(kw.value)
+                            advance(len(kw.value))
                             break
                     else:
                         yield Token(
                             file=file,
-                            start=Location(line_no, i + 1),
-                            end=Location(line_no, i + 1 + len(ident)),
+                            start=Location(line_no, col),
+                            end=Location(line_no, col + len(ident)),
                             what=ident,
                             first_on_line=first_token_on_line,
                             comment_before=last_comment,
                         )
                         last_comment = None
-                        i += len(ident)
+                        advance(len(ident))
 
                 elif sym := Punctuation.match(line, i):
                     yield Token(
                         file=file,
-                        start=Location(line_no, i + 1),
-                        end=Location(line_no, i + 1 + len(sym.value)),
+                        start=Location(line_no, col),
+                        end=Location(line_no, col + len(sym.value)),
                         what=sym,
                         first_on_line=first_token_on_line,
                         comment_before=last_comment,
                     )
                     last_comment = None
-                    i += len(sym.value)
+                    advance(len(sym.value))
 
                 else:
                     yield Token(
                         file=file,
-                        start=Location(line_no, i + 1),
-                        end=Location(line_no, i + 2),
+                        start=Location(line_no, col),
+                        end=Location(line_no, col + 1),
                         what=Garbage(line[i]),
                         first_on_line=first_token_on_line,
                         comment_before=last_comment,
                     )
                     last_comment = None
-                    i += 1
+                    advance(1)
 
                 first_token_on_line = False
