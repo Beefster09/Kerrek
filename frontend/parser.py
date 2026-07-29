@@ -684,8 +684,12 @@ class Parser:
 
     def _statement(self) -> ast.Statement | None:
         stmt = None
-        match tok := self.tokens.peek():
-            case Token(what=Keyword.Return):
+        tok = self.tokens.peek()
+        if tok is None:
+            return
+
+        match tok.what:
+            case Keyword.Return:
                 self.tokens.advance()
                 retval = self._expr()
 
@@ -696,11 +700,64 @@ class Parser:
                     value=retval,
                 )
 
-            case _:
-                self._emit_error("invalid start of statement")
+            case Keyword.Let | Keyword.Const:
+                is_const = tok.what is Keyword.Const
                 self.tokens.advance()
-                self.tokens.skip_line()
-                return
+                name = self.tokens.match_one(Identifier)
+                if name is None:
+                    self._emit_error("expected variable name here")
+                    self.tokens.skip_line()
+                    return None
+
+                if self.tokens.match_one(Punctuation.Colon):
+                    typ = self._type_expr(allow_no_base=True)
+                else:
+                    typ = None
+
+                if self.tokens.match_one(Punctuation.Assign):
+                    if ell := self.tokens.match_one(Punctuation.Ellipsis_):
+                        if is_const:
+                            self._emit_error("const expressions cannot be explicitly undefined", ell)
+                            self.tokens.skip_line()
+                            return None
+
+                        value = ast.UndefinedValue(
+                            file=ell.file,
+                            start=ell.start,
+                            end=ell.end,
+                        )
+                    else:
+                        value = self._expr()
+
+                        if value is None:
+                            self._emit_error("expected an expression here")
+
+                else:
+                    if is_const:
+                        self._emit_error("const declarations must be given a value", tok)
+                        self.tokens.skip_line()
+                        return None
+
+                    value = None
+
+                stmt = ast.LocalDeclaration(
+                    file=tok.file,
+                    start=tok.start,
+                    end=value.end if value else tok.end,
+                    name=name.what,
+                    type_=typ,
+                    expr=value,
+                    is_const=is_const,
+                )
+
+            case _:
+                if expr := self._expr():
+                    stmt = ast.ExprStatement.from_node(expr, expr=expr)
+                else:
+                    self._emit_error("invalid start of statement")
+                    self.tokens.advance()
+                    self.tokens.skip_line()
+                    return None
 
         assert stmt is not None, "you should have set stmt by now or error-returned, you dolt"
 
@@ -734,6 +791,8 @@ class Parser:
         return expr
 
     def _expr_atom(self) -> ast.Expression | None:
+        atom = None
+
         if lp := self.tokens.match_one(Punctuation.LParen):
             inner = self._expr()
             if inner is None:
@@ -748,13 +807,39 @@ class Parser:
             inner.start = lp.start
             inner.end = rp.end
 
-            return inner
+            atom = inner
 
         elif qualname := self._qualname():
-            return ast.QualnameExpr.from_node(qualname, name=qualname)
+            atom = ast.QualnameExpr.from_node(qualname, name=qualname)
 
         elif literal := self._literal_expr():
             return literal
+
+        if atom is None:
+            return
+
+        while tok := self.tokens.peek():
+            match tok.what:
+                case Punctuation.Dot:  # field access
+                    raise NotImplementedError()
+
+                case Punctuation.Caret:  # dereference
+                    raise NotImplementedError()
+
+                case Punctuation.LParen:  # call
+                    if tok.first_on_line:
+                        break
+                    raise NotImplementedError()
+
+                case Punctuation.LSquare:  # index operator
+                    if tok.first_on_line:
+                        break
+                    raise NotImplementedError()
+
+                case _:
+                    break
+
+        return atom
 
     def _literal_expr(self):
         match tok := self.tokens.peek():

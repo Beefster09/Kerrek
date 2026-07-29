@@ -13,15 +13,15 @@ from frontend.lexer import Location, Identifier, Numeric
 @dataclass(kw_only=True)
 class File:
     source: Path | None = field(repr=False)
-    imports: list[_Import] = field(default_factory=list, repr=False)
-    declarations: list[Declaration] = field(default_factory=list, repr=False)
+    imports: list[_Import] = field(default_factory=list)
+    declarations: list[Declaration] = field(default_factory=list)
 
 
 @dataclass(kw_only=True)
 class Node:
-    file: Path
-    start: Location
-    end: Location
+    file: Path = field(repr=False)
+    start: Location = field(repr=False)
+    end: Location = field(repr=False)
 
     @classmethod
     def from_node(cls, base: Node, **other):
@@ -122,6 +122,11 @@ class CompoundUnit(Node):
 
 @dataclass(kw_only=True)
 class Expression(Node):
+    pass
+
+
+@dataclass(kw_only=True)
+class UndefinedValue(Expression):
     pass
 
 
@@ -229,6 +234,26 @@ class Statement(Node):
 @dataclass(kw_only=True)
 class ReturnStatement(Statement):
     value: Expression | None
+
+
+@dataclass(kw_only=True)
+class ExprStatement(Statement):
+    expr: Expression
+
+
+@dataclass(kw_only=True)
+class AssignStatement(Statement):
+    dest: Expression
+    expr: Expression
+    is_move: bool
+
+
+@dataclass(kw_only=True)
+class LocalDeclaration(Statement):
+    name: Identifier
+    type_: TypeExpression | None
+    expr: Expression | None
+    is_const: bool
 
 
 @dataclass(kw_only=True)

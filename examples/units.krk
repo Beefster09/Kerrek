@@ -74,7 +74,11 @@ unit btu = 1055 * joule
 unit man
 
 
-func unit_numeric_literals() {
-	city_block := 0.125 mile
-	project_complexity := 100 man * 30 day  \\ 100 man-months
+func how_long_to_complete(num_workers: Number<man>, blocks: Number<>) -> Number<day> {
+	const city_block_len = 0.125 mile
+	const city_block = city_block_len * city_block_len
+	const work_per_square_mile = (100 man * 30 day) / city_block
+
+	let square_miles = blocks * city_block
+	return work_per_square_mile * square_miles / num_workers
 }
