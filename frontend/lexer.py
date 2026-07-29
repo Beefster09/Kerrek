@@ -179,7 +179,7 @@ HEXFLOAT_PATTERN = re.compile(r'[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*.[0-9a-fA-F][0-9a
 @dataclass(kw_only=True)
 class Numeric:
     raw: str
-    value: int | float | Decimal | Fraction
+    value: int | float | Decimal
     form: NumberLiteralForm
 
     @staticmethod

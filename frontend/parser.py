@@ -1,3 +1,4 @@
+from decimal import Decimal
 import itertools
 from enum import Enum, auto
 from types import EllipsisType
@@ -293,6 +294,24 @@ class Parser:
             Keyword.Unit,
             Keyword.Type,
             Identifier,
+            Keyword.Is,
+        ):
+            base = self._compound_unit(required=True)
+            if not base:
+                return None
+
+            if self._end_of_statement():
+                return ast.UnitTypeAliasDecl(
+                    file=m[0].file,
+                    start=m[0].start,
+                    end=base.end,
+                    name=m[2].what,
+                    base=base,
+                )
+        elif m := self.tokens.match(
+            Keyword.Unit,
+            Keyword.Type,
+            Identifier,
         ):
             if self._end_of_statement():
                 return ast.UnitTypeDecl(
@@ -339,6 +358,7 @@ class Parser:
                         start=m[3].start,
                         end=m[4].end,
                         components=[],
+                        is_absolute=False,
                     ),
                 )
 
@@ -363,10 +383,61 @@ class Parser:
             Identifier,
             Punctuation.Assign,
         ):
-            # unit conversion
-            self.tokens.skip_line()
-            # TODO
-            return
+            if m2 := self.tokens.match(Numeric, Punctuation.Star):
+                mul = m2[0]
+                if mul.what.form not in (NumberLiteralForm.DecimalInteger, NumberLiteralForm.Decimal):
+                    self._emit_error("decimal number required as multiplier for unit conversion", mul)
+
+                multiplier = Decimal(mul.what.value)
+
+                src_unit = self._qualname(required=True)
+                if src_unit is None:
+                    return
+
+                end = src_unit.end
+
+            else:
+                src_unit = self._qualname(required=True)
+                if src_unit is None:
+                    return
+
+                end = src_unit.end
+
+                if m2 := self.tokens.match(Punctuation.Star, Numeric):
+                    mul = m2[1]
+                    if mul.what.form not in (NumberLiteralForm.DecimalInteger, NumberLiteralForm.Decimal):
+                        self._emit_error("decimal number required as multiplier for unit conversion", mul)
+
+                    multiplier = Decimal(mul.what.value)
+                    end = mul.end
+                else:
+                    multiplier = Decimal(1)
+
+            if m2 := self.tokens.match(Punctuation.Slash, Numeric):
+                div = m2[1]
+                if div.what.form not in (NumberLiteralForm.DecimalInteger, NumberLiteralForm.Decimal):
+                    self._emit_error("decimal number required as divisor for unit conversion", div)
+
+                divisor = Decimal(div.what.value)
+                end = div.end
+            else:
+                divisor = Decimal(1)
+
+            if multiplier == Decimal(0):
+                self._emit_error("unit conversions cannot multiply by zero")
+            if divisor == Decimal(0):
+                self._emit_error("unit conversions cannot divide by zero")
+
+            if self._end_of_statement():
+                return ast.UnitConversion(
+                    file=m[0].file,
+                    start=m[0].start,
+                    end=end,
+                    dest=m[1].what,
+                    src=src_unit,
+                    mult=multiplier,
+                    div=divisor,
+                )
 
         elif m := self.tokens.match(
             Keyword.Unit,
@@ -386,6 +457,8 @@ class Parser:
         self.tokens.skip_line()
 
     def _compound_unit(self, *, required=False, same_line=False):
+        leading_hash = self.tokens.match_one(Punctuation.Hash)
+
         components: list[ast.UnitComponent] = []
         in_denominator = False
         while qualname := self._qualname(same_line=same_line):
@@ -425,9 +498,10 @@ class Parser:
 
         return ast.CompoundUnit(
             file=components[0].file,
-            start=components[0].start,
+            start=leading_hash.start if leading_hash else components[0].start,
             end=components[-1].end,
             components=components,
+            is_absolute=leading_hash is not None,
         )
 
     def _func_def(self) -> ast.FuncDefinition | None:
@@ -568,16 +642,20 @@ class Parser:
 
         while True:
             if lt := self.tokens.match_one(Punctuation.LT):
-                unit = self._compound_unit() or ast.CompoundUnit(
-                    file=lt.file,
-                    start=lt.end,
-                    end=lt.end,
-                    components=[],
-                )
+                if self.tokens.match_one(Keyword.Nil):
+                    unit = None
+                else:
+                    unit = self._compound_unit() or ast.CompoundUnit(
+                        file=lt.file,
+                        start=lt.end,
+                        end=lt.end,
+                        components=[],
+                        is_absolute=False,
+                    )
 
                 if gt := self.tokens.match_one(Punctuation.GT):
                     typ = ast.TypeWithUnit(
-                        file=unit.file,
+                        file=gt.file,
                         start=typ.start if typ else lt.start,
                         end=gt.end,
                         base=typ,

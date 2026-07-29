@@ -78,6 +78,12 @@ class UnitTypeDecl(Declaration):
 
 
 @dataclass(kw_only=True)
+class UnitTypeAliasDecl(Declaration):
+    name: Identifier
+    base: CompoundUnit
+
+
+@dataclass(kw_only=True)
 class UnitDecl(Declaration):
     """
     e.g.
@@ -104,9 +110,9 @@ class UnitConversion(Declaration):
     unit radians = 3.14159265358979 * degrees / 180
     """
     dest: Identifier
-    mult: Decimal | None = None
     src: QualifiedName
-    div: Decimal | None = None
+    mult: Decimal = Decimal(1)
+    div: Decimal = Decimal(1)
 
 
 @dataclass(kw_only=True)
@@ -118,6 +124,7 @@ class UnitComponent(Node):
 @dataclass(kw_only=True)
 class CompoundUnit(Node):
     components: list[UnitComponent]
+    is_absolute: bool
 
 
 @dataclass(kw_only=True)
@@ -212,7 +219,7 @@ class PointerType(TypeExpression):
 @dataclass(kw_only=True)
 class TypeWithUnit(TypeExpression):
     base: TypeExpression | None  # None means the base type is implicit
-    unit: CompoundUnit
+    unit: CompoundUnit | None  # None means the unit is explicitly cleared from the type via <nil>
 
 
 @dataclass(kw_only=True)

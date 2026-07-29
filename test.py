@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from pprint import pprint
+import rich
 
 from frontend import lexer, parser
 
@@ -12,4 +12,4 @@ if __name__ == '__main__':
     p = parser.Parser(lexer.tokenize(file))
     # for token in p.tokens._tokens:
     #     print(token)
-    pprint(p.parse())
+    rich.print(p.parse())
