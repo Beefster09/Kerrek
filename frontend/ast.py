@@ -6,6 +6,7 @@ from enum import Enum, auto
 from os import PathLike
 from pathlib import Path
 from types import EllipsisType
+from typing import Any
 
 from frontend.lexer import Location, Identifier, Numeric
 
@@ -36,6 +37,8 @@ class Node:
 @dataclass(kw_only=True)
 class QualifiedName(Node):
     path: list[Identifier]
+
+    resolves_to: Any = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
