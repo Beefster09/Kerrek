@@ -238,11 +238,11 @@ class Parser:
         if self.errors:
             raise ExceptionGroup(f"encountered {len(self.errors)} errors while parsing", self.errors)
 
-    def parse(self) -> ast.Module:
+    def parse(self) -> ast.File:
         if first_tok := self.tokens.peek():
-            file = ast.Module(source=first_tok.file)
+            file = ast.File(source=first_tok.file)
         else:
-            return ast.Module(source=None)  # file is empty
+            return ast.File(source=None)  # file is empty
 
         while self.tokens:
             match stmt := self._toplevel_decl():

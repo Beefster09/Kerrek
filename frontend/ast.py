@@ -12,7 +12,7 @@ from frontend.lexer import Location, Identifier, Numeric
 
 
 @dataclass(kw_only=True)
-class Module:
+class File:
     source: Path | None = field(repr=False)
     imports: list[Import] = field(default_factory=list)
     declarations: list[Declaration] = field(default_factory=list)
