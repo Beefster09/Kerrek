@@ -1,11 +1,12 @@
 from decimal import Decimal
 import itertools
 from enum import Enum, auto
+from pathlib import Path
 from types import EllipsisType
 from typing import Iterable, cast, overload
 
 from frontend import ast
-from frontend.lexer import Identifier, Location, Numeric, Punctuation, String, Token, Keyword, TokenData, NumberLiteralForm
+from frontend.lexer import Identifier, Location, Numeric, Punctuation, String, Token, Keyword, TokenData, NumberLiteralForm, tokenize
 
 
 class Associativity(Enum):
@@ -237,15 +238,15 @@ class Parser:
         if self.errors:
             raise ExceptionGroup(f"encountered {len(self.errors)} errors while parsing", self.errors)
 
-    def parse(self) -> ast.File:
+    def parse(self) -> ast.Module:
         if first_tok := self.tokens.peek():
-            file = ast.File(source=first_tok.file)
+            file = ast.Module(source=first_tok.file)
         else:
-            return ast.File(source=None)  # file is empty
+            return ast.Module(source=None)  # file is empty
 
         while self.tokens:
             match stmt := self._toplevel_decl():
-                case ast._Import():
+                case ast.Import():
                     file.imports.append(stmt)
 
                 case ast.Declaration():
@@ -1029,3 +1030,6 @@ class Parser:
                 return tok.first_on_line and tok.what not in CONTINUATION_TOKENS
 
 
+def load(path: Path):
+    p = Parser(tokenize(path))
+    return p.parse()

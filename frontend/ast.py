@@ -12,9 +12,9 @@ from frontend.lexer import Location, Identifier, Numeric
 
 
 @dataclass(kw_only=True)
-class File:
+class Module:
     source: Path | None = field(repr=False)
-    imports: list[_Import] = field(default_factory=list)
+    imports: list[Import] = field(default_factory=list)
     declarations: list[Declaration] = field(default_factory=list)
 
 
@@ -42,24 +42,15 @@ class QualifiedName(Node):
 
 
 @dataclass(kw_only=True)
-class _Import(Node):
+class Import(Node):
     collection: Identifier
     package: PathLike
+    namespace: Identifier
 
 
 @dataclass(kw_only=True)
-class ScopedImport(_Import):
-    import_name: Identifier
-
-
-@dataclass(kw_only=True)
-class NamedImport(_Import):
+class UsingImport(Import):
     names: list[Identifier]
-
-
-@dataclass(kw_only=True)
-class AllImport(_Import):
-    pass
 
 
 @dataclass(kw_only=True)
