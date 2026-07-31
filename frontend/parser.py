@@ -353,7 +353,7 @@ class Parser:
                     file=m[1].file,
                     start=m[0].start,
                     end=m[4].end,
-                    alias=m[1].what,
+                    name=m[1].what,
                     base=ast.CompoundUnit(
                         file=m[3].file,
                         start=m[3].start,
@@ -375,7 +375,7 @@ class Parser:
                     file=name.file,
                     start=m[0].start,
                     end=base.end,
-                    alias=name.what,
+                    name=name.what,
                     base=base,
                 )
 

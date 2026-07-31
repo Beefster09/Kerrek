@@ -5,7 +5,6 @@ import unicodedata
 from enum import Enum, auto
 from dataclasses import dataclass
 from decimal import Decimal
-from fractions import Fraction
 from pathlib import Path
 from typing import Iterator, NamedTuple
 
@@ -29,10 +28,13 @@ class Punctuation(Enum):
     LCurly = '{'
     RCurly = '}'
     Dot = '.'
+    DotDot = '..'
+    Ellipsis_ = '...'
+    RangeExcl = '..<'
+    RangeIncl = '..='
     Comma = ','
     Colon = ':'
     Semicolon = ';'
-    Ellipsis_ = '...'
     Assign = '='
     Move = '<-'
     EQ = '=='
@@ -60,7 +62,6 @@ class Punctuation(Enum):
     Bar = '|'
     Backslash = '\\'
     Tilde = '~'
-    Apostrophe = "'"
 
     @staticmethod
     def match(fragment: str, start: int) -> Punctuation | None:
@@ -111,6 +112,7 @@ class Keyword(Enum):
     Func = 'func'
 
     TypeOf = 'type_of'
+    SizeOf = 'size_of'
 
     Unit = 'unit'
     Per = 'per'

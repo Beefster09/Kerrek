@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from decimal import Decimal
 from enum import Enum, auto
 from os import PathLike
@@ -33,6 +33,28 @@ class Node:
             **other,
         )
 
+    def children(self):
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if not value:
+                continue
+            elif isinstance(value, (list, tuple)) and isinstance(value[0], Node):
+                for sub in value:
+                    yield sub
+            elif isinstance(value, Node):
+                yield value
+
+    def walk(self):
+        yield self
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if isinstance(value, (list, tuple)):
+                for sub in value:
+                    if isinstance(sub, Node):
+                        yield from sub.walk()
+            elif isinstance(value, Node):
+                yield from value.walk()
+
 
 @dataclass(kw_only=True)
 class QualifiedName(Node):
@@ -49,7 +71,7 @@ class Import(Node):
 
 
 @dataclass(kw_only=True)
-class UsingImport(Import):
+class ImportWithNames(Import):
     names: list[Identifier]
 
 
@@ -93,7 +115,7 @@ class UnitAlias(Declaration):
     e.g.
     unit newton is kg m / s^2
     """
-    alias: Identifier
+    name: Identifier
     base: CompoundUnit
 
 
