@@ -32,9 +32,9 @@ class Diagnostic:
     category: str
     code: str
     message: str
-    file: Path
-    start: Location
-    end: Location
+    file: Path | None
+    start: Location | None
+    end: Location | None
 
 
 _diagnostics: list[Diagnostic] = []
@@ -44,8 +44,8 @@ _diagnostics: list[Diagnostic] = []
 def _emit_diagnostic(
     level: DiagnosticLevel,
     message: str,
-    file: Path,
-    start: Location,
+    file: Path | None,
+    start: Location | None,
     end: Location | None = None,
     /, *,
     code: str = 'XXX',
@@ -69,7 +69,7 @@ def _emit_diagnostic(
 def _emit_diagnostic(
     level: DiagnosticLevel,
     message: str,
-    file_or_node: Path | ast.Node,
+    file_or_node: Path | ast.Node | None,
     start_maybe: Location | None = None,
     end_maybe: Location | None = None,
     *,
@@ -85,7 +85,9 @@ def _emit_diagnostic(
         start = start_maybe
         end = end_maybe or start_maybe
     else:
-        raise TypeError("start and end location required")
+        file = file_or_node
+        start = start_maybe
+        end = end_maybe
 
     _diagnostics.append(Diagnostic(
         level=level,
@@ -101,8 +103,8 @@ def _emit_diagnostic(
 @overload
 def error(
     message: str,
-    file: Path,
-    start: Location,
+    file: Path | None,
+    start: Location | None,
     end: Location | None = None,
     /, *,
     code: str = 'XXX',
@@ -129,8 +131,8 @@ def error(*args, **kwargs):
 @overload
 def warning(
     message: str,
-    file: Path,
-    start: Location,
+    file: Path | None,
+    start: Location | None,
     end: Location | None = None,
     /, *,
     code: str = 'XXX',
@@ -157,8 +159,8 @@ def warning(*args, **kwargs):
 @overload
 def info(
     message: str,
-    file: Path,
-    start: Location,
+    file: Path | None,
+    start: Location | None,
     end: Location | None = None,
     /, *,
     code: str = 'XXX',
@@ -188,15 +190,23 @@ def report(warnings_as_errors=False):
     global _diagnostics
 
     err_count = 0
+    warn_count = 0
     for diag in _diagnostics:
-        if diag.level is DiagnosticLevel.Error:
-            err_count += 1
+        match diag.level:
+            case DiagnosticLevel.Error:
+                err_count += 1
+            case DiagnosticLevel.Warning:
+                warn_count += 1
 
         print(f"{diag.level.pretty(sys.stdout)}: {diag.message}", file=sys.stdout)
         print(f"\tin {diag.file} at {diag.start}", file=sys.stdout)
 
     if err_count:
         print(f"encountered {err_count} errors. aborting.")
+        sys.exit(1)
+
+    if warnings_as_errors and warn_count:
+        print(f"encountered {err_count} warnings. aborting.")
         sys.exit(1)
 
     _diagnostics = []

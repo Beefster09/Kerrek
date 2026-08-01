@@ -1,4 +1,4 @@
-import intrinsics:binfloat { * }
+import intrinsics:float { Float64 }
 
 
 capability physics
@@ -9,8 +9,8 @@ unit meter
 
 struct Peasant {
 	name: String
-	position: [2]BinFloat<#meter> requires physics
-	mesh: owned [][3]BinFloat requires! render
+	position: [2]Float64<#meter> requires physics
+	mesh: [owned][3]Float64 requires! render
 }
 
 func main() {
@@ -33,7 +33,7 @@ func main() {
 func do_physics(peasants: []Peasant)
 	requires physics
 {
-	for peasant in peasants^ {
+	for peasant in peasants {
 		peasant.position += {0.123, 0.456}
 	}
 }
@@ -41,7 +41,7 @@ func do_physics(peasants: []Peasant)
 func render_peasants(peasants: []Peasant)
 	requires render
 {
-	for peasant in peasants^ {
+	for peasant in peasants {
 		println(peasant)
 	}
 }

@@ -6,16 +6,19 @@ from enum import Enum, auto
 from os import PathLike
 from pathlib import Path
 from types import EllipsisType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from frontend.lexer import Location, Identifier, Numeric
+
+if TYPE_CHECKING:
+    from frontend.resolver import CanonicalUnit, Named
 
 
 @dataclass(kw_only=True)
 class File:
     source: Path | None = field(repr=False)
     imports: list[Import] = field(default_factory=list)
-    declarations: list[Declaration] = field(default_factory=list)
+    declarations: list[TopLevelDeclaration] = field(default_factory=list)
 
 
 @dataclass(kw_only=True)
@@ -60,14 +63,28 @@ class Node:
 class QualifiedName(Node):
     path: list[Identifier]
 
-    resolves_to: Any = field(default=None, repr=False)
+    resolves_to: Named | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
-class Import(Node):
-    collection: Identifier
-    package: PathLike
+class Annotation(Node):
+    base: QualifiedName
+    args: list[Argument]
+
+
+@dataclass(kw_only=True)
+class TopLevelItem(Node):
+    annotations: list[Annotation] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
+class Import(TopLevelItem):
+    collection: Identifier | None
+    module_path: list[str]
     namespace: Identifier
+
+    def get_filepath(self, build_root: Path, from_file: Path) -> Path:
+        ...
 
 
 @dataclass(kw_only=True)
@@ -76,31 +93,31 @@ class ImportWithNames(Import):
 
 
 @dataclass(kw_only=True)
-class Declaration(Node):
+class TopLevelDeclaration(TopLevelItem):
     pass
 
 @dataclass(kw_only=True)
-class TypeAlias(Declaration):
+class TypeAlias(TopLevelDeclaration):
     pass
 
 @dataclass(kw_only=True)
-class DistinctTypeDecl(Declaration):
+class DistinctTypeDecl(TopLevelDeclaration):
     pass
 
 
 @dataclass(kw_only=True)
-class UnitTypeDecl(Declaration):
+class UnitTypeDecl(TopLevelDeclaration):
     name: Identifier
 
 
 @dataclass(kw_only=True)
-class UnitTypeAliasDecl(Declaration):
+class UnitTypeAliasDecl(TopLevelDeclaration):
     name: Identifier
     base: CompoundUnit
 
 
 @dataclass(kw_only=True)
-class UnitDecl(Declaration):
+class UnitDecl(TopLevelDeclaration):
     """
     e.g.
     unit meter: length
@@ -110,7 +127,7 @@ class UnitDecl(Declaration):
 
 
 @dataclass(kw_only=True)
-class UnitAlias(Declaration):
+class UnitAlias(TopLevelDeclaration):
     """
     e.g.
     unit newton is kg m / s^2
@@ -120,7 +137,7 @@ class UnitAlias(Declaration):
 
 
 @dataclass(kw_only=True)
-class UnitConversion(Declaration):
+class UnitConversionDef(TopLevelDeclaration):
     """
     e.g.
     unit radians = 3.14159265358979 * degrees / 180
@@ -141,6 +158,11 @@ class UnitComponent(Node):
 class CompoundUnit(Node):
     components: list[UnitComponent]
     is_absolute: bool
+
+    canonical: CanonicalUnit | None = field(default=None)
+
+
+# === EXPRESSIONS ===
 
 
 @dataclass(kw_only=True)
@@ -203,6 +225,27 @@ class CastExpr(Expression):
 
 
 @dataclass(kw_only=True)
+class ExplicitUnitConversion(Expression):
+    expr: Expression
+    to: CompoundUnit
+
+
+@dataclass(kw_only=True)
+class IndexExpr(Expression):
+    collection: Expression
+    args: list[Argument]
+
+
+@dataclass(kw_only=True)
+class CallExpr(Expression):
+    callee: Expression
+    args: list[Argument]
+
+
+# === TYPES ===
+
+
+@dataclass(kw_only=True)
 class TypeExpression(Node):
     pass
 
@@ -249,9 +292,15 @@ class TypeWithTag(TypeExpression):
     tag: QualifiedName
 
 
+# === CAPABILITIES ===
+
+
 @dataclass(kw_only=True)
 class CapabilityExpression(Node):
     pass
+
+
+# === STATEMENTS ===
 
 
 @dataclass(kw_only=True)
@@ -289,6 +338,9 @@ class Block(Statement):
     body: list[Statement]
 
 
+# === FUNCTIONS ===
+
+
 @dataclass(kw_only=True)
 class FormalParameter(Node):
     name: Identifier
@@ -297,10 +349,16 @@ class FormalParameter(Node):
 
 
 @dataclass(kw_only=True)
-class FuncDefinition(Declaration):
+class FuncDefinition(TopLevelDeclaration):
     name: Identifier
     params: list[FormalParameter]
     return_types: list[TypeExpression]
     error_type: TypeExpression | EllipsisType | None = None  # Ellipsis as the error type indicates the function can fail but the error type is void
     capabilities_required: CapabilityExpression | None = None
     body: Block
+
+
+@dataclass(kw_only=True)
+class Argument(Node):
+    name: Identifier | None
+    expr: Expression

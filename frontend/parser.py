@@ -5,7 +5,7 @@ from pathlib import Path
 from types import EllipsisType
 from typing import Iterable, cast, overload
 
-from frontend import ast
+from frontend import ast, diagnostics
 from frontend.lexer import Identifier, Location, Numeric, Punctuation, String, Token, Keyword, TokenData, NumberLiteralForm, tokenize
 
 
@@ -184,17 +184,10 @@ class Parser:
 
             self._base = self._size
 
-    class Error(Exception):
-        def __init__(self, msg: str, start: Location | None = None, end: Location | None = None):
-            self.msg = msg
-            self.start = start
-            self.end = end
-
     def __init__(self, token_stream: Iterable[Token], max_errors=100):
         self.tokens = self.TokenReader(token_stream)
         first_tok = self.tokens.peek()
         self.src = first_tok.file if first_tok else None
-        self.errors: list[Parser.Error] = []
         self.max_errors = max_errors
 
     @overload
@@ -221,22 +214,15 @@ class Parser:
     ):
         if isinstance(token_or_start, Location):
             if end_maybe:
-                self.errors.append(self.Error(message, token_or_start, end_maybe))
+                diagnostics.error(message, self.src, token_or_start, end_maybe, category='syntax')
             else:
-                self.errors.append(self.Error(message, token_or_start, token_or_start))
+                diagnostics.error(message, self.src, token_or_start, token_or_start, category='syntax')
         else:
             bad_tok = token_or_start or self.tokens.peek()
             if bad_tok:
-                self.errors.append(self.Error(message, bad_tok.start, bad_tok.end))
+                diagnostics.error(message, self.src, bad_tok.start, bad_tok.end, category='syntax')
             else:
-                self.errors.append(self.Error(message))
-
-        if len(self.errors) >= self.max_errors:
-            self._report_errors()
-
-    def _report_errors(self):
-        if self.errors:
-            raise ExceptionGroup(f"encountered {len(self.errors)} errors while parsing", self.errors)
+                diagnostics.error(message, self.src, self.tokens[-1].end if self.tokens._size else None, category='syntax')
 
     def parse(self) -> ast.File:
         if first_tok := self.tokens.peek():
@@ -244,23 +230,41 @@ class Parser:
         else:
             return ast.File(source=None)  # file is empty
 
+        annotations: list[ast.Annotation] = []
+        def apply_annotations(it: ast.TopLevelItem):
+            nonlocal annotations
+            if annotations:
+                it.annotations += annotations
+                annotations = []
+
         while self.tokens:
             match stmt := self._toplevel_decl():
+                case ast.Annotation():
+                    annotations.append(stmt)
+
                 case ast.Import():
+                    apply_annotations(stmt)
                     file.imports.append(stmt)
 
-                case ast.Declaration():
+                case ast.TopLevelDeclaration():
+                    apply_annotations(stmt)
                     file.declarations.append(stmt)
 
-        self._report_errors()
+        diagnostics.report()
 
         return file
 
-    def _toplevel_decl(self) -> ast.Node | None:
+    def _toplevel_decl(self) -> ast.TopLevelItem | ast.Annotation | None:
         tok = self.tokens.peek()
         assert tok
 
         match tok.what:
+            case Punctuation.At:
+                return self._annotation()
+
+            case Keyword.Type:
+                raise NotImplementedError()
+
             case Keyword.Type:
                 raise NotImplementedError()
 
@@ -430,7 +434,7 @@ class Parser:
                 self._emit_error("unit conversions cannot divide by zero")
 
             if self._end_of_statement():
-                return ast.UnitConversion(
+                return ast.UnitConversionDef(
                     file=m[0].file,
                     start=m[0].start,
                     end=end,
@@ -992,6 +996,24 @@ class Parser:
             )
 
         return lhs
+
+    def _annotation(self) -> ast.Annotation | None:
+        at = self.tokens.match_one(Punctuation.At)
+        if not at:
+            return None
+
+        base = self._qualname(same_line=True)
+        if not base:
+            self._emit_error("expected annotation name after the @")
+            return None
+
+        return ast.Annotation(
+            file=at.file,
+            start=at.start,
+            end=base.end,
+            base=base,
+            args=[],  # TODO
+        )
 
     def _qualname(
         self,

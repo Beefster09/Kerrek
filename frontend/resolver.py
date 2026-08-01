@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from fractions import Fraction
-import itertools
 from pathlib import Path
 from typing import Any, NewType
 
@@ -23,7 +22,6 @@ _NEXT_SYM = _symbol_gen()
 SYMBOLS_BY_ID: dict[SymbolID, _Symbol] = {}
 
 UNRESOLVED = object()
-PLACEHOLDER = object()
 
 
 class _Symbol:
@@ -142,11 +140,14 @@ class Builtin:
 BUILTINS = {
     Identifier(name): Builtin(Identifier(name))
     for name in [
+        # - TYPES -
         'Integer',
+        'Int128',
         'Int64',
         'Int32',
         'Int16',
         'Int8',
+        'UInt128',
         'UInt64',
         'UInt32',
         'UInt16',
@@ -159,8 +160,15 @@ BUILTINS = {
 
         'Boolean',
         'String',
+
+        # - ANNOTATIONS -
+        'private',
+        'deprecated',
+        'forward',
     ]
 }
+
+WRITE_ONLY = Builtin(Identifier('_'))
 
 
 @dataclass
@@ -169,6 +177,8 @@ class TemplateVar:
 
 
 type Named = _Symbol | Builtin | TemplateVar
+
+type CanonicalUnit = dict[SymbolID, int]
 
 
 class Resolver:
@@ -194,7 +204,8 @@ class Resolver:
                     + f" conflicts with existing import of {shadowed.file.source}",
                     imp)
 
-            module.imports[imp.namespace] = self.require(imp.get_filepath())
+            module.imports[imp.namespace] = self.require(
+                imp.get_filepath(self.project_root, path))
 
         return module
 
@@ -224,6 +235,9 @@ class Resolver:
                 self._resolve_name(module, node, *scopes)
 
             case ast.FuncDefinition():
+                for annotation in node.annotations:
+                    self._resolve_names(module, annotation, *scopes)
+
                 params: dict[Identifier, Named] = {}
                 templates: dict[Identifier, Named] = {}
 
@@ -306,7 +320,7 @@ class Resolver:
                 diagnostics.error("placeholder ('_') does not support field access", qualname)
                 return
 
-            qualname.resolves_to = PLACEHOLDER
+            qualname.resolves_to = WRITE_ONLY
             return
 
         elif '_' in qualname.path:
@@ -331,7 +345,7 @@ class Resolver:
 
         qualname.resolves_to = resolved
 
-    def _add_symbol(self, module: Module, decl: ast.Declaration):
+    def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
         def check_shadowing(node: ast.Node, kind: type, name: Identifier):
             if shadowed := module.lookup(name):
                 diagnostics.warning(
@@ -357,7 +371,7 @@ class Resolver:
 
                 module.units[decl.name] = Unit(name=decl.name, definition=decl)
 
-            case ast.UnitConversion():
+            case ast.UnitConversionDef():
                 if decl.dest in module.units:
                     return  # you can duplicate unit names for conversions
 
@@ -370,3 +384,24 @@ class Resolver:
     def canonicalize_units(self):
         """Give unique ids to all base units and simplify compound units
         """
+        for module in self.modules.values():
+            for decl in module.file.declarations:
+                for node in decl.walk():
+                    if isinstance(node, ast.CompoundUnit):
+                        self._ensure_canonical_unit(node)
+
+    def _ensure_canonical_unit(self, unit: ast.CompoundUnit):
+        if unit.canonical is not None:
+            return
+
+        unit.canonical = {}
+
+        for component in unit.components:
+            resolved = component.base.resolves_to
+            if isinstance(resolved, Unit):
+                if isinstance(resolved.definition, ast.UnitAlias):
+                    self._ensure_canonical_unit(resolved.definition.base)
+            elif isinstance(resolved, UnitType):
+                pass
+            else:
+                diagnostics.error(f"{component.base} is not a unit or unit type", component.base)
