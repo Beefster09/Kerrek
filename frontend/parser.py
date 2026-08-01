@@ -565,9 +565,7 @@ class Parser:
         params: list[ast.FormalParameter] = []
 
         while m := self.tokens.match(Identifier, Punctuation.Colon):
-            self.tokens.match_one(Punctuation.Dollar)  # TODO: mark the type as polymorphic
-
-            param_type = self._type_expr()
+            param_type = self._type_expr(allow_templates=True)
             if not param_type:
                 return
 
@@ -594,10 +592,22 @@ class Parser:
 
         return params
 
-    def _type_expr(self, *, allow_no_base=False) -> ast.TypeExpression | None:
+    def _type_expr(self, *, allow_no_base=False, allow_templates=False) -> ast.TypeExpression | None:
         typ = None
 
         match self.tokens.what():
+            case Punctuation.Dollar:
+                if template := self.tokens.match(Punctuation.Dollar, Identifier):
+                    typ = ast.SimpleTemplateType(
+                        file=template[0].file,
+                        start=template[0].start,
+                        end=template[1].end,
+                        name=template[1].what,
+                    )
+
+                if not allow_templates:
+                    self._emit_error("type templates are not allowed here")
+
             case Punctuation.Caret | Keyword.Owned | Keyword.Shared | Keyword.Weak | Keyword.UnsafePtr:
                 typ = self._pointer_type()
 
@@ -610,7 +620,7 @@ class Parser:
             case Punctuation.Question:
                 q = self.tokens.pop()
                 assert q
-                if inner := self._type_expr():
+                if inner := self._type_expr(allow_templates=allow_templates):
                     typ = ast.OptionalType(
                         file=q.file,
                         start=q.start,
@@ -623,7 +633,7 @@ class Parser:
             case Punctuation.LParen:
                 lp = self.tokens.pop()
                 assert lp
-                typ = self._type_expr()
+                typ = self._type_expr(allow_templates=allow_templates)
 
                 if typ:
                     if rp := self.tokens.match_one(Punctuation.RParen):
@@ -666,7 +676,7 @@ class Parser:
                 else:
                     self._emit_error("unit on type not closed")
 
-            elif at := self.tokens.match_one(Punctuation.At):
+            elif at := self.tokens.match_one(Punctuation.Tilde):
                 tag = self._qualname(same_line=True)
                 if tag:
                     typ = ast.TypeWithTag(

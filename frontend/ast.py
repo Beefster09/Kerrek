@@ -213,6 +213,11 @@ class SimpleType(TypeExpression):
 
 
 @dataclass(kw_only=True)
+class SimpleTemplateType(TypeExpression):
+    name: Identifier
+
+
+@dataclass(kw_only=True)
 class OptionalType(TypeExpression):
     base: TypeExpression
 

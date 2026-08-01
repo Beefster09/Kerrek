@@ -4,57 +4,71 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 import itertools
 from pathlib import Path
-from typing import NewType
+from typing import Any, NewType
 
-from frontend.diagnostics import Diagnostic, Error, Warning, Info
-from frontend.lexer import Identifier
+from frontend import diagnostics
 from frontend import ast
 from frontend import parser
+from frontend.lexer import Identifier
 
 
 SymbolID = NewType('SymbolID', int)
-_symbol_gen = itertools.count(0)
+def _symbol_gen():
+    sym_id = 1
+    while True:
+        yield SymbolID(sym_id)
+        sym_id += 1
+
+_NEXT_SYM = _symbol_gen()
+SYMBOLS_BY_ID: dict[SymbolID, _Symbol] = {}
+
+UNRESOLVED = object()
+PLACEHOLDER = object()
+
+
+class _Symbol:
+    id: SymbolID = field(default_factory=_NEXT_SYM.__next__)
+
+    def __post_init__(self):
+        SYMBOLS_BY_ID[self.id] = self
 
 
 @dataclass(kw_only=True)
-class Type:
-    id: SymbolID = field(default_factory=lambda: SymbolID(next(_symbol_gen)))
+class Type(_Symbol):
     name: Identifier
     definition: ast.Node
 
 
 @dataclass(kw_only=True)
-class Function:
-    id: SymbolID = field(default_factory=lambda: SymbolID(next(_symbol_gen)))
+class Function(_Symbol):
     name: Identifier
     definition: ast.Node
 
 
 @dataclass(kw_only=True)
-class Constant:
-    id: SymbolID = field(default_factory=lambda: SymbolID(next(_symbol_gen)))
-    name: Identifier
-    definition: ast.Node
-
-
-@dataclass(kw_only=True)
-class Variable:
-    id: SymbolID = field(default_factory=lambda: SymbolID(next(_symbol_gen)))
+class Constant(_Symbol):
     name: Identifier
     type: Type | None = None
-    initial_value: ast.Node | None = None
+    value: Any = UNRESOLVED
+    definition: ast.Node
 
 
 @dataclass(kw_only=True)
-class UnitType:
-    id: SymbolID = field(default_factory=lambda: SymbolID(next(_symbol_gen)))
+class Variable(_Symbol):
+    name: Identifier
+    type: Type | None = None
+    initial_value: Any = None
+    definition: ast.Node
+
+
+@dataclass(kw_only=True)
+class UnitType(_Symbol):
     name: Identifier
     definition: ast.Node
 
 
 @dataclass(kw_only=True)
-class Unit:
-    id: SymbolID = field(default_factory=lambda: SymbolID(next(_symbol_gen)))
+class Unit(_Symbol):
     name: Identifier
     unit_type: UnitType | None = None
     definition: ast.Node
@@ -62,14 +76,13 @@ class Unit:
 
 
 @dataclass(kw_only=True)
-class Capability:
-    id: SymbolID = field(default_factory=lambda: SymbolID(next(_symbol_gen)))
+class Capability(_Symbol):
     name: Identifier
     definition: ast.Node
 
 
 @dataclass
-class Module:
+class Module(_Symbol):
     file: ast.File
     name: Identifier
     imports: dict[Identifier, Module] = field(default_factory=dict)
@@ -120,23 +133,48 @@ class Module:
 
         return None
 
-type Named = (
-    Module
-    | Type
-    | Function
-    | Constant
-    | Variable
-    | UnitType
-    | Unit
-    | Capability
-)
+
+@dataclass
+class Builtin:
+    name: Identifier
+
+
+BUILTINS = {
+    Identifier(name): Builtin(Identifier(name))
+    for name in [
+        'Integer',
+        'Int64',
+        'Int32',
+        'Int16',
+        'Int8',
+        'UInt64',
+        'UInt32',
+        'UInt16',
+        'UInt8',
+
+        'Number',
+        'Dec128',
+        'Dec64',
+        'Dec32',
+
+        'Boolean',
+        'String',
+    ]
+}
+
+
+@dataclass
+class TemplateVar:
+    name: Identifier
+
+
+type Named = _Symbol | Builtin | TemplateVar
 
 
 class Resolver:
     def __init__(self, project_root: Path = Path.cwd()):
         self.project_root = project_root
         self.modules: dict[Path, Module] = {}
-        self.diagnostics: list[Diagnostic] = []
 
     def require(self, path: Path) -> Module:
         """Resolves imported modules and parses them if missing
@@ -151,18 +189,18 @@ class Resolver:
 
         for imp in module.file.imports:
             if shadowed := module.imports.get(imp.namespace):
-                message = f"import of {imp.package} shadows existing import of {shadowed.file.source}"
-                self.diagnostics.append(Error(message, imp))
+                diagnostics.error(
+                    f"import of {imp.package}"
+                    + f" conflicts with existing import of {shadowed.file.source}",
+                    imp)
 
             module.imports[imp.namespace] = self.require(imp.get_filepath())
 
         return module
 
-    def resolve_names(self) -> list[Diagnostic]:
+    def resolve_names(self):
         """Resolves qualified names to point to their definitions
         """
-
-        diagnostics: list[Diagnostic] = []
 
         for module in self.modules.values():
             for decl in module.file.declarations:
@@ -171,8 +209,6 @@ class Resolver:
         for module in self.modules.values():
             for decl in module.file.declarations:
                 self._resolve_names(module, decl)
-
-        return diagnostics
 
 
     def _resolve_names(
@@ -189,24 +225,34 @@ class Resolver:
 
             case ast.FuncDefinition():
                 params: dict[Identifier, Named] = {}
+                templates: dict[Identifier, Named] = {}
 
                 for param in node.params:
-                    if param.name in params:
-                        self.diagnostics.append(Error(f"duplicate parameter name '{param.name}'", param))
-                    params[param.name] = Variable(name=param.name)
+                    if param.name == '_':
+                        diagnostics.error("placeholder ('_') is not a valid parameter name", node)
+                        return
 
-                    self._resolve_names(module, param.type_, *scopes)
+                    if param.name in params:
+                        diagnostics.error(f"duplicate parameter name '{param.name}'", param)
+
+                    params[param.name] = Variable(name=param.name, definition=param)
+
+                    for sub in param.type_.walk():
+                        if isinstance(sub, ast.SimpleTemplateType):
+                            templates[sub.name] = TemplateVar(sub.name)
+
+                    self._resolve_names(module, param.type_, templates, *scopes)
 
                 for ret in node.return_types:
-                    self._resolve_names(module, ret, *scopes)
+                    self._resolve_names(module, ret, templates, *scopes)
 
                 if node.error_type is not ... and node.error_type is not None:
-                    self._resolve_names(module, node.error_type, *scopes)
+                    self._resolve_names(module, node.error_type, templates, *scopes)
 
                 if node.capabilities_required:
                     self._resolve_names(module, node.capabilities_required, *scopes)
 
-                self._resolve_names(module, node.body, params, *scopes)
+                self._resolve_names(module, node.body, params, templates, *scopes)
 
             case ast.Block():
                 local_scope = {}
@@ -214,6 +260,10 @@ class Resolver:
                     self._resolve_names(module, stmt, local_scope, *scopes)
 
             case ast.LocalDeclaration():
+                if node.name == '_':
+                    diagnostics.error("placeholder ('_') is not a valid variable name", node)
+                    return
+
                 if node.type_:
                     self._resolve_names(module, node.type_, *scopes)
                 if node.expr:
@@ -221,17 +271,23 @@ class Resolver:
 
                 local_scope = scopes[0]
                 if node.name in local_scope:
-                    self.diagnostics.append(Error(f"local with name {node.name} is already defined", node))
+                    diagnostics.error(f"local with name '{node.name}' is already defined", node)
                     return
+                elif any(node.name in scope for scope in scopes[1:]):
+                    diagnostics.info(f"local '{node.name}' shadows previously defined local", node)
+                elif node.name in module:
+                    diagnostics.info(f"local '{node.name}' shadows module global", node)
+                elif node.name in BUILTINS:
+                    diagnostics.info(f"local '{node.name}' shadows builtin", node)
 
                 if node.is_const:
                     if node.expr is None:
-                        self.diagnostics.append(Error(f"constant {node.name} not defined", node))
+                        diagnostics.error(f"value of constant {node.name} not defined", node)
                         return
 
-                    local_scope[node.name] = Constant(name=node.name, definition=node.expr)
+                    local_scope[node.name] = Constant(name=node.name, definition=node)
                 else:
-                    local_scope[node.name] = Variable(name=node.name, initial_value=node.expr)
+                    local_scope[node.name] = Variable(name=node.name, initial_value=node.expr, definition=node)
 
             case _:
                 for sub in node.children():
@@ -245,15 +301,27 @@ class Resolver:
     ):
         base_name, *rest = qualname.path
 
+        if base_name == '_':
+            if rest:
+                diagnostics.error("placeholder ('_') does not support field access", qualname)
+                return
+
+            qualname.resolves_to = PLACEHOLDER
+            return
+
+        elif '_' in qualname.path:
+            diagnostics.error("placeholder ('_') is not a valid accessible field", qualname)
+            return
+
         for scope in scopes:
             if base_name in scope:
                 base = scope[base_name]
                 break
         else:
-            base = module.lookup(base_name)
+            base = module.lookup(base_name) or BUILTINS.get(base_name)
 
         if not base:
-            self.diagnostics.append(Error(f"cannot resolve '{'.'.join(qualname.path)}'", qualname))
+            diagnostics.error(f"cannot resolve '{'.'.join(qualname.path)}'", qualname)
             return
 
         resolved = base
@@ -264,37 +332,36 @@ class Resolver:
         qualname.resolves_to = resolved
 
     def _add_symbol(self, module: Module, decl: ast.Declaration):
-        def check_shadowing(node: ast.Node, kind: type, name: Identifier) -> Diagnostic | None:
+        def check_shadowing(node: ast.Node, kind: type, name: Identifier):
             if shadowed := module.lookup(name):
-                self.diagnostics.append(
-                    Error(f"{kind.__name__} '{name}' shadows {type(shadowed).__name__} '{shadowed.name}'", node)
+                diagnostics.warning(
+                    f"{kind.__name__.lower()} '{name}' shadows {type(shadowed).__name__} '{shadowed.name}'",
+                    node,
                 )
+            elif shadowed := BUILTINS.get(name):
+                diagnostics.info(f"{kind.__name__.lower()} '{name}' shadows a builtin", node)
 
         match decl:
             case ast.FuncDefinition():
-                if diag := check_shadowing(decl, Function, decl.name):
-                    return diag
+                check_shadowing(decl, Function, decl.name)
 
                 module.funcs[decl.name] = Function(name=decl.name, definition=decl)
 
             case ast.UnitTypeDecl() | ast.UnitTypeAliasDecl():
-                if diag := check_shadowing(decl, UnitType, decl.name):
-                    return diag
+                check_shadowing(decl, UnitType, decl.name)
 
                 module.unit_types[decl.name] = UnitType(name=decl.name, definition=decl)
 
             case ast.UnitDecl() | ast.UnitAlias():
-                if diag := check_shadowing(decl, Unit, decl.name):
-                    return diag
+                check_shadowing(decl, Unit, decl.name)
 
                 module.units[decl.name] = Unit(name=decl.name, definition=decl)
 
             case ast.UnitConversion():
                 if decl.dest in module.units:
-                    return
+                    return  # you can duplicate unit names for conversions
 
-                if diag := check_shadowing(decl, Unit, decl.dest):
-                    return diag
+                check_shadowing(decl, Unit, decl.dest)
 
                 module.units[decl.dest] = Unit(name=decl.dest, definition=decl)
 

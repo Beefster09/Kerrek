@@ -16,10 +16,11 @@ def build(entry_point: Path, backend: Backend) -> bool:
     r = resolver.Resolver()
     main = r.require(entry_point)
 
-    if diags := r.resolve_names():
-        if diagnostics.report(diags):
-            return False
+    r.resolve_names()
+    diagnostics.report()
+
     r.canonicalize_units()
+    diagnostics.report()
 
     for module in r.modules:
         pass
