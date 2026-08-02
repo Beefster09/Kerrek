@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
@@ -24,6 +25,7 @@ SYMBOLS_BY_ID: dict[SymbolID, _Symbol] = {}
 UNRESOLVED = object()
 
 
+@dataclass(kw_only=True)
 class _Symbol:
     id: SymbolID = field(default_factory=_NEXT_SYM.__next__)
 
@@ -79,7 +81,7 @@ class Capability(_Symbol):
     definition: ast.Node
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Module(_Symbol):
     file: ast.File
     name: Identifier
@@ -131,6 +133,15 @@ class Module(_Symbol):
 
         return None
 
+    def __iter__(self):
+        yield from self.types.values()
+        yield from self.funcs.values()
+        yield from self.constants.values()
+        yield from self.variables.values()
+        yield from self.unit_types.values()
+        yield from self.units.values()
+        yield from self.capabilities.values()
+
 
 @dataclass
 class Builtin:
@@ -178,7 +189,25 @@ class TemplateVar:
 
 type Named = _Symbol | Builtin | TemplateVar
 
-type CanonicalUnit = dict[SymbolID, int]
+class CanonicalUnit(Counter[SymbolID]):
+    def __str__(self):
+        components = []
+        for comp_id, exp in self.items():
+            if exp == 0:
+                continue
+
+            unit = SYMBOLS_BY_ID[comp_id]
+            unit_name = unit.name if isinstance(unit, (Unit, UnitType)) else '???'
+
+            if exp == 1:
+                components.append(str(unit_name))
+            else:
+                components.append(f"{unit_name}^{exp}")
+
+        if components:
+            return ' '.join(components)
+        else:
+            return '<ratio>'
 
 
 class Resolver:
@@ -194,13 +223,16 @@ class Resolver:
         if path in self.modules:
             return self.modules[path]
 
-        module = Module(parser.load(path), Identifier(path.stem))
+        module = Module(
+            file=parser.load(path),
+            name=Identifier(path.stem),
+        )
         self.modules[path] = module
 
         for imp in module.file.imports:
             if shadowed := module.imports.get(imp.namespace):
                 diagnostics.error(
-                    f"import of {imp.package}"
+                    f"import of {'/'.join(imp.module_path)}"
                     + f" conflicts with existing import of {shadowed.file.source}",
                     imp)
 
@@ -382,8 +414,6 @@ class Resolver:
                 # the actual conversion has to be resolved later
 
     def canonicalize_units(self):
-        """Give unique ids to all base units and simplify compound units
-        """
         for module in self.modules.values():
             for decl in module.file.declarations:
                 for node in decl.walk():
@@ -394,14 +424,16 @@ class Resolver:
         if unit.canonical is not None:
             return
 
-        unit.canonical = {}
+        unit.canonical = CanonicalUnit()
 
         for component in unit.components:
             resolved = component.base.resolves_to
-            if isinstance(resolved, Unit):
+            if isinstance(resolved, (Unit, UnitType)):
                 if isinstance(resolved.definition, ast.UnitAlias):
                     self._ensure_canonical_unit(resolved.definition.base)
-            elif isinstance(resolved, UnitType):
-                pass
+                    assert resolved.definition.base.canonical is not None
+                    unit.canonical += resolved.definition.base.canonical
+                else:
+                    unit.canonical[resolved.id] += component.exponent
             else:
                 diagnostics.error(f"{component.base} is not a unit or unit type", component.base)

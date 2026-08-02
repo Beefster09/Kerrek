@@ -1007,13 +1007,16 @@ class Parser:
             self._emit_error("expected annotation name after the @")
             return None
 
-        return ast.Annotation(
-            file=at.file,
-            start=at.start,
-            end=base.end,
-            base=base,
-            args=[],  # TODO
-        )
+        if self._end_of_line():
+            return ast.Annotation(
+                file=at.file,
+                start=at.start,
+                end=base.end,
+                base=base,
+                args=[],  # TODO
+            )
+        else:
+            self._emit_error("expected end of line here")
 
     def _qualname(
         self,
@@ -1060,6 +1063,10 @@ class Parser:
 
             case _:
                 return tok.first_on_line and tok.what not in CONTINUATION_TOKENS
+
+    def _end_of_line(self) -> bool:
+        tok = self.tokens.peek()
+        return tok is None or tok.first_on_line
 
 
 def load(path: Path):

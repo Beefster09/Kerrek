@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Protocol
 
-from frontend import ast, diagnostics, lexer, parser, resolver
+from frontend import ast, diagnostics, resolver, analysis
 
 class Backend(Protocol):
     def generate(
@@ -22,7 +22,8 @@ def build(entry_point: Path, backend: Backend) -> bool:
     r.canonicalize_units()
     diagnostics.report()
 
-    for module in r.modules:
-        pass
+    for module in r.modules.values():
+        for decl in module:
+            analysis.validate(decl)
 
     return True
