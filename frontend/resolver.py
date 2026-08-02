@@ -43,6 +43,7 @@ class Type(_Symbol):
 class Function(_Symbol):
     name: Identifier
     definition: ast.Node
+    params: list[Variable] | None = None
 
 
 @dataclass(kw_only=True)
@@ -50,15 +51,15 @@ class Constant(_Symbol):
     name: Identifier
     type: Type | None = None
     value: Any = UNRESOLVED
-    definition: ast.Node
+    definition: ast.GlobalConstant | ast.LocalConstant
 
 
 @dataclass(kw_only=True)
 class Variable(_Symbol):
     name: Identifier
     type: Type | None = None
-    initial_value: Any = None
-    definition: ast.Node
+    initial_value: Any = UNRESOLVED
+    definition: ast.GlobalConstant | ast.LocalVariable | ast.FormalParameter
 
 
 @dataclass(kw_only=True)
@@ -305,13 +306,13 @@ class Resolver:
                 for stmt in node.body:
                     self._resolve_names(module, stmt, local_scope, *scopes)
 
-            case ast.LocalDeclaration():
+            case ast.LocalVariable() | ast.LocalConstant():
                 if node.name == '_':
                     diagnostics.error("placeholder ('_') is not a valid variable name", node)
                     return
 
-                if node.type_:
-                    self._resolve_names(module, node.type_, *scopes)
+                if node.type:
+                    self._resolve_names(module, node.type, *scopes)
                 if node.expr:
                     self._resolve_names(module, node.expr, *scopes)
 
@@ -320,20 +321,16 @@ class Resolver:
                     diagnostics.error(f"local with name '{node.name}' is already defined", node)
                     return
                 elif any(node.name in scope for scope in scopes[1:]):
-                    diagnostics.info(f"local '{node.name}' shadows previously defined local", node)
+                    diagnostics.notice(f"local '{node.name}' shadows previously defined local", node)
                 elif node.name in module:
-                    diagnostics.info(f"local '{node.name}' shadows module global", node)
+                    diagnostics.notice(f"local '{node.name}' shadows module global", node)
                 elif node.name in BUILTINS:
-                    diagnostics.info(f"local '{node.name}' shadows builtin", node)
+                    diagnostics.notice(f"local '{node.name}' shadows builtin", node)
 
-                if node.is_const:
-                    if node.expr is None:
-                        diagnostics.error(f"value of constant {node.name} not defined", node)
-                        return
-
+                if isinstance(node, ast.LocalConstant):
                     local_scope[node.name] = Constant(name=node.name, definition=node)
                 else:
-                    local_scope[node.name] = Variable(name=node.name, initial_value=node.expr, definition=node)
+                    local_scope[node.name] = Variable(name=node.name, definition=node)
 
             case _:
                 for sub in node.children():
@@ -385,7 +382,7 @@ class Resolver:
                     node,
                 )
             elif shadowed := BUILTINS.get(name):
-                diagnostics.info(f"{kind.__name__.lower()} '{name}' shadows a builtin", node)
+                diagnostics.notice(f"{kind.__name__.lower()} '{name}' shadows a builtin", node)
 
         match decl:
             case ast.FuncDefinition():
@@ -437,3 +434,23 @@ class Resolver:
                     unit.canonical[resolved.id] += component.exponent
             else:
                 diagnostics.error(f"{component.base} is not a unit or unit type", component.base)
+
+    def calculate_constants(self):
+        """calculates compile-time known values:
+
+        - global constants
+        - default values of struct fields
+        - default values of function parameters (usually)
+        - initial values of global variables (sometimes)
+        """
+        for module in self.modules.values():
+            for const in module.constants.values():
+                if const.value is not UNRESOLVED:
+                    try:
+                        const.value = evaluate(const.definition.expr)
+                    except Exception as err:
+                        diagnostics.error(f"value for {const.name} cannot be computed at compile time: {err}", const.definition)
+
+
+def evaluate(node: ast.Expression):
+    pass

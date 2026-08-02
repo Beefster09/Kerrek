@@ -7,8 +7,8 @@ class Backend(Protocol):
     def generate(
         self,
         outfile: Path,
-        files: list[ast.File],
-        entry_point: ast.FuncDefinition,
+        modules: list[resolver.Module],
+        entry_point: resolver.Function,
     ):
         ...
 
@@ -22,8 +22,11 @@ def build(entry_point: Path, backend: Backend) -> bool:
     r.canonicalize_units()
     diagnostics.report()
 
+    r.calculate_constants()
+    diagnostics.report()
+
     for module in r.modules.values():
-        for decl in module:
+        for decl in module.file.declarations:
             analysis.validate(decl)
 
     return True

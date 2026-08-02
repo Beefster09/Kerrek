@@ -1,5 +1,4 @@
 from decimal import Decimal
-import itertools
 from enum import Enum, auto
 from pathlib import Path
 from types import EllipsisType
@@ -83,7 +82,7 @@ class Parser:
 
         def _match_seq(
             self,
-            *tok_sequence: TokenData | type[TokenData] | EllipsisType,
+            *tok_sequence: TokenData | type[TokenData] | tuple[TokenData | type[TokenData], ...] | EllipsisType,
             offset: int = 0,
             first_on_same_line: bool = False,
             rest_on_same_line: bool = False,
@@ -113,20 +112,23 @@ class Parser:
         def _token_is[E: TokenData](
             self,
             token: Token,
-            expected: E | type[E],
-        ) -> Token[E] | None:
-            if isinstance(expected, type):
-                if not isinstance(token.what, expected):
-                    return None
+            expected: E | type[E] | tuple[E | type[E], ...],
+        ) -> bool:
+            if isinstance(expected, tuple):
+                if any(self._token_is(token, exp) for exp in expected):
+                    return True
+            elif isinstance(expected, type):
+                if isinstance(token.what, expected):
+                    return True
             else:
-                if token.what is not expected:
-                    return None
+                if token.what is expected:
+                    return True
 
-            return token
+            return False
 
         def match(
             self,
-            *tok_sequence: TokenData | type[TokenData] | EllipsisType,
+            *tok_sequence: TokenData | type[TokenData] | tuple[TokenData | type[TokenData], ...] | EllipsisType,
             same_line: bool = False,
             one_line: bool = False,
         ) -> list[Token] | None:
@@ -158,6 +160,19 @@ class Parser:
             *,
             same_line: bool = False,
         ) -> Token[E] | None:
+            token = self._match_seq(expected, first_on_same_line=same_line)
+
+            if token:
+                self.advance()
+                return token[0]
+
+            return None
+
+        def match_any(
+            self,
+            *expected: TokenData | type[TokenData],
+            same_line: bool = False,
+        ) -> Token | None:
             token = self._match_seq(expected, first_on_same_line=same_line)
 
             if token:
@@ -781,6 +796,11 @@ class Parser:
             return
 
         match tok.what:
+            case Punctuation.Semicolon:
+                self.tokens.advance()
+                diagnostics.notice("empty statement", tok.file, tok.start, tok.start, category='syntax')
+                return None
+
             case Keyword.Return:
                 self.tokens.advance()
                 retval = self._expr()
@@ -809,9 +829,7 @@ class Parser:
                 if self.tokens.match_one(Punctuation.Assign):
                     if ell := self.tokens.match_one(Punctuation.Ellipsis_):
                         if is_const:
-                            self._emit_error("const expressions cannot be explicitly undefined", ell)
-                            self.tokens.skip_line()
-                            return None
+                            self._emit_error("const expressions cannot be explicitly undefined", tok.start, ell.end)
 
                         value = ast.UndefinedValue(
                             file=ell.file,
@@ -823,28 +841,54 @@ class Parser:
 
                         if value is None:
                             self._emit_error("expected an expression here")
+                            self.tokens.skip_line()
+                            return None
 
                 else:
-                    if is_const:
-                        self._emit_error("const declarations must be given a value", tok)
-                        self.tokens.skip_line()
-                        return None
-
                     value = None
 
-                stmt = ast.LocalDeclaration(
-                    file=tok.file,
-                    start=tok.start,
-                    end=value.end if value else tok.end,
-                    name=name.what,
-                    type_=typ,
-                    expr=value,
-                    is_const=is_const,
-                )
+                if is_const:
+                    if value is None:
+                        self._emit_error("const declarations must be given a value", tok)
+                        return None
+
+                    stmt = ast.LocalConstant(
+                        file=tok.file,
+                        start=tok.start,
+                        end=value.end if value else tok.end,
+                        name=name.what,
+                        type=typ,
+                        expr=value,
+                    )
+                else:
+                    stmt = ast.LocalVariable(
+                        file=tok.file,
+                        start=tok.start,
+                        end=value.end if value else tok.end,
+                        name=name.what,
+                        type=typ,
+                        expr=value,
+                    )
 
             case _:
                 if expr := self._expr():
-                    stmt = ast.ExprStatement.from_node(expr, expr=expr)
+                    if assign_tok := self.tokens.match_any(Punctuation.Assign, Punctuation.Move):
+                        src = self._expr()
+                        if src is None:
+                            self._emit_error(f"expected an expression after the {tok.what.value}")
+                            self.tokens.skip_line()
+                            return None
+
+                        stmt = ast.AssignStatement(
+                            file=tok.file,
+                            start=expr.start,
+                            end=src.end,
+                            dest=expr,
+                            expr=src,
+                            is_move=assign_tok.what is Punctuation.Move,
+                        )
+                    else:
+                        stmt = ast.ExprStatement.from_node(expr, expr=expr)
                 else:
                     self._emit_error("invalid start of statement")
                     self.tokens.advance()
@@ -984,7 +1028,8 @@ class Parser:
                     break
 
                 rhs = self._binop_expr(rhs, prec1 + int(prec2 > prec1))
-                assert rhs
+                if rhs is None:
+                    return None
 
             lhs = ast.BinopExpr(
                 file=lhs.file,

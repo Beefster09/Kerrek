@@ -76,9 +76,9 @@ unit btu = 1055 * joule
 
 
 unit man
+unit count
 
 
-@private
 func how_long_to_complete(num_workers: Number<man>, blocks: Number<>)
 	-> Number<day>
 {
@@ -88,4 +88,13 @@ func how_long_to_complete(num_workers: Number<man>, blocks: Number<>)
 
 	let square_miles = blocks * city_block
 	return work_per_square_mile * square_miles / num_workers
+}
+
+
+func flapjacks_required(num_workers: Number<man>) -> Number<count>
+{
+	let hunger = num_workers * 314.15 / 1 man
+	hunger = hunger + 2.717
+
+	return 1 count * hunger / 200
 }

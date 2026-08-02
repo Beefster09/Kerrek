@@ -11,7 +11,7 @@ from frontend.lexer import Location
 class DiagnosticLevel(Enum):
     Error = 2    # i.e. the program can't compile because of this error
     Warning = 1  # vet issues: valid and can compile but frowned upon
-    Info = 0     # may be surprising but not explicitly discouraged (e.g. shadowing)
+    Notice = 0   # may be surprising but not explicitly discouraged (e.g. shadowing)
 
     def pretty(self, out: TextIO):
         if out.isatty():
@@ -20,8 +20,8 @@ class DiagnosticLevel(Enum):
                     return "\x1b[91merror\x1b[0m"
                 case DiagnosticLevel.Warning:
                     return "\x1b[32mwarning\x1b[0m"
-                case DiagnosticLevel.Info:
-                    return "\x1b[36minfo\x1b[0m"
+                case DiagnosticLevel.Notice:
+                    return "\x1b[36mnotice\x1b[0m"
         else:
             return self.name.lower()
 
@@ -157,7 +157,7 @@ def warning(*args, **kwargs):
 
 
 @overload
-def info(
+def notice(
     message: str,
     file: Path | None,
     start: Location | None,
@@ -170,7 +170,7 @@ def info(
 
 
 @overload
-def info(
+def notice(
     message: str,
     node: ast.Node,
     /, *,
@@ -180,8 +180,8 @@ def info(
     ...
 
 
-def info(*args, **kwargs):
-    _emit_diagnostic(DiagnosticLevel.Info, *args, **kwargs)
+def notice(*args, **kwargs):
+    _emit_diagnostic(DiagnosticLevel.Notice, *args, **kwargs)
 
 
 def report(warnings_as_errors=False):
@@ -198,8 +198,8 @@ def report(warnings_as_errors=False):
             case DiagnosticLevel.Warning:
                 warn_count += 1
 
-        print(f"{diag.level.pretty(sys.stdout)}: {diag.message}", file=sys.stdout)
-        print(f"\tin {diag.file} at {diag.start}", file=sys.stdout)
+        print(f"{diag.level.pretty(sys.stderr)}: {diag.message}", file=sys.stderr)
+        print(f"\tin {diag.file} at {diag.start}", file=sys.stderr)
 
     if err_count:
         print(f"encountered {err_count} errors. aborting.")

@@ -96,9 +96,25 @@ class ImportWithNames(Import):
 class TopLevelDeclaration(TopLevelItem):
     pass
 
+
+@dataclass(kw_only=True)
+class GlobalConstant(TopLevelDeclaration):
+    name: Identifier
+    type: TypeExpression | None
+    expr: Expression
+
+
+@dataclass(kw_only=True)
+class GlobalVariable(TopLevelDeclaration):
+    name: Identifier
+    type: TypeExpression | None
+    expr: Expression | None
+
+
 @dataclass(kw_only=True)
 class TypeAlias(TopLevelDeclaration):
     pass
+
 
 @dataclass(kw_only=True)
 class DistinctTypeDecl(TopLevelDeclaration):
@@ -326,11 +342,17 @@ class AssignStatement(Statement):
 
 
 @dataclass(kw_only=True)
-class LocalDeclaration(Statement):
+class LocalVariable(Statement):
     name: Identifier
-    type_: TypeExpression | None
+    type: TypeExpression | None
     expr: Expression | None
-    is_const: bool
+
+
+@dataclass(kw_only=True)
+class LocalConstant(Statement):
+    name: Identifier
+    type: TypeExpression | None
+    expr: Expression
 
 
 @dataclass(kw_only=True)
