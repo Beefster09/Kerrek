@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from frontend.lexer import Location, Identifier, Numeric
 
 if TYPE_CHECKING:
-    from frontend.resolver import CanonicalUnit, Named
+    from frontend.resolver import CanonicalUnit, Named, Constant
 
 
 @dataclass(kw_only=True)
@@ -46,6 +46,8 @@ class Node:
                     yield sub
             elif isinstance(value, Node):
                 yield value
+
+    __iter__ = children
 
     def walk(self):
         yield self
@@ -197,7 +199,7 @@ class QualnameExpr(Expression):
 
 
 @dataclass(kw_only=True)
-class ScalarExpr(Expression):
+class ScalarLiteralExpr(Expression):
     value: Numeric
     unit: CompoundUnit | None
 
@@ -208,23 +210,24 @@ class SimpleLiteralExpr(Expression):
 
 
 class Operator(Enum):
-    Add = auto()
-    Subtract = auto()
-    Multiply = auto()
-    Divide = auto()
-    FloorDivide = auto()
-    Modulo = auto()
-    Exponent = auto()
+    Add = '+'
+    Subtract = '-'
+    Multiply = '*'
+    Divide = '/'
+    FloorDivide = '//'
+    Remainder = '%'
+    Modulo = 'mod'
+    Exponent = '**'
 
-    Equal = auto()
-    NotEqual = auto()
-    Less = auto()
-    LessEqual = auto()
-    Greater = auto()
-    GreaterEqual = auto()
+    Equal = '=='
+    NotEqual = '!='
+    Less = '<'
+    LessEqual = '<='
+    Greater = '>'
+    GreaterEqual = '>='
 
-    And = auto()
-    Or = auto()
+    And = "and"
+    Or = "or"
 
 
 @dataclass(kw_only=True)
@@ -354,10 +357,19 @@ class LocalConstant(Statement):
     type: TypeExpression | None
     expr: Expression
 
+    resolves_to: Constant | None = field(default=None, repr=False)
+
 
 @dataclass(kw_only=True)
 class Block(Statement):
     body: list[Statement]
+
+    def walk_statements(self):
+        for stmt in self.body:
+            yield stmt
+            for child in stmt:
+                if isinstance(child, Block):
+                    yield from child.walk_statements()
 
 
 # === FUNCTIONS ===

@@ -129,6 +129,7 @@ class Keyword(Enum):
     And = 'and'
     Or = 'or'
     Not = 'not'
+    Mod = 'mod'
 
     Auto = 'auto'
 

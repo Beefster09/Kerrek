@@ -1,6 +1,8 @@
 # Kerrek
 
-An experimental new programming language that checks your assumptions
+An experimental new programming language that tries to make "correct" the path of least resistance.
+
+[Contribution Guidelines](/CONTRIBUTING.md)
 
 # Language Design Philosophy
 
@@ -18,7 +20,7 @@ Kerrek is not going to prevent every bug, but I hope to make it easier to write 
 
 ## Immutability and encapsulation are incomplete attempts at solving the same problem
 
-In many programs, it's unclear when data can be mutated. It's an implicit understanding that probably lives in one engineer's brain or some comment tucked away in a class definition. So programmers are just defensive about it instead. Immutability. Encapsulation. Defensive copies. All because nobody is sure when it's appropriate to mutate data. We make computers work harder than they really need to copying objects all the time. Frameworks create convoluted "functional" mazes that pretend data doesn't change, when really they're secretly inventing a system of carefully scoped mutation.
+In many programs, it's unclear when data can be mutated. It's an implicit understanding that probably lives in one engineer's brain or some comment tucked away in a class definition. So programmers are just defensive about it instead. Immutability. Encapsulation. Defensive copies. All because nobody is sure when it's appropriate to mutate data. We make computers work harder than they really need to copying objects all the time. Frameworks create convoluted "functional" mazes that pretend data doesn't change, when really they've secretly invented a system of carefully scoped mutation.
 
 Encapsulation tries to hide that a different way by using getters and setters, but really all that enables is ensuring variants are maintained, all at the cost of awkward method calls or property accessors that hide control flow. You can still call setters at any time, even when it might actually be invalid to do so. Nothing is really protected.
 

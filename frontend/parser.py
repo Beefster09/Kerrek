@@ -19,20 +19,22 @@ BINOPS = {
     Punctuation.Star: (20, ast.Operator.Multiply, Associativity.Left),
     Punctuation.Slash: (20, ast.Operator.Divide, Associativity.Left),
     Punctuation.DSlash: (20, ast.Operator.FloorDivide, Associativity.Left),
-    Punctuation.Percent: (20, ast.Operator.Modulo, Associativity.Left),
+    Punctuation.Percent: (20, ast.Operator.Remainder, Associativity.Left),
 
     Punctuation.Plus: (30, ast.Operator.Add, Associativity.Left),
     Punctuation.Minus: (30, ast.Operator.Subtract, Associativity.Left),
 
-    Punctuation.EQ: (40, ast.Operator.Equal, Associativity.NonAssociative),
-    Punctuation.NE: (40, ast.Operator.NotEqual, Associativity.NonAssociative),
-    Punctuation.GT: (40, ast.Operator.Greater, Associativity.NonAssociative),
-    Punctuation.GE: (40, ast.Operator.GreaterEqual, Associativity.NonAssociative),
-    Punctuation.LT: (40, ast.Operator.Less, Associativity.NonAssociative),
-    Punctuation.LE: (40, ast.Operator.LessEqual, Associativity.NonAssociative),
+    Keyword.Mod: (40, ast.Operator.Modulo, Associativity.Left),
 
-    Keyword.And: (50, ast.Operator.And, Associativity.Left),
-    Keyword.Or: (50, ast.Operator.Or, Associativity.Left),
+    Punctuation.EQ: (50, ast.Operator.Equal, Associativity.NonAssociative),
+    Punctuation.NE: (50, ast.Operator.NotEqual, Associativity.NonAssociative),
+    Punctuation.GT: (50, ast.Operator.Greater, Associativity.NonAssociative),
+    Punctuation.GE: (50, ast.Operator.GreaterEqual, Associativity.NonAssociative),
+    Punctuation.LT: (50, ast.Operator.Less, Associativity.NonAssociative),
+    Punctuation.LE: (50, ast.Operator.LessEqual, Associativity.NonAssociative),
+
+    Keyword.And: (100, ast.Operator.And, Associativity.Left),
+    Keyword.Or: (100, ast.Operator.Or, Associativity.Left),
 }
 
 CONTINUATION_TOKENS = frozenset([
@@ -984,7 +986,7 @@ class Parser:
 
                 unit = self._compound_unit(same_line=True)
 
-                return ast.ScalarExpr(
+                return ast.ScalarLiteralExpr(
                     file=tok.file,
                     start=tok.start,
                     end=unit.end if unit else tok.end,

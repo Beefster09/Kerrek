@@ -17,13 +17,8 @@ def build(entry_point: Path, backend: Backend) -> bool:
     main = r.require(entry_point)
 
     r.resolve_names()
-    diagnostics.report()
-
     r.canonicalize_units()
-    diagnostics.report()
-
     r.calculate_constants()
-    diagnostics.report()
 
     for module in r.modules.values():
         for decl in module.file.declarations:
