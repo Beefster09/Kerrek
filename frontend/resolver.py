@@ -8,7 +8,7 @@ from decimal import Decimal
 from enum import Enum, auto
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, NewType
+from typing import Any, Literal, NewType
 
 from frontend import diagnostics
 from frontend import ast
@@ -627,6 +627,12 @@ def _eval_binop(binop: ast.BinopExpr):
         case (_, EvalState.Uncomputable, _) | (_, _, EvalState.Uncomputable):
             return EvalState.Uncomputable
 
+        case (ast.Operator.Equal, None, _) | (ast.Operator.Equal, _, None):
+            return lhs is None and rhs is None
+
+        case (ast.Operator.NotEqual, None, _) | (ast.Operator.NotEqual, _, None):
+            return not (lhs is None and rhs is None)
+
         case (_, None, _) | (_, _, None):
             return None
 
@@ -640,10 +646,10 @@ def _eval_binop(binop: ast.BinopExpr):
             return lhs + rhs
 
         case ast.Operator.And, _, _:
-            return lhs and rhs
+            return _truthy(lhs) and _truthy(rhs)
 
         case ast.Operator.Or, _, _:
-            return lhs or rhs
+            return _truthy(lhs) or _truthy(rhs)
 
         case (
             (
@@ -716,6 +722,16 @@ def _zero(value):
             return None
         case _:
             raise TypeError(f"cannot determine zero value for {type(value)}")
+
+
+def _truthy(value) -> bool:
+    match value:
+        case bool():
+            return value
+        case None:
+            return False
+        case _:
+            raise TypeError("compile-time truthiness is only defined for bool and nil")
 
 
 def _coerce(a: Num, b: Num) -> tuple[int, int] | tuple[float, float] | tuple[Decimal, Decimal] | tuple[Fraction, Fraction]:

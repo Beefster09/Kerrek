@@ -10,7 +10,7 @@ from frontend.common import Location
 
 class DiagnosticLevel(Enum):
     Error = 2    # i.e. the program can't compile because of this error
-    Warning = 1  # vet issues: valid and can compile but frowned upon
+    Warning = 1  # vet issues: valid and can compile but frowned upon (e.g. unused variables/imports)
     Notice = 0   # may be surprising but not explicitly discouraged (e.g. shadowing)
 
     def pretty(self, out: TextIO):

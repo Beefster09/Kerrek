@@ -96,9 +96,5 @@ func flapjacks_required(num_workers: Number<man>) -> Number<count>
 	let hunger = num_workers * 314.15 / 1 man
 	hunger = hunger + 2.717
 
-	const whatever = 1 + 2 * 3 ** 4 / 5 mod 6/7
-	const speed = 600 m/s
-	const r = 'r'
-
 	return 1 count * hunger / 200
 }

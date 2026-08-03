@@ -4,6 +4,8 @@ An experimental new programming language that tries to make "correct" the path o
 
 [Contribution Guidelines](/CONTRIBUTING.md)
 
+[Features](/features.md)
+
 # Language Design Philosophy
 
 The goal of Kerrek is to be a pragmatic balance of features that prioritizes correctness, runtime speed, compilation speed, and encoding programmer intent, all within a data-oriented and procedural paradigm.
@@ -22,7 +24,7 @@ Kerrek is not going to prevent every bug, but I hope to make it easier to write 
 
 In many programs, it's unclear when data can be mutated. It's an implicit understanding that probably lives in one engineer's brain or some comment tucked away in a class definition. So programmers are just defensive about it instead. Immutability. Encapsulation. Defensive copies. All because nobody is sure when it's appropriate to mutate data. We make computers work harder than they really need to copying objects all the time. Frameworks create convoluted "functional" mazes that pretend data doesn't change, when really they've secretly invented a system of carefully scoped mutation.
 
-Encapsulation tries to hide that a different way by using getters and setters, but really all that enables is ensuring variants are maintained, all at the cost of awkward method calls or property accessors that hide control flow. You can still call setters at any time, even when it might actually be invalid to do so. Nothing is really protected.
+Encapsulation tries to address the problem a different way by using getters and setters, but really all that enables is ensuring variants are maintained, all at the cost of awkward method calls or property accessors that hide control flow. You can still call setters at any time, even when it might actually be invalid to do so. Nothing is really protected.
 
 Why not dispense with all that ceremony and provide information to the compiler about when it is valid to mutate certain values?
 
@@ -34,7 +36,7 @@ While it's not one of my primary goals, much of what this language does would be
 
 ## Couldn't a lot of this be a linter?
 
-Probably. You could encode these assumptions in comments and check them in much the same way. This may, in fact, be a possible future for Kerrek. I don't know yet, and it's something I will gladly entertain.
+Probably. You could encode these assumptions in comments within a host language and check them in much the same way. This may, in fact, be a possible future for Kerrek. I don't know yet, and it's something I will gladly entertain.
 
 # Status / Roadmap
 
