@@ -5,7 +5,8 @@ from types import EllipsisType
 from typing import Iterable, cast, overload
 
 from frontend import ast, diagnostics
-from frontend.lexer import Identifier, Location, Numeric, Punctuation, String, Token, Keyword, TokenData, NumberLiteralForm, tokenize
+from frontend.common import Location
+from frontend.lexer import Garbage, Identifier, Numeric, Punctuation, Rune, String, Token, Keyword, TokenData, NumberLiteralForm, tokenize
 
 
 class Associativity(Enum):
@@ -14,27 +15,27 @@ class Associativity(Enum):
     Right = auto()
 
 BINOPS = {
-    Punctuation.DStar: (10, ast.Operator.Exponent, Associativity.Right),
+    Punctuation.DStar: (100, ast.Operator.Power, Associativity.Right),
 
-    Punctuation.Star: (20, ast.Operator.Multiply, Associativity.Left),
-    Punctuation.Slash: (20, ast.Operator.Divide, Associativity.Left),
-    Punctuation.DSlash: (20, ast.Operator.FloorDivide, Associativity.Left),
-    Punctuation.Percent: (20, ast.Operator.Remainder, Associativity.Left),
+    Punctuation.Star: (80, ast.Operator.Multiply, Associativity.Left),
+    Punctuation.Slash: (80, ast.Operator.Divide, Associativity.Left),
+    Punctuation.DSlash: (80, ast.Operator.FloorDivide, Associativity.Left),
+    Punctuation.Percent: (80, ast.Operator.Remainder, Associativity.Left),
 
-    Punctuation.Plus: (30, ast.Operator.Add, Associativity.Left),
-    Punctuation.Minus: (30, ast.Operator.Subtract, Associativity.Left),
+    Punctuation.Plus: (50, ast.Operator.Add, Associativity.Left),
+    Punctuation.Minus: (50, ast.Operator.Subtract, Associativity.Left),
 
-    Keyword.Mod: (40, ast.Operator.Modulo, Associativity.Left),
+    Keyword.Mod: (30, ast.Operator.Modulo, Associativity.Left),
 
-    Punctuation.EQ: (50, ast.Operator.Equal, Associativity.NonAssociative),
-    Punctuation.NE: (50, ast.Operator.NotEqual, Associativity.NonAssociative),
-    Punctuation.GT: (50, ast.Operator.Greater, Associativity.NonAssociative),
-    Punctuation.GE: (50, ast.Operator.GreaterEqual, Associativity.NonAssociative),
-    Punctuation.LT: (50, ast.Operator.Less, Associativity.NonAssociative),
-    Punctuation.LE: (50, ast.Operator.LessEqual, Associativity.NonAssociative),
+    Punctuation.EQ: (20, ast.Operator.Equal, Associativity.NonAssociative),
+    Punctuation.NE: (20, ast.Operator.NotEqual, Associativity.NonAssociative),
+    Punctuation.GT: (20, ast.Operator.Greater, Associativity.NonAssociative),
+    Punctuation.GE: (20, ast.Operator.GreaterEqual, Associativity.NonAssociative),
+    Punctuation.LT: (20, ast.Operator.Less, Associativity.NonAssociative),
+    Punctuation.LE: (20, ast.Operator.LessEqual, Associativity.NonAssociative),
 
-    Keyword.And: (100, ast.Operator.And, Associativity.Left),
-    Keyword.Or: (100, ast.Operator.Or, Associativity.Left),
+    Keyword.And: (10, ast.Operator.And, Associativity.Left),
+    Keyword.Or: (10, ast.Operator.Or, Associativity.Left),
 }
 
 CONTINUATION_TOKENS = frozenset([
@@ -995,13 +996,55 @@ class Parser:
                 )
 
             case Token(what=String()):
-                pass
+                self.tokens.advance()
+                return ast.SimpleLiteralExpr(
+                    file=tok.file,
+                    start=tok.start,
+                    end=tok.end,
+                    value=tok.what.value,
+                )
+
+            case Token(what=Rune()):
+                self.tokens.advance()
+                return ast.SimpleLiteralExpr(
+                    file=tok.file,
+                    start=tok.start,
+                    end=tok.end,
+                    value=ast.RuneValue(tok.what.codepoint),
+                )
+
+            case Token(what=Keyword.True_):
+                self.tokens.advance()
+                return ast.SimpleLiteralExpr(
+                    file=tok.file,
+                    start=tok.start,
+                    end=tok.end,
+                    value=True,
+                )
+
+            case Token(what=Keyword.False_):
+                self.tokens.advance()
+                return ast.SimpleLiteralExpr(
+                    file=tok.file,
+                    start=tok.start,
+                    end=tok.end,
+                    value=False,
+                )
+
+            case Token(what=Keyword.Nil):
+                self.tokens.advance()
+                return ast.SimpleLiteralExpr(
+                    file=tok.file,
+                    start=tok.start,
+                    end=tok.end,
+                    value=None,
+                )
 
     def _binop_expr(self, lhs: ast.Expression, min_precedence=0) -> ast.Expression | None:
         while op_tok1 := self.tokens.peek():
             try:
                 prec1, op, _ = BINOPS[op_tok1.what]
-            except KeyError:
+            except (KeyError, TypeError):
                 return lhs
 
             if prec1 < min_precedence:
@@ -1016,7 +1059,7 @@ class Parser:
             while op_tok2 := self.tokens.peek():
                 try:
                     prec2, _, assoc = BINOPS[op_tok2.what]
-                except KeyError:
+                except (KeyError, TypeError):
                     break
 
                 if assoc is Associativity.NonAssociative and prec2 == prec1:

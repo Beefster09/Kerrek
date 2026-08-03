@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TextIO, overload
 
 from frontend import ast
-from frontend.lexer import Location
+from frontend.common import Location
 
 
 class DiagnosticLevel(Enum):

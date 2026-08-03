@@ -80,7 +80,7 @@ class UnitType(_Symbol):
 class Unit(_Symbol):
     name: Identifier
     unit_type: UnitType | None = None
-    definition: ast.Node
+    definition: ast.UnitDecl | ast.UnitAlias | ast.UnitConversionDef
     conversions: dict[SymbolID, Fraction] = field(default_factory=dict)
 
 
@@ -172,19 +172,26 @@ BUILTINS = {
         'UInt32',
         'UInt16',
         'UInt8',
+        'Byte',
 
         'Number',
         'Dec128',
         'Dec64',
         'Dec32',
 
+        # Float types are in intrinsics:float
+
         'Boolean',
         'String',
+        'Rune',
+
+        'Any',
 
         # - ANNOTATIONS -
         'private',
         'deprecated',
         'forward',
+        'pure',
     ]
 }
 
@@ -218,22 +225,67 @@ class CanonicalUnit(Counter[SymbolID]):
         else:
             return '<ratio>'
 
-    def combine(self, other: CanonicalUnit | None, exponent: int = 1):
-        result = CanonicalUnit(self)
+    def __repr__(self):
+        components = []
+        for comp_id, exp in self.most_common():
+            if exp == 0:
+                continue
 
-        if other is None:
-            return result
+            unit = SYMBOLS_BY_ID[comp_id]
+            unit_name = unit.name if isinstance(unit, (Unit, UnitType)) else '???'
 
-        for comp, exp in other.items():
+            if exp == 1:
+                components.append(str(unit_name))
+            else:
+                components.append(f"{unit_name}^{exp}")
+
+        if components:
+            return f"unit({' '.join(components)})"
+        else:
+            return 'unit()'
+
+    def __mul__(self, exponent: int):
+        if not isinstance(exponent, int):
+            return NotImplemented
+
+        result = CanonicalUnit()
+
+        for comp, exp in self.items():
             result[comp] += exp * exponent
 
         return result
 
+    __rmul__ = __mul__
+
+    def inplace_combine(self, other: CanonicalUnit, exponent: int):
+        for comp, exp in other.items():
+            self[comp] += exp * exponent
+
+    @staticmethod
+    def combine(
+        a: CanonicalUnit | None, a_exp: int,
+        b: CanonicalUnit | None, b_exp: int,
+    ) -> CanonicalUnit | None:
+        if a is None and b is None:
+            return None
+
+        result = CanonicalUnit()
+
+        if a is not None:
+            for comp, exp in a.items():
+                result[comp] += exp * a_exp
+
+        if b is not None:
+            for comp, exp in b.items():
+                result[comp] += exp * b_exp
+
+        return result
 
 @dataclass
 class ScalarValue:
     value: Num
     unit: CanonicalUnit | None
+    absolute: bool = False
 
     def __bool__(self) -> bool:
         return bool(self.value)
@@ -364,7 +416,7 @@ class Resolver:
                     local_scope[node.name] = Variable(name=node.name, definition=node)
 
             case _:
-                for sub in node.children():
+                for sub in node:
                     self._resolve_names(module, sub, *scopes)
 
     def _resolve_name(
@@ -462,7 +514,9 @@ class Resolver:
                 if isinstance(resolved.definition, ast.UnitAlias):
                     self._ensure_canonical_unit(resolved.definition.base)
                     assert resolved.definition.base.canonical is not None
-                    unit.canonical.combine(resolved.definition.base.canonical, component.exponent)
+                    unit.canonical.inplace_combine(
+                        resolved.definition.base.canonical, component.exponent,
+                    )
                 else:
                     unit.canonical[resolved.id] += component.exponent
             else:
@@ -494,7 +548,6 @@ def _ensure_const_evaluated(const: Constant):
     if const.value is EvalState.Unresolved:
         try:
             const.value = evaluate(const.definition.expr)
-            print(const.name, const.value)
         except Exception as err:
             diagnostics.error(f"value for {const.name} cannot be computed at compile time: {err}", const.definition)
             const.value = EvalState.Uncomputable
@@ -519,11 +572,32 @@ def evaluate(node: ast.Expression):
                 if value is EvalState.Uncomputable:
                     raise TypeError(f"const {'.'.join(node.name.path)} was unable to be evaluated")
                 return value
+            elif isinstance(resolved, Unit):
+                if isinstance(resolved.definition, ast.UnitAlias):
+                    return ScalarValue(1, resolved.definition.base.canonical)
+                else:
+                    return ScalarValue(1, CanonicalUnit([resolved.id]))
             else:
-                raise TypeError(f"{'.'.join(node.name.path)} does not name a compile-time-known constant")
+                raise TypeError(f"{'.'.join(node.name.path)} does not name a constant or unit")
 
         case _:
             raise TypeError(f"no compile-time evaluation is defined for {type(node).__name__}")
+
+
+def remainder(lhs, rhs):
+    if isinstance(lhs, int):
+        return lhs % rhs
+    else:
+        return lhs - (math.floor(lhs / rhs) * rhs)
+
+
+def modulo(lhs, rhs):
+    rem = remainder(lhs, rhs)
+
+    if rem >= 0:
+        return rem
+    else:
+        return rhs + rem
 
 
 BINOP_FUNCS = {
@@ -532,9 +606,9 @@ BINOP_FUNCS = {
     ast.Operator.Multiply: operator.mul,
     ast.Operator.Divide: operator.truediv,
     ast.Operator.FloorDivide: operator.floordiv,
-    ast.Operator.Exponent: operator.pow,
+    ast.Operator.Power: operator.pow,
 
-    ast.Operator.Modulo: math.modf,  # TEMP: incorrect - does not properly support decimal or fraction
+    ast.Operator.Modulo: modulo,
     ast.Operator.Remainder: math.remainder,  # TEMP: incorrect - does not properly support decimal or fraction
 
     ast.Operator.Equal: operator.eq,
@@ -590,19 +664,38 @@ def _eval_binop(binop: ast.BinopExpr):
         case ast.Operator.Multiply, ScalarValue(), ScalarValue():
             return ScalarValue(
                 operator.mul(*_coerce(lhs.value, rhs.value)),
-                lhs.unit.combine(rhs.unit) if lhs.unit else rhs.unit,
+                CanonicalUnit.combine(lhs.unit, 1, rhs.unit, 1),
             )
 
         case ast.Operator.Divide, ScalarValue(), ScalarValue():
             return ScalarValue(
                 Fraction(lhs.value) / Fraction(rhs.value),
-                lhs.unit.combine(rhs.unit, -1) if lhs.unit else rhs.unit,
+                CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1),
             )
 
         case ast.Operator.FloorDivide, ScalarValue(), ScalarValue():
             return ScalarValue(
                 operator.floordiv(*_coerce(lhs.value, rhs.value)),
-                lhs.unit.combine(rhs.unit, -1) if lhs.unit else rhs.unit,
+                CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1),
+            )
+
+        case ast.Operator.Power, ScalarValue(), ScalarValue():
+            if rhs.unit:
+                raise ValueError("exponents must be unitless")
+
+            if lhs.unit:
+                frac_exp = Fraction(rhs.value)
+                if frac_exp.is_integer():
+                    new_unit = lhs.unit * frac_exp.numerator
+
+                else:
+                    raise ValueError("fractional exponents not yet supported for values with units")
+            else:
+                new_unit = None
+
+            return ScalarValue(
+                operator.pow(*_coerce(lhs.value, rhs.value)),
+                new_unit,
             )
 
         case _:

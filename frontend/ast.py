@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from decimal import Decimal
 from enum import Enum, auto
-from os import PathLike
 from pathlib import Path
 from types import EllipsisType
 from typing import TYPE_CHECKING, Any
 
-from frontend.lexer import Location, Identifier, Numeric
+from frontend.lexer import Identifier, Numeric
+from frontend.common import Location
 
 if TYPE_CHECKING:
     from frontend.resolver import CanonicalUnit, Named, Constant
@@ -36,7 +36,7 @@ class Node:
             **other,
         )
 
-    def children(self):
+    def __iter__(self):
         for f in fields(self):
             value = getattr(self, f.name)
             if not value:
@@ -46,8 +46,6 @@ class Node:
                     yield sub
             elif isinstance(value, Node):
                 yield value
-
-    __iter__ = children
 
     def walk(self):
         yield self
@@ -204,9 +202,18 @@ class ScalarLiteralExpr(Expression):
     unit: CompoundUnit | None
 
 
+@dataclass
+class RuneValue:
+    codepoint: int
+
+    @property
+    def char(self):
+        return chr(self.codepoint)
+
+
 @dataclass(kw_only=True)
 class SimpleLiteralExpr(Expression):
-    value: str | bool | None
+    value: RuneValue | str | bool | None
 
 
 class Operator(Enum):
@@ -217,7 +224,7 @@ class Operator(Enum):
     FloorDivide = '//'
     Remainder = '%'
     Modulo = 'mod'
-    Exponent = '**'
+    Power = '**'
 
     Equal = '=='
     NotEqual = '!='
