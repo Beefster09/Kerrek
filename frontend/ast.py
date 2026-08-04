@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum, auto
 from pathlib import Path
 from types import EllipsisType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from frontend.lexer import Identifier, Numeric
 from frontend.common import Location
@@ -100,14 +100,14 @@ class TopLevelDeclaration(TopLevelItem):
 @dataclass(kw_only=True)
 class GlobalConstant(TopLevelDeclaration):
     name: Identifier
-    type: TypeExpression | None
+    type: TypeExpression | Literal[TypeState.Flexible]
     expr: Expression
 
 
 @dataclass(kw_only=True)
 class GlobalVariable(TopLevelDeclaration):
     name: Identifier
-    type: TypeExpression | None
+    type: TypeExpression | Literal[TypeState.NotDetermined]
     expr: Expression | None
 
 
@@ -227,6 +227,10 @@ class SimpleLiteralExpr(Expression):
     def __post_init__(self):
         self.folded_value = self.value
 
+@dataclass
+class ImplicitEnum(Expression):
+    name: Identifier
+
 
 class Operator(Enum):
     Add = '+'
@@ -280,7 +284,7 @@ class CallExpr(Expression):
     args: list[Argument]
 
 
-# === TYPES ===
+# === TYPE EXPRESSIONS ===
 
 
 @dataclass(kw_only=True)
@@ -371,17 +375,15 @@ class UnboundVar(Node):
 @dataclass(kw_only=True)
 class LocalVariable(Statement):
     name: Identifier
-    type: TypeExpression | None
+    type: TypeExpression | Literal[TypeState.NotDetermined]
     expr: Expression | UnboundVar | None
 
 
 @dataclass(kw_only=True)
 class LocalConstant(Statement):
     name: Identifier
-    type: TypeExpression | None
+    type: TypeExpression | Literal[TypeState.Flexible]
     expr: Expression
-
-    resolves_to: Constant | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
@@ -407,12 +409,12 @@ class FormalParameter(Node):
 
 
 @dataclass(kw_only=True)
-class FuncDefinition(TopLevelDeclaration):
+class FuncDefinition(TopLevelDeclaration, Statement):
     name: Identifier
     params: list[FormalParameter]
     return_types: list[TypeExpression]
     error_type: TypeExpression | EllipsisType | None = None  # Ellipsis as the error type indicates the function can fail but the error type is void
-    capabilities_required: CapabilityExpression | None = None
+    requires: CapabilityExpression | None = None
     body: Block
 
 
@@ -420,3 +422,45 @@ class FuncDefinition(TopLevelDeclaration):
 class Argument(Node):
     name: Identifier | None
     expr: Expression
+
+
+@dataclass(kw_only=True)
+class FuncOverload(TopLevelDeclaration):
+    name: Identifier
+    overloads: list[QualifiedName]
+
+
+# === TYPE DEFINITIONS ===
+
+
+@dataclass(kw_only=True)
+class StructField(Node):
+    name: Identifier
+    type: TypeExpression
+    requires: CapabilityExpression | None = None
+    is_using: bool = False
+
+
+@dataclass(kw_only=True)
+class StructDefinition(TopLevelDeclaration, Statement):
+    name: Identifier
+    fields: list[StructField]
+    params: list[FormalParameter]
+    construct_requires: CapabilityExpression | None
+
+
+@dataclass(kw_only=True)
+class UnionDefinition(TopLevelDeclaration, Statement):
+    name: Identifier
+    variants: list[TypeExpression]
+
+
+@dataclass(kw_only=True)
+class EnumValue(Node):
+    name: Identifier
+
+
+@dataclass(kw_only=True)
+class EnumDefinition(TopLevelDeclaration, Statement):
+    name: Identifier
+    values: list[EnumValue]

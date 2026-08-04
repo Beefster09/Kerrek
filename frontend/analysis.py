@@ -37,7 +37,7 @@ def validate(node: ast.TopLevelDeclaration):
                 if param.default:
                     val, typ = exprs.fold_constants(param.default)
                     #_type_check(param.type, typ)
-                    params_scope[param.name] = VarState(type=param.type)
+                    params_scope[param.name] = VarState(type=typ)
 
             _validate_block(node.body, {})
 

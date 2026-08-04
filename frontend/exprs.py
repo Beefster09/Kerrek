@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, NamedTuple
 
 from frontend import ast, diagnostics
-from frontend.resolver import CanonicalUnit, Constant, EvalState, Unit, Variable
+from frontend.resolver import CanonicalUnit, Constant, BaseType, PrimitiveType, Unit, Variable
 
 
 type Num = int | float | Decimal | Fraction
@@ -24,67 +24,19 @@ class ScalarValue:
     def __bool__(self) -> bool:
         return bool(self.value)
 
-class PrimitiveType(Enum):
-    Integer = 'Integer'
-    Int64 = 'Int64'
-    Int32 = 'Int32'
-    Int16 = 'Int16'
-    Int8 = 'Int8'
-    UInt64 = 'UInt64'
-    UInt32 = 'UInt32'
-    UInt16 = 'UInt16'
-    UInt8 = 'UInt8'
-    Byte = 'Byte'
-
-    Number = 'Number'
-    Dec64 = 'Dec64'
-    Dec32 = 'Dec32'
-
-    Float64 = 'Float64'
-    Float32 = 'Float32'
-
-    Boolean = 'Boolean'
-    String = 'String'
-    Rune = 'Rune'
-
-    Any = 'Any'
-
 
 type ComptimeValue = ScalarValue | ast.RuneValue | str | bool | None | ast.ConstantFolding
-type ComptimeType = PrimitiveType | ast.TypeState
+type ComptimeType = BaseType | ast.TypeState
 type ExprResult = tuple[ComptimeValue, ComptimeType]
 
-def calculate_constants(self):
-    """calculates compile-time known values:
 
-    - global constants
-    - local constants
-    - default values of struct fields
-    - default values of function parameters (usually)
-    - initial values of global variables (sometimes)
-    """
-    for module in self.modules.values():
-        for const in module.constants.values():
-            _ensure_const_evaluated(const)
+def _ensure_const_evaluated(const_sym: Constant) -> ExprResult:
+    const_def = const_sym.definition
+    if const_def.expr.folded_value is ast.ConstantFolding.NotEvaluated:
+        return fold_constants(const_def.expr)
+        #_check_type(const_def.type, typ)
 
-        for func in module.funcs.values():
-            for stmt in func.definition.body.walk_statements():
-                if isinstance(stmt, ast.LocalConstant):
-                    assert stmt.resolves_to, "this should have been defined by now"
-                    _ensure_const_evaluated(stmt.resolves_to)
-
-    diagnostics.report()
-
-
-def _ensure_const_evaluated(const: Constant):
-    if const.value is ast.ConstantFolding.NotEvaluated:
-        try:
-            const.value = fold_constants(const.definition.expr)
-        except Exception as err:
-            diagnostics.error(f"value for {const.name} cannot be computed at compile time: {err}", const.definition)
-            const.value = ast.ConstantFolding.RuntimeValue
-
-    return const.value
+    return const_def.expr.folded_value, const_def.expr.result_type
 
 
 def fold_constants(node: ast.Expression) -> ExprResult:
@@ -98,6 +50,11 @@ def fold_constants(node: ast.Expression) -> ExprResult:
         diagnostics.error(f"compile time evaluation failed: {err}", node)
         value = ast.ConstantFolding.Failed
         typ = ast.TypeState.Failed
+    else:
+        if typ is ast.TypeState.Failed:
+            value = ast.ConstantFolding.Failed
+        if typ is ast.TypeState.Impossible:
+            value = ast.ConstantFolding.Failed
 
     node.folded_value = value
     node.result_type = typ
@@ -117,10 +74,10 @@ def _evaluate(node: ast.Expression) -> ExprResult:
         case ast.QualnameExpr():
             resolved = node.name.resolves_to
             if isinstance(resolved, Constant):
-                val = _ensure_const_evaluated(resolved)
-                return val, ast.TypeState.Flexible  # WRONG: flexible type might be wrong here
+                return _ensure_const_evaluated(resolved)
             elif isinstance(resolved, Variable):
-                return ast.ConstantFolding.RuntimeValue, resolved.type  # TODO: ensure the variable's type is inferred (might be hard for globals)
+                # TODO: ensure the variable's type is inferred (might be hard for globals)
+                return ast.ConstantFolding.RuntimeValue, resolved.type
             elif isinstance(resolved, Unit):
                 if isinstance(resolved.definition, ast.UnitAlias):
                     return ScalarValue(1, resolved.definition.base.canonical), ast.TypeState.Flexible
@@ -176,16 +133,18 @@ BINOP_FUNCS = {
 def _eval_binop(binop: ast.BinopExpr) -> ExprResult:
     lhs, lhs_type = fold_constants(binop.lhs)
     rhs, rhs_type = fold_constants(binop.rhs)
-    return _eval_binop_value(binop.op, lhs, rhs), _eval_binop_type(binop.op, lhs_type, rhs_type)
+    return _eval_binop_value(binop, lhs, rhs), _eval_binop_type(binop.op, lhs_type, rhs_type)
 
-def _eval_binop_value(op: ast.Operator, lhs: ComptimeValue, rhs: ComptimeValue) -> ComptimeValue:
+def _eval_binop_value(binop: ast.BinopExpr, lhs: ComptimeValue, rhs: ComptimeValue) -> ComptimeValue:
+    if lhs is ast.ConstantFolding.Failed or rhs is ast.ConstantFolding.Failed:
+        return ast.ConstantFolding.Failed
+
+    if lhs is ast.ConstantFolding.RuntimeValue or rhs is ast.ConstantFolding.RuntimeValue:
+        return ast.ConstantFolding.RuntimeValue  # might still be invalid depending on typechecking result
+
+    op = binop.op
+
     match op, lhs, rhs:
-        case (_, ast.ConstantFolding.RuntimeValue, _) | (_, _, ast.ConstantFolding.RuntimeValue):
-            return ast.ConstantFolding.RuntimeValue
-
-        case (_, ast.ConstantFolding.Failed, _) | (_, _, ast.ConstantFolding.Failed):
-            return ast.ConstantFolding.Failed
-
         case (ast.Operator.Equal, None, _) | (ast.Operator.Equal, _, None):
             return lhs is None and rhs is None
 
@@ -266,7 +225,11 @@ def _eval_binop_value(op: ast.Operator, lhs: ComptimeValue, rhs: ComptimeValue) 
         case _:
             diagnostics.error(
                 f"no evaluation defined for operator {op.value}"
-                + f" on types {type(lhs).__name__} and {type(rhs).__name__}", )
+                + f" on types {type(lhs).__name__} and {type(rhs).__name__}",
+                binop,
+            )
+
+            return ast.ConstantFolding.Failed
 
 
 def _zero(value):

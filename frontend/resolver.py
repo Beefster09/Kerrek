@@ -31,6 +31,32 @@ class EvalState(Enum):
     Uncomputable = auto()
 
 
+class PrimitiveType(Enum):
+    Integer = 'Integer'
+    Int64 = 'Int64'
+    Int32 = 'Int32'
+    Int16 = 'Int16'
+    Int8 = 'Int8'
+    UInt64 = 'UInt64'
+    UInt32 = 'UInt32'
+    UInt16 = 'UInt16'
+    UInt8 = 'UInt8'
+    Byte = 'Byte'
+
+    Decimal = 'Decimal'
+    Dec64 = 'Dec64'
+    Dec32 = 'Dec32'
+
+    Float64 = 'Float64'
+    Float32 = 'Float32'
+
+    Boolean = 'Boolean'
+    String = 'String'
+    Rune = 'Rune'
+
+    Any = 'Any'
+
+
 @dataclass(kw_only=True)
 class _Symbol:
     id: SymbolID = field(default_factory=_NEXT_SYM.__next__)
@@ -40,9 +66,30 @@ class _Symbol:
 
 
 @dataclass(kw_only=True)
-class Type(_Symbol):
+class StructType(_Symbol):
     name: Identifier
-    definition: ast.Node
+    definition: ast.StructDefinition
+
+
+@dataclass(kw_only=True)
+class UnionType(_Symbol):
+    name: Identifier
+    definition: ast.UnionDefinition
+
+
+@dataclass(kw_only=True)
+class EnumType(_Symbol):
+    name: Identifier
+    definition: ast.EnumDefinition
+
+
+@dataclass(kw_only=True)
+class DistinctType(_Symbol):
+    name: Identifier
+    definition: ast.DistinctTypeDecl
+
+
+type BaseType = PrimitiveType | EnumType | StructType | UnionType | DistinctType
 
 
 @dataclass(kw_only=True)
@@ -55,15 +102,13 @@ class Function(_Symbol):
 @dataclass(kw_only=True)
 class Constant(_Symbol):
     name: Identifier
-    type: Type | None = None
-    value: Any = ast.ConstantFolding.NotEvaluated
     definition: ast.GlobalConstant | ast.LocalConstant
 
 
 @dataclass(kw_only=True)
 class Variable(_Symbol):
     name: Identifier
-    type: Type | None = None
+    type: BaseType | None = None
     initial_value: Any = ast.ConstantFolding.NotEvaluated
     definition: ast.GlobalVariable | ast.LocalVariable | ast.FormalParameter
 
@@ -93,7 +138,7 @@ class Module(_Symbol):
     file: ast.File
     name: Identifier
     imports: dict[Identifier, Module] = field(default_factory=dict)
-    types: dict[Identifier, Type] = field(default_factory=dict)
+    types: dict[Identifier, BaseType] = field(default_factory=dict)
     funcs: dict[Identifier, Function] = field(default_factory=dict)
     constants: dict[Identifier, Constant] = field(default_factory=dict)
     variables: dict[Identifier, Variable] = field(default_factory=dict)
@@ -159,28 +204,11 @@ BUILTINS = {
     Identifier(name): Builtin(Identifier(name))
     for name in [
         # - TYPES -
-        'Integer',
-        'Int64',
-        'Int32',
-        'Int16',
-        'Int8',
-        'UInt64',
-        'UInt32',
-        'UInt16',
-        'UInt8',
-        'Byte',
-
-        'Number',
-        'Dec64',
-        'Dec32',
-
-        # Float types are in intrinsics:float
-
-        'Boolean',
-        'String',
-        'Rune',
-
-        'Any',
+        *(
+            prim.value
+            for prim in PrimitiveType
+            if not prim.value.startswith('Float')
+        ),
 
         # - ANNOTATIONS -
         'private',
@@ -362,8 +390,8 @@ class Resolver:
                 if node.error_type is not ... and node.error_type is not None:
                     self._resolve_names(module, node.error_type, templates, *scopes)
 
-                if node.capabilities_required:
-                    self._resolve_names(module, node.capabilities_required, *scopes)
+                if node.requires:
+                    self._resolve_names(module, node.requires, *scopes)
 
                 self._resolve_names(module, node.body, params, templates, *scopes)
 
@@ -377,7 +405,7 @@ class Resolver:
                     diagnostics.error("placeholder ('_') is not a valid variable name", node)
                     return
 
-                if node.type:
+                if isinstance(node.type, ast.Expression):
                     self._resolve_names(module, node.type, *scopes)
                 if node.expr:
                     self._resolve_names(module, node.expr, *scopes)
@@ -391,11 +419,10 @@ class Resolver:
                 elif node.name in module:
                     diagnostics.notice(f"local '{node.name}' shadows module global", node)
                 elif node.name in BUILTINS:
-                    diagnostics.notice(f"local '{node.name}' shadows builtin", node)
+                    diagnostics.warning(f"local '{node.name}' shadows builtin", node)
 
                 if isinstance(node, ast.LocalConstant):
-                    local_scope[node.name] = node.resolves_to \
-                        = Constant(name=node.name, definition=node)
+                    local_scope[node.name] = Constant(name=node.name, definition=node)
                 else:
                     local_scope[node.name] = Variable(name=node.name, definition=node)
 

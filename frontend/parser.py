@@ -283,7 +283,10 @@ class Parser:
             case Keyword.Type:
                 raise NotImplementedError()
 
-            case Keyword.Type:
+            case Keyword.Let:
+                raise NotImplementedError()
+
+            case Keyword.Const:
                 raise NotImplementedError()
 
             case Keyword.Unit:
@@ -857,7 +860,7 @@ class Parser:
                         start=tok.start,
                         end=value.end if value else tok.end,
                         name=name.what,
-                        type=typ,
+                        type=typ or ast.TypeState.Flexible,
                         expr=value,
                     )
                 else:
@@ -866,7 +869,7 @@ class Parser:
                         start=tok.start,
                         end=value.end if value else tok.end,
                         name=name.what,
-                        type=typ,
+                        type=typ or ast.TypeState.NotDetermined,
                         expr=value,
                     )
 
