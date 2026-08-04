@@ -601,7 +601,7 @@ class Parser:
                 start=m[0].start,
                 end=param_type.end,
                 name=m[0].what,
-                type_=param_type,
+                type=param_type,
                 default=default,
             ))
 
@@ -831,10 +831,7 @@ class Parser:
 
                 if self.tokens.match_one(Punctuation.Assign):
                     if ell := self.tokens.match_one(Punctuation.Ellipsis_):
-                        if is_const:
-                            self._emit_error("const expressions cannot be explicitly undefined", tok.start, ell.end)
-
-                        value = ast.UndefinedValue(
+                        value = ast.UnboundVar(
                             file=ell.file,
                             start=ell.start,
                             end=ell.end,
@@ -851,7 +848,7 @@ class Parser:
                     value = None
 
                 if is_const:
-                    if value is None:
+                    if value is None or isinstance(value, ast.UnboundVar):
                         self._emit_error("const declarations must be given a value", tok)
                         return None
 

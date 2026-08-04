@@ -181,14 +181,23 @@ class CompoundUnit(Node):
 # === EXPRESSIONS ===
 
 
+class ConstantFolding(Enum):
+    NotEvaluated = auto()
+    RuntimeValue = auto()
+    Failed = auto()
+
+
+class TypeState(Enum):
+    NotDetermined = auto()
+    Flexible = auto()  # i.e. the value assumes whatever compatible type it might need to be
+    Impossible = auto()  # i.e. the expression cannot possibly be evaluated
+    Failed = auto()  # i.e. an error occured while trying to evaluate the type
+
+
 @dataclass(kw_only=True)
 class Expression(Node):
-    pass
-
-
-@dataclass(kw_only=True)
-class UndefinedValue(Expression):
-    pass
+    folded_value: Any = field(default=ConstantFolding.NotEvaluated, repr=False)
+    result_type: Any = field(default=TypeState.NotDetermined, repr=False)
 
 
 @dataclass(kw_only=True)
@@ -214,6 +223,9 @@ class RuneValue:
 @dataclass(kw_only=True)
 class SimpleLiteralExpr(Expression):
     value: RuneValue | str | bool | None
+
+    def __post_init__(self):
+        self.folded_value = self.value
 
 
 class Operator(Enum):
@@ -352,10 +364,15 @@ class AssignStatement(Statement):
 
 
 @dataclass(kw_only=True)
+class UnboundVar(Node):
+    pass
+
+
+@dataclass(kw_only=True)
 class LocalVariable(Statement):
     name: Identifier
     type: TypeExpression | None
-    expr: Expression | None
+    expr: Expression | UnboundVar | None
 
 
 @dataclass(kw_only=True)
@@ -385,7 +402,7 @@ class Block(Statement):
 @dataclass(kw_only=True)
 class FormalParameter(Node):
     name: Identifier
-    type_: TypeExpression
+    type: TypeExpression
     default: Expression | None = None
 
 

@@ -8,7 +8,7 @@ from decimal import Decimal
 from enum import Enum, auto
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Literal, NewType
+from typing import Any, NewType
 
 from frontend import diagnostics
 from frontend import ast
@@ -25,8 +25,6 @@ def _symbol_gen():
 
 _NEXT_SYM = _symbol_gen()
 SYMBOLS_BY_ID: dict[SymbolID, _Symbol] = {}
-
-type Num = int | float | Decimal | Fraction
 
 class EvalState(Enum):
     Unresolved = auto()
@@ -58,7 +56,7 @@ class Function(_Symbol):
 class Constant(_Symbol):
     name: Identifier
     type: Type | None = None
-    value: Any = EvalState.Unresolved
+    value: Any = ast.ConstantFolding.NotEvaluated
     definition: ast.GlobalConstant | ast.LocalConstant
 
 
@@ -66,8 +64,8 @@ class Constant(_Symbol):
 class Variable(_Symbol):
     name: Identifier
     type: Type | None = None
-    initial_value: Any = EvalState.Unresolved
-    definition: ast.GlobalConstant | ast.LocalVariable | ast.FormalParameter
+    initial_value: Any = ast.ConstantFolding.NotEvaluated
+    definition: ast.GlobalVariable | ast.LocalVariable | ast.FormalParameter
 
 
 @dataclass(kw_only=True)
@@ -162,12 +160,10 @@ BUILTINS = {
     for name in [
         # - TYPES -
         'Integer',
-        'Int128',
         'Int64',
         'Int32',
         'Int16',
         'Int8',
-        'UInt128',
         'UInt64',
         'UInt32',
         'UInt16',
@@ -175,7 +171,6 @@ BUILTINS = {
         'Byte',
 
         'Number',
-        'Dec128',
         'Dec64',
         'Dec32',
 
@@ -245,9 +240,6 @@ class CanonicalUnit(Counter[SymbolID]):
             return 'unit()'
 
     def __mul__(self, exponent: int):
-        if not isinstance(exponent, int):
-            return NotImplemented
-
         result = CanonicalUnit()
 
         for comp, exp in self.items():
@@ -281,20 +273,12 @@ class CanonicalUnit(Counter[SymbolID]):
 
         return result
 
-@dataclass
-class ScalarValue:
-    value: Num
-    unit: CanonicalUnit | None
-    absolute: bool = False
-
-    def __bool__(self) -> bool:
-        return bool(self.value)
-
 
 class Resolver:
     def __init__(self, project_root: Path = Path.cwd()):
         self.project_root = project_root
         self.modules: dict[Path, Module] = {}
+        self._deferred_unit_convs: list[ast.UnitConversionDef] = []
 
     def require(self, path: Path) -> Module:
         """Resolves imported modules and parses them if missing
@@ -366,11 +350,11 @@ class Resolver:
 
                     params[param.name] = Variable(name=param.name, definition=param)
 
-                    for sub in param.type_.walk():
+                    for sub in param.type.walk():
                         if isinstance(sub, ast.SimpleTemplateType):
                             templates[sub.name] = TemplateVar(sub.name)
 
-                    self._resolve_names(module, param.type_, templates, *scopes)
+                    self._resolve_names(module, param.type, templates, *scopes)
 
                 for ret in node.return_types:
                     self._resolve_names(module, ret, templates, *scopes)
@@ -484,14 +468,14 @@ class Resolver:
                 module.units[decl.name] = Unit(name=decl.name, definition=decl)
 
             case ast.UnitConversionDef():
+                self._deferred_unit_convs.append(decl)
+
                 if decl.dest in module.units:
                     return  # you can duplicate unit names for conversions
 
                 check_shadowing(decl, Unit, decl.dest)
 
                 module.units[decl.dest] = Unit(name=decl.dest, definition=decl)
-
-                # the actual conversion has to be resolved later
 
     def canonicalize_units(self):
         for module in self.modules.values():
@@ -522,252 +506,8 @@ class Resolver:
             else:
                 diagnostics.error(f"{component.base} is not a unit or unit type", component.base)
 
-    def calculate_constants(self):
-        """calculates compile-time known values:
-
-        - global constants
-        - local constants
-        - default values of struct fields
-        - default values of function parameters (usually)
-        - initial values of global variables (sometimes)
-        """
-        for module in self.modules.values():
-            for const in module.constants.values():
-                _ensure_const_evaluated(const)
-
-            for func in module.funcs.values():
-                for stmt in func.definition.body.walk_statements():
-                    if isinstance(stmt, ast.LocalConstant):
-                        assert stmt.resolves_to, "this should have been defined by now"
-                        _ensure_const_evaluated(stmt.resolves_to)
+    def build_unit_conversions(self):
+        for conv in self._deferred_unit_convs:
+            pass  # TODO
 
         diagnostics.report()
-
-
-def _ensure_const_evaluated(const: Constant):
-    if const.value is EvalState.Unresolved:
-        try:
-            const.value = evaluate(const.definition.expr)
-        except Exception as err:
-            diagnostics.error(f"value for {const.name} cannot be computed at compile time: {err}", const.definition)
-            const.value = EvalState.Uncomputable
-
-    return const.value
-
-
-def evaluate(node: ast.Expression):
-    match node:
-        case ast.SimpleLiteralExpr():
-            return node.value
-        case ast.ScalarLiteralExpr():
-            return ScalarValue(node.value.value, node.unit.canonical if node.unit else None)
-
-        case ast.BinopExpr():
-            return _eval_binop(node)
-
-        case ast.QualnameExpr():
-            resolved = node.name.resolves_to
-            if isinstance(resolved, Constant):
-                value = _ensure_const_evaluated(resolved)
-                if value is EvalState.Uncomputable:
-                    raise TypeError(f"const {'.'.join(node.name.path)} was unable to be evaluated")
-                return value
-            elif isinstance(resolved, Unit):
-                if isinstance(resolved.definition, ast.UnitAlias):
-                    return ScalarValue(1, resolved.definition.base.canonical)
-                else:
-                    return ScalarValue(1, CanonicalUnit([resolved.id]))
-            else:
-                raise TypeError(f"{'.'.join(node.name.path)} does not name a constant or unit")
-
-        case _:
-            raise TypeError(f"no compile-time evaluation is defined for {type(node).__name__}")
-
-
-def remainder(lhs, rhs):
-    if isinstance(lhs, int):
-        return lhs % rhs
-    else:
-        return lhs - (math.floor(lhs / rhs) * rhs)
-
-
-def modulo(lhs, rhs):
-    rem = remainder(lhs, rhs)
-
-    if rem >= 0:
-        return rem
-    else:
-        return rhs + rem
-
-
-BINOP_FUNCS = {
-    ast.Operator.Add: operator.add,
-    ast.Operator.Subtract: operator.sub,
-    ast.Operator.Multiply: operator.mul,
-    ast.Operator.Divide: operator.truediv,
-    ast.Operator.FloorDivide: operator.floordiv,
-    ast.Operator.Power: operator.pow,
-
-    ast.Operator.Modulo: modulo,
-    ast.Operator.Remainder: math.remainder,  # TEMP: incorrect - does not properly support decimal or fraction
-
-    ast.Operator.Equal: operator.eq,
-    ast.Operator.NotEqual: operator.ne,
-    ast.Operator.Less: operator.lt,
-    ast.Operator.LessEqual: operator.le,
-    ast.Operator.Greater: operator.gt,
-    ast.Operator.GreaterEqual: operator.ge,
-}
-
-
-def _eval_binop(binop: ast.BinopExpr):
-    lhs = evaluate(binop.lhs)
-    rhs = evaluate(binop.rhs)
-    match binop.op, lhs, rhs:
-        case (_, EvalState.Uncomputable, _) | (_, _, EvalState.Uncomputable):
-            return EvalState.Uncomputable
-
-        case (ast.Operator.Equal, None, _) | (ast.Operator.Equal, _, None):
-            return lhs is None and rhs is None
-
-        case (ast.Operator.NotEqual, None, _) | (ast.Operator.NotEqual, _, None):
-            return not (lhs is None and rhs is None)
-
-        case (_, None, _) | (_, _, None):
-            return None
-
-        case ast.Operator.Multiply, bool(), _:
-            return rhs if lhs else _zero(rhs)
-
-        case ast.Operator.Multiply, _, bool():
-            return lhs if rhs else _zero(lhs)
-
-        case ast.Operator.Add, str(), str():
-            return lhs + rhs
-
-        case ast.Operator.And, _, _:
-            return _truthy(lhs) and _truthy(rhs)
-
-        case ast.Operator.Or, _, _:
-            return _truthy(lhs) or _truthy(rhs)
-
-        case (
-            (
-                ast.Operator.Add | ast.Operator.Subtract
-                | ast.Operator.Remainder | ast.Operator.Modulo
-                | ast.Operator.Equal | ast.Operator.NotEqual
-                | ast.Operator.Less | ast.Operator.Greater
-                | ast.Operator.LessEqual | ast.Operator.GreaterEqual
-            ),
-            ScalarValue(), ScalarValue(),
-        ):
-            if lhs.unit == rhs.unit:
-                opfunc = BINOP_FUNCS[binop.op]
-                return ScalarValue(opfunc(*_coerce(lhs.value, rhs.value)), lhs.unit)
-            else:
-                raise ValueError(f"incompatible units: ({lhs.unit}) and ({rhs.unit})")
-
-        case ast.Operator.Multiply, ScalarValue(), ScalarValue():
-            return ScalarValue(
-                operator.mul(*_coerce(lhs.value, rhs.value)),
-                CanonicalUnit.combine(lhs.unit, 1, rhs.unit, 1),
-            )
-
-        case ast.Operator.Divide, ScalarValue(), ScalarValue():
-            return ScalarValue(
-                Fraction(lhs.value) / Fraction(rhs.value),
-                CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1),
-            )
-
-        case ast.Operator.FloorDivide, ScalarValue(), ScalarValue():
-            return ScalarValue(
-                operator.floordiv(*_coerce(lhs.value, rhs.value)),
-                CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1),
-            )
-
-        case ast.Operator.Power, ScalarValue(), ScalarValue():
-            if rhs.unit:
-                raise ValueError("exponents must be unitless")
-
-            if lhs.unit:
-                frac_exp = Fraction(rhs.value)
-                if frac_exp.is_integer():
-                    new_unit = lhs.unit * frac_exp.numerator
-
-                else:
-                    raise ValueError("fractional exponents not yet supported for values with units")
-            else:
-                new_unit = None
-
-            return ScalarValue(
-                operator.pow(*_coerce(lhs.value, rhs.value)),
-                new_unit,
-            )
-
-        case _:
-            raise ValueError(
-                f"no evaluation defined for operator {binop.op.value}"
-                + f" on types {type(lhs).__name__} and {type(rhs).__name__}")
-
-
-def _zero(value):
-    match value:
-        case ScalarValue():
-            return ScalarValue(type(value.value)(), value.unit)
-        case str():
-            return ""
-        case bool():
-            return False
-        case None:
-            return None
-        case _:
-            raise TypeError(f"cannot determine zero value for {type(value)}")
-
-
-def _truthy(value) -> bool:
-    match value:
-        case bool():
-            return value
-        case None:
-            return False
-        case _:
-            raise TypeError("compile-time truthiness is only defined for bool and nil")
-
-
-def _coerce(a: Num, b: Num) -> tuple[int, int] | tuple[float, float] | tuple[Decimal, Decimal] | tuple[Fraction, Fraction]:
-    match a, b:
-        case int(), int():
-            return a, b
-        case int(), float():
-            return float(a), b
-        case int(), Decimal():
-            return Decimal(a), b
-        case int(), Fraction():
-            return Fraction(a), b
-
-        case float(), int():
-            return a, float(b)
-        case float(), float():
-            return a, b
-        case float(), Decimal():
-            return Decimal(a), b
-        case float(), Fraction():
-            return Fraction(a), b
-
-        case Decimal(), int():
-            return a, Decimal(b)
-        case Decimal(), float():
-            return a, Decimal(b)
-        case Decimal(), Decimal():
-            return a, b
-        case Decimal(), Fraction():
-            return Fraction(a), b
-
-        case Fraction(), int():
-            return a, Fraction(b)
-        case Fraction(), float():
-            return a, Fraction(b)
-        case Fraction(), Decimal():
-            return a, Fraction(b)
-        case Fraction(), Fraction():
-            return a, b
