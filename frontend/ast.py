@@ -450,17 +450,12 @@ class StructDefinition(TopLevelDeclaration, Statement):
 
 
 @dataclass(kw_only=True)
-class UnionDefinition(TopLevelDeclaration, Statement):
+class EnumVariant(Node):
     name: Identifier
-    variants: list[TypeExpression]
-
-
-@dataclass(kw_only=True)
-class EnumValue(Node):
-    name: Identifier
+    payload: TypeExpression | None
 
 
 @dataclass(kw_only=True)
 class EnumDefinition(TopLevelDeclaration, Statement):
     name: Identifier
-    values: list[EnumValue]
+    variants: list[EnumVariant]

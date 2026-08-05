@@ -41,7 +41,6 @@ class PrimitiveType(Enum):
     UInt32 = 'UInt32'
     UInt16 = 'UInt16'
     UInt8 = 'UInt8'
-    Byte = 'Byte'
 
     Decimal = 'Decimal'
     Dec64 = 'Dec64'
@@ -53,6 +52,7 @@ class PrimitiveType(Enum):
     Boolean = 'Boolean'
     String = 'String'
     Rune = 'Rune'
+    Byte = 'Byte'
 
     Any = 'Any'
 
@@ -72,12 +72,6 @@ class StructType(_Symbol):
 
 
 @dataclass(kw_only=True)
-class UnionType(_Symbol):
-    name: Identifier
-    definition: ast.UnionDefinition
-
-
-@dataclass(kw_only=True)
 class EnumType(_Symbol):
     name: Identifier
     definition: ast.EnumDefinition
@@ -89,7 +83,7 @@ class DistinctType(_Symbol):
     definition: ast.DistinctTypeDecl
 
 
-type BaseType = PrimitiveType | EnumType | StructType | UnionType | DistinctType
+type BaseType = PrimitiveType | EnumType | StructType | DistinctType
 
 
 @dataclass(kw_only=True)

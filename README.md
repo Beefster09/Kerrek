@@ -10,25 +10,41 @@ An experimental new programming language that tries to make "correct" the path o
 
 The goal of Kerrek is to be a pragmatic balance of features that prioritizes correctness, runtime speed, compilation speed, and encoding programmer intent, all within a data-oriented and procedural paradigm.
 
-Locality is a big aspect of the design. You shouldn't need to analyze the call graph or do other forms of whole-program analysis to be able to understand how everything fits together or which assumptions hold. You should be able to look at any function in isolation and grok its assumptions.
-
-## Correctness and Performance: make the 95% use cases easy to get right
+## Priorities: Correct, Pleasant, Fast
 
 Kerrek is not on a mission to squash every possible instance of every bug or entire classes of bugs. It's mathematically impossible to guarantee any nontrivial property about a program, be it memory safety or anything else.
 
-Rather, the goal is provide tools that allow you to encode your assumptions and intent in ways that the compiler can reason about quickly and locally, all with the goal of allowing you to write fast code that you can be reasonably confident is correct. Provide tools that are *good enough* with *low overhead* instead of promising big things like zero-cost abstractions (there is no such thing) or absolute memory safety.
+Rather, the goal is provide tools that allow you to encode your assumptions and intent in ways that the compiler can reason about quickly and locally, all with the goal of allowing you to write fast code that you can be reasonably confident is correct. Provide tools that are *good enough* with *low overhead* instead of promising big things like zero-cost abstractions (there is no such thing; you're just paying the cost somewhere besides runtime) or absolute memory safety.
 
-Kerrek is not going to prevent every bug, but I hope to make it easier to write code that is both correct and performant. This language and its runtime aren't going to be as fast as the optimally produced C program and it isn't trying to be. It just wants to help you not trip over yourself and your team.
+Kerrek is not going to prevent every bug, but I hope to make it easier and more pleasant to write code that is both correct and performant. This language and its runtime aren't going to be as fast as the optimally produced C program and it isn't trying to be. It just wants to help you not trip over yourself and your team while making programs safer to evolve.
 
-## Immutability and encapsulation are incomplete attempts at solving the same problem
+## The path of least resistance is the correct one
+
+There are a lot of really powerful things that computers can do that will shoot you in the foot if you don't understand them.
+
+My goal is to make choosing those powerful things a deliberate decision. You can still shoot yourself in the foot if you want, but there's some friction you have to get through first.
+
+The easiest thing to reach for has the fewest footguns, at least semantically. It is very possible you might be making a very small performance tradeoff to do so, but compared to using Python or Haskell or Common Lisp (or whatever) to getting the semantics you want, it's nothing.
+
+## Keep reasoning direct and local
+
+I remember the first bug I ever fixed in my first internship in a Java codebase. 8 hours in the debugger. Following interfaces and complex inheritance graphs all over the place. Nothing was ever as it appeared. Method calls could go damn near anywhere with no rhyme or reason. This is the maze of indirection that OOP creates.
+
+No more of that. No classes. No methods. No implicit overloading. Not even implicit interfaces.
+
+That may sound radical, but the one thing these all have in common is indirection.
+
+There are tools for making interfaces when you absolutely need it, but for everything else, just call a function or use a switch statement. Don't make programmers have to follow crazy dependency injections and inheritance across 10 classes just to follow what that one button does.
+
+## Instead of Immutability or Encapsulation ...
 
 In many programs, it's unclear when data can be mutated. It's an implicit understanding that probably lives in one engineer's brain or some comment tucked away in a class definition. So programmers are just defensive about it instead. Immutability. Encapsulation. Defensive copies. All because nobody is sure when it's appropriate to mutate data. We make computers work harder than they really need to copying objects all the time. Frameworks create convoluted "functional" mazes that pretend data doesn't change, when really they've secretly invented a system of carefully scoped mutation.
 
-Encapsulation tries to address the problem a different way by using getters and setters, but really all that enables is ensuring variants are maintained, all at the cost of awkward method calls or property accessors that hide control flow. You can still call setters at any time, even when it might actually be invalid to do so. Nothing is really protected.
+Encapsulation tries to address the problem a different way by using getters and setters, but really all that enables is ensuring variants are maintained, all at the cost of awkward method calls or property accessors that hide control flow. You can still call setters at any time, even when it might actually be invalid to do so. Nothing is really protected, and it cost you eight lines of code (counting whitespace and brackets) of pointless ceremony to do it.
 
-Why not dispense with all that ceremony and provide information to the compiler about when it is valid to mutate certain values?
+Why not dispense with all that ceremony and provide information to the compiler about when it is valid to mutate certain values? Instead of that understanding being implicit, make it explicit and verifiable.
 
-## A new language? Now? In the age of agentic coding?
+# A new language? Now? In the age of agentic coding?
 
 I know some people have gotten it in their head that we don't need new programming languages anymore because LLMs have "solved programming" or some nonsense like that. They think that English is the hot new programming language. I have a whole rant why that doesn't entirely work, but I'll set it aside and acknowlege that this language has to offer something of value to AI-augmented coding to have any chance at success and adoption.
 
