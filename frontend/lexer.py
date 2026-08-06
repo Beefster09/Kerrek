@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from enum import Enum, auto
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import Enum, auto
 from pathlib import Path
 from typing import Iterator
 
 from frontend.common import Location
-
 
 TAB_WIDTH = 4
 
@@ -74,7 +73,7 @@ class Punctuation(Enum):
 class Keyword(Enum):
     If = 'if'
     Else = 'else'
-    Loop = 'loop'
+    For = 'for'
     In = 'in'
 
     Continue = 'continue'
@@ -92,7 +91,6 @@ class Keyword(Enum):
     With = 'with'
     Using = 'using'
     Context = 'context'
-    Temp = 'temp'
 
     Let = 'let'
     Const = 'const'
@@ -101,8 +99,8 @@ class Keyword(Enum):
     Enum = 'enum'
     Map = 'map'
     Struct = 'struct'
-    Union = 'union'
     Interface = 'interface'
+    VTable = 'vtable'
     Func = 'func'
 
     TypeOf = 'type_of'

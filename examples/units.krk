@@ -1,100 +1,100 @@
-unit type length
-unit type mass
-unit type time
-unit type angle
-unit type temperature
+unit type length;
+unit type mass;
+unit type time;
+unit type angle;
+unit type temperature;
 
-unit type area is length^2
-unit type volume is length^3
-unit type speed is length per time
-
-
-unit meter: length
-unit m is meter
-
-unit foot: length
-unit ft is foot
-
-unit cm = m / 100
-unit mm = m / 1000
-unit km = 1000 * m
-
-unit inch = foot / 12
-unit yard = 3 * foot
-unit mile = 5280 * foot
-unit football_field = 120 * yard
-
-unit m = 3.28084 * ft
+unit type area is length^2;
+unit type volume is length^3;
+unit type speed is length per time;
 
 
-unit kilogram: mass
-unit kg is kilogram
+unit meter: length;
+unit m is meter;
 
-unit gram = kg / 1000
-unit mg = gram / 1000
+unit foot: length;
+unit ft is foot;
 
+unit cm = m / 100;
+unit mm = m / 1000;
+unit km = 1000 * m;
 
-unit second: time
-unit s is second
+unit inch = foot / 12;
+unit yard = 3 * foot;
+unit mile = 5280 * foot;
+unit football_field = 120 * yard;
 
-unit minute = 60 * second
-unit hour = 60 * minute
-unit day = 24 * hour
-
-
-unit degrees: angle
-unit radians = 3.14159265358979 * degrees / 180
-unit turn = 360 * degrees
+unit m = 3.28084 * ft;
 
 
-unit kelvin: temperature
-unit celsius: temperature
-unit fahrenheit: temperature
+unit kilogram: mass;
+unit kg is kilogram;
+
+unit gram = kg / 1000;
+unit mg = gram / 1000;
+
+
+unit second: time;
+unit s is second;
+
+unit minute = 60 * second;
+unit hour = 60 * minute;
+unit day = 24 * hour;
+
+
+unit degrees: angle;
+unit radians = 3.14159265358979 * degrees / 180;
+unit turn = 360 * degrees;
+
+
+unit kelvin: temperature;
+unit celsius: temperature;
+unit fahrenheit: temperature;
 
 func celsius_to_kelvin(degrees: $T<#celsius>) -> T<#kelvin> {
-	return degrees + 273.15 as <#kelvin>
+	return degrees + 273.15 as <#kelvin>;
 }
 
 func kelvin_to_celsius(heat: $T<#kelvin>) -> T<#celsius> {
-	return heat - 273.15 as <#celsius>
+	return heat - 273.15 as <#celsius>;
 }
 
 func celsius_to_fahrenheit(degrees: $T<#celsius>) -> T<#fahrenheit> {
-	return 9 * degrees / 5 + 32 as <#fahrenheit>
+	return 9 * degrees / 5 + 32 as <#fahrenheit>;
 }
 
 func fahrenheit_to_celsius(degrees: $T<#fahrenheit>) -> T<#celsius> {
-	return (degrees - 32) * 5 / 9 as <#celsius>
+	return (degrees - 32) * 5 / 9 as <#celsius>;
 }
 
 
-unit newton is kg m per s^2
-unit joule is newton m
-unit watt is joule per s
-unit calorie = 4.184 * joule
-unit btu = 1055 * joule
+unit newton is kg m per s^2;
+unit joule is newton m;
+unit watt is joule per s;
+unit calorie = 4.184 * joule;
+unit btu = 1055 * joule;
 
 
-unit man
-unit count
+unit man;
+unit count;
 
 
 func how_long_to_complete(num_workers: Integer<man>, blocks: Decimal<>)
 	-> Decimal<day>
 {
-	const city_block_len = 0.125 mile
-	const city_block = city_block_len * city_block_len
-	const work_per_square_mile = 100 man * 30 day / city_block
+	const city_block_len = 0.125 mile;
+	const city_block = city_block_len * city_block_len;
+	const work_per_square_mile = 100 man * 30 day / city_block;
 
-	let square_miles = blocks * city_block
-	return work_per_square_mile * square_miles / num_workers
+	let square_miles = blocks * city_block;
+	return work_per_square_mile * square_miles / num_workers;
 }
 
 
 func flapjacks_required(num_workers: Integer<man>) -> Decimal<count>
 {
-	let hunger = num_workers * 314.15 / 1 man
-	hunger = hunger + 2.717
+	let hunger = num_workers * 314.15 / 1 man;
+	hunger = hunger + 2.717;
 
-	return 1 count * hunger / 200
+	return 1 count * hunger / 200;
 }

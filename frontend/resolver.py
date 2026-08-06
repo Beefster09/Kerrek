@@ -7,11 +7,8 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any, Literal, NewType
 
-from frontend import diagnostics
-from frontend import ast
-from frontend import parser
+from frontend import ast, diagnostics, parser
 from frontend.lexer import Identifier
-
 
 SymbolID = NewType('SymbolID', int)
 def _symbol_gen():
@@ -81,6 +78,12 @@ class EnumType(_Symbol):
 
 
 @dataclass(kw_only=True)
+class InterfaceType(_Symbol):
+    name: Identifier
+    definition: ast.InterfaceDefinition
+
+
+@dataclass(kw_only=True)
 class DistinctType(_Symbol):
     name: Identifier
     definition: ast.DistinctTypeDecl
@@ -143,7 +146,7 @@ type CompoundType = (
     | MapType
 )
 
-type AnyType = CompoundType | BaseType
+type AnyType = CompoundType | BaseType | TemplateType
 
 
 @dataclass(kw_only=True)
@@ -284,11 +287,11 @@ WRITE_ONLY = Builtin(Identifier('_'))
 
 
 @dataclass
-class TemplateVar:
+class TemplateType:
     name: Identifier
 
 
-Named = _Symbol | Builtin | TemplateVar | AnyType
+Named = _Symbol | Builtin | TemplateType | AnyType
 
 class CanonicalUnit(Counter[SymbolID]):
     def __str__(self):
@@ -442,7 +445,7 @@ class Resolver:
 
                     for sub in param.type.walk():
                         if isinstance(sub, ast.SimpleTemplateType):
-                            templates[sub.name] = TemplateVar(sub.name)
+                            templates[sub.name] = TemplateType(sub.name)
 
                     self._resolve_names(module, param.type, templates, *scopes)
 
@@ -571,6 +574,21 @@ class Resolver:
             for typ in module.types.values():
                 self._eval_type_decl(typ.definition)
 
+            for named in module.variables.values():
+                for node in named.definition.walk():
+                    if isinstance(node, ast.TypeExpression):
+                        self._ensure_type_built(node)
+
+            for named in module.constants.values():
+                for node in named.definition.walk():
+                    if isinstance(node, ast.TypeExpression):
+                        self._ensure_type_built(node)
+
+            for named in module.funcs.values():
+                for node in named.definition.walk():
+                    if isinstance(node, ast.TypeExpression):
+                        self._ensure_type_built(node)
+
         diagnostics.report()
 
     def _eval_type_decl(self, decl: ast.TypeDeclaration) -> AnyType | ast.TypeState:
@@ -608,17 +626,18 @@ class Resolver:
                     try:
                         return PrimitiveType[resolved.name]
                     except KeyError:
-                        diagnostics.error(f"{type_expr.type_name} does not name a type", type_expr)
-                        return ast.TypeState.Impossible
+                        pass
+
                 elif isinstance(resolved, TypeAlias):
                     if resolved.canonical is ast.TypeState.NotDetermined:
                         resolved.canonical = self._eval_type_decl(resolved.definition)
                     return resolved.canonical
-                elif isinstance(resolved, StoredType) and not isinstance(resolved, TypeAlias):
+
+                elif isinstance(resolved, (EnumType, StructType, DistinctType, TemplateType)):
                     return resolved
-                else:
-                    diagnostics.error(f"{type_expr.type_name} does not name a type", type_expr)
-                    return ast.TypeState.Failed
+
+                diagnostics.error(f"'{'.'.join(type_expr.type_name.path)}' does not name a type", type_expr)
+                return ast.TypeState.Impossible
 
             case _:
                 return ast.TypeState.Failed

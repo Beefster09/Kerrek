@@ -57,9 +57,9 @@ Each item in the list of variants may carry *one* type as its payload. You may a
 
 ```kerrek
 enum Game {
-	Rock
-	Paper(Integer)
-	(Scissors)
+	Rock,
+	Paper(Integer),
+	(Scissors),
 }
 ```
 
@@ -67,10 +67,10 @@ By default, an enum does not have a zero value. If you would like it to have a z
 
 ```kerrek
 enum Bar {
-	Nothing = 0
-	Something
-	WhoCares
-	Potato
+	Nothing = 0,
+	Something,
+	WhoCares,
+	Potato,
 }
 ```
 
@@ -79,5 +79,7 @@ Each variant with an assigned slot must be assigned a different integer slot. Nu
 All other variants are assigned arbitrary unique positive slots. Programmers should not depend on variants having specific slot numbers unless they are explicitly assigned.
 
 Enums support equality if and only if all of its variants with payloads are types supporting equality
+
+You can test which variant an enum value is via `switch` statements and the `is` operator
 
 Enums do not support ordering comparison operators.

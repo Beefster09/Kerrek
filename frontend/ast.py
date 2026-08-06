@@ -244,6 +244,8 @@ class Operator(Enum):
     Greater = '>'
     GreaterEqual = '>='
 
+    Is = "is"
+
     And = "and"
     Or = "or"
 
@@ -452,6 +454,28 @@ class StructDefinition(TypeDeclaration):
     params: list[FormalParameter]
     capabilities: list[CapabilityDecl]
     construct_requires: CapabilityExpression | None
+
+
+@dataclass(kw_only=True)
+class InterfaceMethod(Node):
+    name: Identifier
+    params: list[FormalParameter]
+    return_types: list[TypeExpression]
+    error_type: TypeExpression | EllipsisType | None = None  # Ellipsis as the error type indicates the function can fail but the error type is void
+    requires: CapabilityExpression | None = None
+    is_optional: bool = False
+
+
+@dataclass(kw_only=True)
+class SubInterface(Node):
+    interface: QualifiedName
+    is_optional: bool
+
+
+@dataclass(kw_only=True)
+class InterfaceDefinition(TypeDeclaration):
+    name: Identifier
+    methods: list[InterfaceMethod | SubInterface]
 
 
 @dataclass(kw_only=True)

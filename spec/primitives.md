@@ -21,10 +21,8 @@ Numbers at compile time should be stored as losslessly as possible (e.g. rationa
 - `Integer`: High-range integer able to hold at least 35 decimal digits, positive or negative
 	- Its inline size must not be larger than 256 bits (32 bytes) even if the value itself is stored in heap memory
 	- A fully zeroed inline value must be semantically zero
-	- overflow may either:
-		- allocate an arbitrary-sized integer to hold the value
-		- trigger an OverflowError that may optionally be handled, with a default behavior of saturation
-		- overflow *must not* wrap
+	- overflow/underflow may allocate an arbitrary-sized integer to hold the value
+	- if it does not, an `OverflowError` should be omitted
 	- for all practical intents and purposes, an `Integer` has the semantics of an unbounded mathematical integer, but it is *not guaranteed* to be an arbitrary precision integer that never overflows (and technically BigInteger implementations have a limit too, it's just that you'll practically never reach it)
 		- If you need a type that is guaranteed to be arbitrary precision, for instance in cryptographic code, use `core:math/bigint`
 - Sized integers behave as expected for machine integers

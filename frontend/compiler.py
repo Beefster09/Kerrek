@@ -1,7 +1,8 @@
 from pathlib import Path
 from typing import Protocol
 
-from frontend import resolver, analysis, diagnostics
+from frontend import analysis, diagnostics, resolver
+
 
 class Backend(Protocol):
     def generate(
@@ -18,6 +19,7 @@ def build(entry_point: Path, backend: Backend) -> bool:
 
     r.resolve_names()
     r.canonicalize_units()
+    r.canonicalize_types()
     r.build_unit_conversions()
 
     for module in r.modules.values():

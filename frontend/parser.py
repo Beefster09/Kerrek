@@ -6,13 +6,25 @@ from typing import Iterable, cast, overload
 
 from frontend import ast, diagnostics
 from frontend.common import Location
-from frontend.lexer import Garbage, Identifier, Numeric, Punctuation, Rune, String, Token, Keyword, TokenData, NumberLiteralForm, tokenize
+from frontend.lexer import (
+    Identifier,
+    Keyword,
+    NumberLiteralForm,
+    Numeric,
+    Punctuation,
+    Rune,
+    String,
+    Token,
+    TokenData,
+    tokenize,
+)
 
 
 class Associativity(Enum):
     NonAssociative = auto()
     Left = auto()
     Right = auto()
+
 
 BINOPS = {
     Punctuation.DStar: (100, ast.Operator.Power, Associativity.Right),
@@ -25,25 +37,20 @@ BINOPS = {
     Punctuation.Plus: (50, ast.Operator.Add, Associativity.Left),
     Punctuation.Minus: (50, ast.Operator.Subtract, Associativity.Left),
 
-    Keyword.Mod: (30, ast.Operator.Modulo, Associativity.Left),
+    Keyword.Mod: (40, ast.Operator.Modulo, Associativity.Left),
 
-    Punctuation.EQ: (20, ast.Operator.Equal, Associativity.NonAssociative),
-    Punctuation.NE: (20, ast.Operator.NotEqual, Associativity.NonAssociative),
-    Punctuation.GT: (20, ast.Operator.Greater, Associativity.NonAssociative),
-    Punctuation.GE: (20, ast.Operator.GreaterEqual, Associativity.NonAssociative),
-    Punctuation.LT: (20, ast.Operator.Less, Associativity.NonAssociative),
-    Punctuation.LE: (20, ast.Operator.LessEqual, Associativity.NonAssociative),
+    Keyword.Is: (30, ast.Operator.Is, Associativity.NonAssociative),
+    Punctuation.EQ: (30, ast.Operator.Equal, Associativity.NonAssociative),
+    Punctuation.NE: (30, ast.Operator.NotEqual, Associativity.NonAssociative),
+    Punctuation.GT: (30, ast.Operator.Greater, Associativity.NonAssociative),
+    Punctuation.GE: (30, ast.Operator.GreaterEqual, Associativity.NonAssociative),
+    Punctuation.LT: (30, ast.Operator.Less, Associativity.NonAssociative),
+    Punctuation.LE: (30, ast.Operator.LessEqual, Associativity.NonAssociative),
 
-    Keyword.And: (10, ast.Operator.And, Associativity.Left),
+    Keyword.And: (20, ast.Operator.And, Associativity.Left),
+
     Keyword.Or: (10, ast.Operator.Or, Associativity.Left),
 }
-
-CONTINUATION_TOKENS = frozenset([
-    *BINOPS,
-
-    Punctuation.Dot,
-    Keyword.As,
-])
 
 
 class Parser:
@@ -87,8 +94,6 @@ class Parser:
             self,
             *tok_sequence: TokenData | type[TokenData] | tuple[TokenData | type[TokenData], ...] | EllipsisType,
             offset: int = 0,
-            first_on_same_line: bool = False,
-            rest_on_same_line: bool = False,
         ) -> list[Token] | None:
             assert tok_sequence
             base = self._base + offset
@@ -98,11 +103,6 @@ class Parser:
                     return None
 
                 actual = self._tokens[i]
-
-                if first_on_same_line and i == base and actual.first_on_line:
-                    return None
-                if rest_on_same_line and i > base and actual.first_on_line:
-                    return None
 
                 if expected is ...:
                     continue
@@ -132,8 +132,6 @@ class Parser:
         def match(
             self,
             *tok_sequence: TokenData | type[TokenData] | tuple[TokenData | type[TokenData], ...] | EllipsisType,
-            same_line: bool = False,
-            one_line: bool = False,
         ) -> list[Token] | None:
             """match and consume the next tokens if they match the sequence
 
@@ -145,11 +143,7 @@ class Parser:
 
             An ellipsis will match any one token
             """
-            tokens = self._match_seq(
-                *tok_sequence,
-                first_on_same_line=same_line,
-                rest_on_same_line=same_line or one_line,
-            )
+            tokens = self._match_seq(*tok_sequence)
 
             if tokens:
                 self.advance(len(tokens))
@@ -160,10 +154,8 @@ class Parser:
         def match_one[E: TokenData](
             self,
             expected: E | type[E],
-            *,
-            same_line: bool = False,
         ) -> Token[E] | None:
-            token = self._match_seq(expected, first_on_same_line=same_line)
+            token = self._match_seq(expected)
 
             if token:
                 self.advance()
@@ -174,9 +166,8 @@ class Parser:
         def match_any(
             self,
             *expected: TokenData | type[TokenData],
-            same_line: bool = False,
         ) -> Token | None:
-            token = self._match_seq(expected, first_on_same_line=same_line)
+            token = self._match_seq(expected)
 
             if token:
                 self.advance()
@@ -482,17 +473,17 @@ class Parser:
         self.tokens.advance()
         self.tokens.skip_line()
 
-    def _compound_unit(self, *, required=False, same_line=False):
+    def _compound_unit(self, *, required=False):
         leading_hash = self.tokens.match_one(Punctuation.Hash)
 
         components: list[ast.UnitComponent] = []
         in_denominator = False
-        while qualname := self._qualname(same_line=same_line):
+        while qualname := self._qualname():
             exponent = 1
             comp_start = qualname.start
             comp_end = qualname.end
 
-            if m := self.tokens.match(Punctuation.Caret, Numeric, same_line=True):
+            if m := self.tokens.match(Punctuation.Caret, Numeric):
                 exp = m[1]
 
                 assert isinstance(exp.what, Numeric)
@@ -565,8 +556,7 @@ class Parser:
 
         body = self._block()
 
-        if not self._end_of_statement():
-            self._emit_error("expected end of line after function body")
+        self._end_of_statement()  # consume a semicolon if it's there
 
         if not body:
             self._emit_error("function body required")
@@ -702,7 +692,7 @@ class Parser:
                     self._emit_error("unit on type not closed")
 
             elif at := self.tokens.match_one(Punctuation.Tilde):
-                tag = self._qualname(same_line=True)
+                tag = self._qualname()
                 if tag:
                     typ = ast.TypeWithTag(
                         file=tag.file,
@@ -985,7 +975,7 @@ class Parser:
             case Token(what=Numeric()):
                 self.tokens.advance()
 
-                unit = self._compound_unit(same_line=True)
+                unit = self._compound_unit()
 
                 return ast.ScalarLiteralExpr(
                     file=tok.file,
@@ -1092,7 +1082,7 @@ class Parser:
         if not at:
             return None
 
-        base = self._qualname(same_line=True)
+        base = self._qualname()
         if not base:
             self._emit_error("expected annotation name after the @")
             return None
@@ -1112,10 +1102,8 @@ class Parser:
         self,
         *,
         required=False,
-        same_line=False,
-        one_line=False,
     ) -> ast.QualifiedName | None:
-        root = self.tokens.match_one(Identifier, same_line=same_line)
+        root = self.tokens.match_one(Identifier)
 
         if not root:
             if required:
@@ -1126,7 +1114,7 @@ class Parser:
         start = root.start
         end = root.end
 
-        while m := self.tokens.match(Punctuation.Dot, Identifier, same_line=one_line):
+        while m := self.tokens.match(Punctuation.Dot, Identifier):
             assert isinstance(m[1].what, Identifier)
             path.append(m[1].what)
             end = m[1].end
@@ -1139,20 +1127,11 @@ class Parser:
         )
 
     def _end_of_statement(self) -> bool:
-        tok = self.tokens.peek()
-        if tok is None:  # EOF
+        if self.tokens.what() is Punctuation.Semicolon:
+            self.tokens.advance()
             return True
 
-        match tok.what:
-            case Punctuation.Semicolon:
-                self.tokens.advance()
-                return True
-
-            case Punctuation.RCurly:
-                return True
-
-            case _:
-                return tok.first_on_line and tok.what not in CONTINUATION_TOKENS
+        return False
 
     def _end_of_line(self) -> bool:
         tok = self.tokens.peek()

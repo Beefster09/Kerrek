@@ -1,16 +1,15 @@
 
 
-from decimal import Decimal
-from enum import Enum
-from fractions import Fraction
 import math
 import operator
 from dataclasses import dataclass
+from decimal import Decimal
+from enum import Enum
+from fractions import Fraction
 from typing import Any, Literal, NamedTuple
 
 from frontend import ast, diagnostics
 from frontend.resolver import AnyType, CanonicalUnit, Constant, PrimitiveType, Unit, Variable
-
 
 type Num = int | float | Decimal | Fraction
 
@@ -105,15 +104,6 @@ def _check_types(dest_type: ast.TypeExpression, evaluated_type: ComptimeType) ->
         dest_type.canonical = _build_type(dest_type)
 
     return dest_type.canonical
-
-
-def _build_type(type_expr: ast.TypeExpression) -> ComptimeType:
-    match type_expr:
-        case ast.SimpleType():
-            resolved = type_expr.type_name.resolves_to
-            match resolved:
-                case AnyType():
-                    pass
 
 
 def remainder(lhs, rhs):

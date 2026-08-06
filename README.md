@@ -26,7 +26,7 @@ There are a lot of really powerful things that computers can do that will shoot 
 
 My goal is to make choosing those powerful things a deliberate decision. You can still shoot yourself in the foot if you want, but there's some friction you have to get through first.
 
-The easiest thing to reach for has the fewest footguns, at least semantically. It is very possible you might be making a very small performance tradeoff to do so, but compared to using Python or Haskell or Common Lisp (or whatever) to getting the semantics you want, it's nothing.
+The easiest thing to reach for has the fewest footguns, at least semantically. It is very possible you might be making a minor performance tradeoff to do so, but compared to using Python or Haskell or Common Lisp (or whatever) to getting the semantics you want, it's nothing.
 
 ## Keep reasoning direct and local
 
@@ -36,7 +36,7 @@ No more of that. No classes. No methods. No implicit overloading. Not even impli
 
 That may sound radical, but the one thing these all have in common is indirection.
 
-There are tools for making interfaces when you absolutely need it, but for everything else, just call a function or use a switch statement. Don't make programmers have to follow crazy dependency injections and inheritance across 10 classes just to follow what that one button does.
+There are tools for making interfaces when you absolutely need it, but for everything else, just call a function or use a switch statement. Don't make programmers have to follow crazy dependency injections and inheritance hierarchies across 10 classes just to follow what that one button does.
 
 ## Instead of Immutability or Encapsulation ...
 
@@ -45,6 +45,12 @@ In many programs, it's unclear when data can be mutated. It's an implicit unders
 Encapsulation tries to address the problem a different way by using getters and setters, but really all that enables is ensuring variants are maintained, all at the cost of awkward method calls or property accessors that hide control flow. You can still call setters at any time, even when it might actually be invalid to do so. Nothing is really protected, and it cost you eight lines of code (counting whitespace and brackets) of pointless ceremony to do it.
 
 Why not dispense with all that ceremony and provide information to the compiler about when it is valid to mutate certain values? Instead of that understanding being implicit, make it explicit and verifiable.
+
+## Don't try to guess intent
+
+There can still be some implicit or default behavior, and type inference is a thing; such situations have only one possible interpretation. However, if there is any sort of ambiguity of intent, the compiler should not guess what the programmer means. A compile time error is better than a runtime surprise.
+
+I thought about this for a while, and as much as I wanted to make semicolons optional at the end of the line, there are enough edge cases and possible issues it might invite that I decided to make semicolons required in most cases.
 
 # A new language? Now? In the age of agentic coding?
 
