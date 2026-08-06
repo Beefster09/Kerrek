@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, NamedTuple
 
 from frontend import ast, diagnostics
-from frontend.resolver import CanonicalUnit, Constant, BaseType, PrimitiveType, Unit, Variable
+from frontend.resolver import AnyType, CanonicalUnit, Constant, PrimitiveType, Unit, Variable
 
 
 type Num = int | float | Decimal | Fraction
@@ -26,7 +26,7 @@ class ScalarValue:
 
 
 type ComptimeValue = ScalarValue | ast.RuneValue | str | bool | None | ast.ConstantFolding
-type ComptimeType = BaseType | ast.TypeState
+type ComptimeType = AnyType | ast.TypeState
 type ExprResult = tuple[ComptimeValue, ComptimeType]
 
 
@@ -37,6 +37,15 @@ def _ensure_const_evaluated(const_sym: Constant) -> ExprResult:
         #_check_type(const_def.type, typ)
 
     return const_def.expr.folded_value, const_def.expr.result_type
+
+
+def _ensure_type_inferred(var: Variable) -> ComptimeType:
+    if var.type is None:
+        if isinstance(var.definition, (ast.LocalVariable, ast.GlobalVariable)) \
+                and isinstance(var.definition.expr, ast.Expression):
+            _, typ = fold_constants(var.definition.expr)
+
+    return var.type or ast.TypeState.Failed
 
 
 def fold_constants(node: ast.Expression) -> ExprResult:
@@ -51,9 +60,7 @@ def fold_constants(node: ast.Expression) -> ExprResult:
         value = ast.ConstantFolding.Failed
         typ = ast.TypeState.Failed
     else:
-        if typ is ast.TypeState.Failed:
-            value = ast.ConstantFolding.Failed
-        if typ is ast.TypeState.Impossible:
+        if typ in (ast.TypeState.Failed, ast.TypeState.Impossible):
             value = ast.ConstantFolding.Failed
 
     node.folded_value = value
@@ -76,8 +83,7 @@ def _evaluate(node: ast.Expression) -> ExprResult:
             if isinstance(resolved, Constant):
                 return _ensure_const_evaluated(resolved)
             elif isinstance(resolved, Variable):
-                # TODO: ensure the variable's type is inferred (might be hard for globals)
-                return ast.ConstantFolding.RuntimeValue, resolved.type
+                return ast.ConstantFolding.RuntimeValue, _ensure_type_inferred(resolved)
             elif isinstance(resolved, Unit):
                 if isinstance(resolved.definition, ast.UnitAlias):
                     return ScalarValue(1, resolved.definition.base.canonical), ast.TypeState.Flexible
@@ -92,6 +98,22 @@ def _evaluate(node: ast.Expression) -> ExprResult:
                     return fold_constants(child)
 
             return ast.ConstantFolding.RuntimeValue, node.result_type  # TODO: ensure this has been resolved
+
+
+def _check_types(dest_type: ast.TypeExpression, evaluated_type: ComptimeType) -> ComptimeType:
+    if dest_type.canonical is ast.TypeState.NotDetermined:
+        dest_type.canonical = _build_type(dest_type)
+
+    return dest_type.canonical
+
+
+def _build_type(type_expr: ast.TypeExpression) -> ComptimeType:
+    match type_expr:
+        case ast.SimpleType():
+            resolved = type_expr.type_name.resolves_to
+            match resolved:
+                case AnyType():
+                    pass
 
 
 def remainder(lhs, rhs):

@@ -21,8 +21,12 @@ Numbers at compile time should be stored as losslessly as possible (e.g. rationa
 - `Integer`: High-range integer able to hold at least 35 decimal digits, positive or negative
 	- Its inline size must not be larger than 256 bits (32 bytes) even if the value itself is stored in heap memory
 	- A fully zeroed inline value must be semantically zero
-	- overflow may, in order of preference: allocate an arbitrary-sized integer to hold the value, saturate, or panic; it *must not* wrap
-	- for all practical intents and purposes, an `Integer` has the semantics of an unbounded mathematical integer.
+	- overflow may either:
+		- allocate an arbitrary-sized integer to hold the value
+		- trigger an OverflowError that may optionally be handled, with a default behavior of saturation
+		- overflow *must not* wrap
+	- for all practical intents and purposes, an `Integer` has the semantics of an unbounded mathematical integer, but it is *not guaranteed* to be an arbitrary precision integer that never overflows (and technically BigInteger implementations have a limit too, it's just that you'll practically never reach it)
+		- If you need a type that is guaranteed to be arbitrary precision, for instance in cryptographic code, use `core:math/bigint`
 - Sized integers behave as expected for machine integers
 	- overflow and underflow *must* wrap for sized integers, as that is the behavior most commonly expected for machine integers
 
@@ -32,16 +36,22 @@ All mathematical operators except for `/` are defined for integers.
 
 The operator you are looking for is `//`, the floor-division operator. Requiring you to opt into floor division instead of silently truncating helps to prevent subtle logic bugs and surprises.
 
-Division by zero emits a ZeroDivisionError which must be handled unless the divisor is known not to be zero.
+Division by zero emits a `ZeroDivisionError` which must be handled unless the divisor is known not to be zero.
 
 ## Decimals
 
 The Decimal types are:
-- `Decimal`: High-precision decimal able to hold at least 30 significant decimal digits with an exponent able to represent at least +-100 orders of magnitude; plus NaN and +-Infinity
+- `Decimal(d, p)`: Signed fixed point decimal with enough storage for at least `d` significant  digits and exactly `p` of those digits after the decimal point
+	- Overflow and underflow outside the predetermined range must trigger an `OverflowError` even if the underlying storage could hold the new value.
+	- `d` must be a compile-time known positive integer
+	- `p` must be a compile-time known integer < `d` (negative is well-defined albeit not useful)
+	- The compiler must support up to 30 significant digits at minimum
+	- The storage must be inline when applicable
+- `Decimal`: High-precision floating point decimal able to hold at least 30 significant decimal digits with an exponent able to represent at least +-100 orders of magnitude; plus NaN and +-Infinity
 	- Its inline size must not exceed 256 bits (32 bytes) even if the value itself is stored in heap memory or similar.
 	- A fully zeroed inline value must be semantically zero
-- `Dec64`: exactly 64 bits, representing at least all possible values represented by IEEE decimal64
-- `Dec32`: exactly 32 bits, representing at least all possible values represented by IEEE decimal32
+- `Dec64`: floating point decimal; exactly 64 bits, representing at least all possible values represented by IEEE decimal64
+- `Dec32`: floating point decimal; exactly 32 bits, representing at least all possible values represented by IEEE decimal32
 
 ## Floats
 
@@ -118,4 +128,4 @@ The zero value is 0x00
 
 Of the primitive types, only booleans are allowed in contexts that require booleans.
 
-Pointers and optionals additionally implicitly convert to boolean based on whether the pointer/optional is nil.
+All values with a zero value of `nil` additionally implicitly convert to boolean.

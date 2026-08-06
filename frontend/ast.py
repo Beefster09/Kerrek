@@ -11,7 +11,7 @@ from frontend.lexer import Identifier, Numeric
 from frontend.common import Location
 
 if TYPE_CHECKING:
-    from frontend.resolver import CanonicalUnit, Named, Constant
+    from frontend.resolver import CanonicalUnit, Named, AnyType
 
 
 @dataclass(kw_only=True)
@@ -113,11 +113,6 @@ class GlobalVariable(TopLevelDeclaration):
 
 @dataclass(kw_only=True)
 class TypeAlias(TopLevelDeclaration):
-    pass
-
-
-@dataclass(kw_only=True)
-class DistinctTypeDecl(TopLevelDeclaration):
     pass
 
 
@@ -289,7 +284,7 @@ class CallExpr(Expression):
 
 @dataclass(kw_only=True)
 class TypeExpression(Node):
-    pass
+    canonical: AnyType | TypeState = field(default=TypeState.NotDetermined, repr=False)
 
 
 @dataclass(kw_only=True)
@@ -335,6 +330,11 @@ class TypeWithTag(TypeExpression):
 
 
 # === CAPABILITIES ===
+
+
+@dataclass(kw_only=True)
+class CapabilityDecl(TopLevelDeclaration):
+    name: Identifier
 
 
 @dataclass(kw_only=True)
@@ -433,6 +433,10 @@ class FuncOverload(TopLevelDeclaration):
 # === TYPE DEFINITIONS ===
 
 
+class TypeDeclaration(TopLevelDeclaration, Statement):
+    pass
+
+
 @dataclass(kw_only=True)
 class StructField(Node):
     name: Identifier
@@ -442,20 +446,34 @@ class StructField(Node):
 
 
 @dataclass(kw_only=True)
-class StructDefinition(TopLevelDeclaration, Statement):
+class StructDefinition(TypeDeclaration):
     name: Identifier
     fields: list[StructField]
     params: list[FormalParameter]
+    capabilities: list[CapabilityDecl]
     construct_requires: CapabilityExpression | None
 
 
 @dataclass(kw_only=True)
 class EnumVariant(Node):
-    name: Identifier
+    name: Identifier | None
     payload: TypeExpression | None
+    slot: int | None
 
 
 @dataclass(kw_only=True)
-class EnumDefinition(TopLevelDeclaration, Statement):
+class EnumDefinition(TypeDeclaration):
     name: Identifier
     variants: list[EnumVariant]
+
+
+@dataclass(kw_only=True)
+class TypeAliasDecl(TypeDeclaration):
+    name: Identifier
+    orig_type: TypeExpression
+
+
+@dataclass(kw_only=True)
+class DistinctTypeDecl(TypeDeclaration):
+    name: Identifier
+    underlying: TypeExpression

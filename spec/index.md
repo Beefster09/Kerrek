@@ -8,3 +8,5 @@ This spec is incomplete and may be behind or ahead of the actual implementation 
 
 Sub-documents of this spec:
 - [Primitive type semantics](./primitives.md)
+- [Compound types](./compound-types.md)
+- [Pointers and Ownership](./pointers.md)

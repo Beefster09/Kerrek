@@ -6,6 +6,8 @@ An experimental new programming language that tries to make "correct" the path o
 
 [Features](/features.md)
 
+[WIP Spec](/spec/index.md)
+
 # Language Design Philosophy
 
 The goal of Kerrek is to be a pragmatic balance of features that prioritizes correctness, runtime speed, compilation speed, and encoding programmer intent, all within a data-oriented and procedural paradigm.
@@ -46,7 +48,7 @@ Why not dispense with all that ceremony and provide information to the compiler 
 
 # A new language? Now? In the age of agentic coding?
 
-I know some people have gotten it in their head that we don't need new programming languages anymore because LLMs have "solved programming" or some nonsense like that. They think that English is the hot new programming language. I have a whole rant why that doesn't entirely work, but I'll set it aside and acknowlege that this language has to offer something of value to AI-augmented coding to have any chance at success and adoption.
+I know some people have gotten it in their head that we don't need new programming languages anymore because LLMs have "solved programming" or some nonsense like that. They think that English is the hot new programming language and that we can directly output machine code from a spec. I have a whole rant why that doesn't work, but I'll set it aside and acknowlege that this language has to offer something of value to AI-augmented coding to have any chance at success and adoption.
 
 While it's not one of my primary goals, much of what this language does would be beneficial to agentic coding because it allows you to state and verify your assumptions around when data can be mutated and accessed, when functions can be called, and other little things which help to ensure your code is correct. And it does so with the intent of being *fast* by ensuring algorithmic complexity of static checks is linear. That matters a lot for iteration speed.
 

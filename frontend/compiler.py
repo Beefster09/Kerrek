@@ -19,7 +19,6 @@ def build(entry_point: Path, backend: Backend) -> bool:
     r.resolve_names()
     r.canonicalize_units()
     r.build_unit_conversions()
-    # r.calculate_constants()
 
     for module in r.modules.values():
         for decl in module.file.declarations:

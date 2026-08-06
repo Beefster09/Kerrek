@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import math
-import operator
 from collections import Counter
 from dataclasses import dataclass, field
-from decimal import Decimal
 from enum import Enum, auto
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, NewType
+from typing import Any, Literal, NewType
 
 from frontend import diagnostics
 from frontend import ast
@@ -57,6 +54,12 @@ class PrimitiveType(Enum):
     Any = 'Any'
 
 
+@dataclass
+class FixedDecimal:
+    digits: int
+    precision: int
+
+
 @dataclass(kw_only=True)
 class _Symbol:
     id: SymbolID = field(default_factory=_NEXT_SYM.__next__)
@@ -83,7 +86,64 @@ class DistinctType(_Symbol):
     definition: ast.DistinctTypeDecl
 
 
-type BaseType = PrimitiveType | EnumType | StructType | DistinctType
+@dataclass(kw_only=True)
+class TypeAlias(_Symbol):
+    name: Identifier
+    canonical: AnyType | ast.TypeState = ast.TypeState.NotDetermined
+    definition: ast.TypeAliasDecl
+
+
+BaseType = PrimitiveType | FixedDecimal | EnumType | StructType | DistinctType
+
+
+@dataclass(kw_only=True)
+class PointerType:
+    to: AnyType
+    ownership: ast.PointerOwnership
+
+
+@dataclass(kw_only=True)
+class OptionalType:
+    of: AnyType
+
+
+@dataclass(kw_only=True)
+class StaticArrayType:
+    elem: AnyType
+    shape: tuple[int, ...]
+    ownership: ast.PointerOwnership
+
+
+@dataclass(kw_only=True)
+class DynamicArrayType:
+    elem: AnyType
+    ownership: ast.PointerOwnership
+
+
+@dataclass(kw_only=True)
+class DimensionedArrayType:
+    elem: AnyType
+    dimensions: int = 1
+    ownership: ast.PointerOwnership
+
+
+@dataclass(kw_only=True)
+class MapType:
+    key: AnyType
+    value: AnyType
+    ownership: ast.PointerOwnership
+
+
+type CompoundType = (
+    PointerType
+    | OptionalType
+    | StaticArrayType
+    | DynamicArrayType
+    | DimensionedArrayType
+    | MapType
+)
+
+type AnyType = CompoundType | BaseType
 
 
 @dataclass(kw_only=True)
@@ -127,12 +187,15 @@ class Capability(_Symbol):
     definition: ast.Node
 
 
+StoredType = EnumType | StructType | DistinctType | TypeAlias
+
+
 @dataclass(kw_only=True)
 class Module(_Symbol):
     file: ast.File
     name: Identifier
     imports: dict[Identifier, Module] = field(default_factory=dict)
-    types: dict[Identifier, BaseType] = field(default_factory=dict)
+    types: dict[Identifier, StoredType] = field(default_factory=dict)
     funcs: dict[Identifier, Function] = field(default_factory=dict)
     constants: dict[Identifier, Constant] = field(default_factory=dict)
     variables: dict[Identifier, Variable] = field(default_factory=dict)
@@ -205,10 +268,15 @@ BUILTINS = {
         ),
 
         # - ANNOTATIONS -
-        'private',
         'deprecated',
         'forward',
         'pure',
+        'layout',
+        'calling_convention',
+
+        # - FUNCTIONS -
+        'len',
+        'cap',
     ]
 }
 
@@ -220,7 +288,7 @@ class TemplateVar:
     name: Identifier
 
 
-type Named = _Symbol | Builtin | TemplateVar
+Named = _Symbol | Builtin | TemplateVar | AnyType
 
 class CanonicalUnit(Counter[SymbolID]):
     def __str__(self):
@@ -497,6 +565,63 @@ class Resolver:
                 check_shadowing(decl, Unit, decl.dest)
 
                 module.units[decl.dest] = Unit(name=decl.dest, definition=decl)
+
+    def canonicalize_types(self):
+        for module in self.modules.values():
+            for typ in module.types.values():
+                self._eval_type_decl(typ.definition)
+
+        diagnostics.report()
+
+    def _eval_type_decl(self, decl: ast.TypeDeclaration) -> AnyType | ast.TypeState:
+        match decl:
+            case ast.TypeAliasDecl():
+                return self._ensure_type_built(decl.orig_type)
+
+            case ast.DistinctTypeDecl():
+                return self._ensure_type_built(decl.underlying)
+
+            case ast.StructDefinition():
+                diagnostics.error("unable to evaluate struct declaration", decl)
+                return ast.TypeState.Failed
+
+            case ast.EnumDefinition():
+                diagnostics.error("unable to evaluate enum declaration", decl)
+                return ast.TypeState.Failed
+
+            case _:
+                diagnostics.error("unable to evaluate type declaration", decl)
+                return ast.TypeState.Failed
+
+    def _ensure_type_built(self, type_expr: ast.TypeExpression) -> AnyType | ast.TypeState:
+        if type_expr.canonical is ast.TypeState.NotDetermined:
+            type_expr.canonical = self._build_type(type_expr)
+
+        return type_expr.canonical
+
+    def _build_type(self, type_expr: ast.TypeExpression) -> AnyType | ast.TypeState:
+        match type_expr:
+            case ast.SimpleType():
+                resolved = type_expr.type_name.resolves_to
+
+                if isinstance(resolved, Builtin):
+                    try:
+                        return PrimitiveType[resolved.name]
+                    except KeyError:
+                        diagnostics.error(f"{type_expr.type_name} does not name a type", type_expr)
+                        return ast.TypeState.Impossible
+                elif isinstance(resolved, TypeAlias):
+                    if resolved.canonical is ast.TypeState.NotDetermined:
+                        resolved.canonical = self._eval_type_decl(resolved.definition)
+                    return resolved.canonical
+                elif isinstance(resolved, StoredType) and not isinstance(resolved, TypeAlias):
+                    return resolved
+                else:
+                    diagnostics.error(f"{type_expr.type_name} does not name a type", type_expr)
+                    return ast.TypeState.Failed
+
+            case _:
+                return ast.TypeState.Failed
 
     def canonicalize_units(self):
         for module in self.modules.values():
