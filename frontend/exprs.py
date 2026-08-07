@@ -4,11 +4,12 @@ import math
 import operator
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import Enum
+from enum import Enum, auto
 from fractions import Fraction
 from typing import Any, Literal, NamedTuple
 
 from frontend import ast, diagnostics
+from frontend.lexer import NumberLiteralForm
 from frontend.resolver import AnyType, CanonicalUnit, Constant, PrimitiveType, Unit, Variable
 
 type Num = int | float | Decimal | Fraction
@@ -24,16 +25,33 @@ class ScalarValue:
         return bool(self.value)
 
 
+class FlexAffinity(Enum):
+    Nil = auto()
+    UInt = auto()
+    Integer = auto()
+    Float = auto()
+    Decimal = auto()
+    Boolean = auto()
+    String = auto()
+    Rune = auto()
+
+
+@dataclass
+class FlexType:
+    affinity: FlexAffinity
+
+
 type ComptimeValue = ScalarValue | ast.RuneValue | str | bool | None | ast.ConstantFolding
-type ComptimeType = AnyType | ast.TypeState
+type ComptimeType = AnyType | FlexType | Literal[ast.TypeState.Impossible, ast.TypeState.Failed]
 type ExprResult = tuple[ComptimeValue, ComptimeType]
 
 
 def _ensure_const_evaluated(const_sym: Constant) -> ExprResult:
     const_def = const_sym.definition
     if const_def.expr.folded_value is ast.ConstantFolding.NotEvaluated:
-        return fold_constants(const_def.expr)
-        #_check_type(const_def.type, typ)
+        val, typ = fold_constants(const_def.expr)
+        typ = _check_type(const_def.type, typ)
+        return val, typ
 
     return const_def.expr.folded_value, const_def.expr.result_type
 
@@ -43,6 +61,8 @@ def _ensure_type_inferred(var: Variable) -> ComptimeType:
         if isinstance(var.definition, (ast.LocalVariable, ast.GlobalVariable)) \
                 and isinstance(var.definition.expr, ast.Expression):
             _, typ = fold_constants(var.definition.expr)
+            typ = _check_type(var.definition.type, typ)
+            return typ
 
     return var.type or ast.TypeState.Failed
 
@@ -70,9 +90,28 @@ def fold_constants(node: ast.Expression) -> ExprResult:
 def _evaluate(node: ast.Expression) -> ExprResult:
     match node:
         case ast.SimpleLiteralExpr():
-            return node.value, ast.TypeState.Flexible
+            match node.value:
+                case str():
+                    return node.value, FlexType(FlexAffinity.String)
+                case ast.RuneValue():
+                    return node.value, FlexType(FlexAffinity.Rune)
+                case bool():
+                    return node.value, FlexType(FlexAffinity.Boolean)
+                case None:
+                    return node.value, FlexType(FlexAffinity.Nil)
+
         case ast.ScalarLiteralExpr():
-            return ScalarValue(node.value.value, node.unit.canonical if node.unit else None), ast.TypeState.Flexible
+            match node.value.form:
+                case NumberLiteralForm.DecimalInteger:
+                    typ = FlexType(FlexAffinity.Integer)
+                case NumberLiteralForm.Decimal:
+                    typ = FlexType(FlexAffinity.Decimal)
+                case NumberLiteralForm.Float | NumberLiteralForm.HexFloat:
+                    typ = FlexType(FlexAffinity.Float)
+                case NumberLiteralForm.Hex | NumberLiteralForm.Octal | NumberLiteralForm.Binary:
+                    typ = FlexType(FlexAffinity.UInt)
+
+            return ScalarValue(node.value.value, node.unit.canonical if node.unit else None), typ
 
         case ast.BinopExpr():
             return _eval_binop(node)
@@ -85,23 +124,53 @@ def _evaluate(node: ast.Expression) -> ExprResult:
                 return ast.ConstantFolding.RuntimeValue, _ensure_type_inferred(resolved)
             elif isinstance(resolved, Unit):
                 if isinstance(resolved.definition, ast.UnitAlias):
-                    return ScalarValue(1, resolved.definition.base.canonical), ast.TypeState.Flexible
+                    return ScalarValue(1, resolved.definition.base.canonical), FlexType(FlexAffinity.Integer)
                 else:
-                    return ScalarValue(1, CanonicalUnit([resolved.id])), ast.TypeState.Flexible
+                    return ScalarValue(1, CanonicalUnit([resolved.id])), FlexType(FlexAffinity.Integer)
 
             return ast.ConstantFolding.RuntimeValue, ast.TypeState.Impossible # TODO: do something more sensible here
 
         case _:
-            for child in node:
-                if isinstance(child, ast.Expression):
-                    return fold_constants(child)
-
-            return ast.ConstantFolding.RuntimeValue, node.result_type  # TODO: ensure this has been resolved
+            raise NotImplementedError(f"no evaluation implemented for {type(node).__qualname__}")
 
 
-def _check_types(dest_type: ast.TypeExpression, evaluated_type: ComptimeType) -> ComptimeType:
-    if dest_type.canonical is ast.TypeState.NotDetermined:
-        dest_type.canonical = _build_type(dest_type)
+def _check_type(
+    dest_type: ast.TypeExpression | ast.TypeState,
+    evaluated_type: ComptimeType,
+    context: ast.Node,
+) -> ComptimeType:
+    if dest_type is ast.TypeState.NeedsInference:
+        match evaluated_type:
+            case FlexType(FlexAffinity.Integer):
+                return PrimitiveType.Integer
+            case FlexType(FlexAffinity.UInt):
+                return PrimitiveType.UInt64
+            case FlexType(FlexAffinity.Decimal):
+                return PrimitiveType.Decimal
+            case FlexType(FlexAffinity.Float):
+                return PrimitiveType.Float64
+            case FlexType(FlexAffinity.Boolean):
+                return PrimitiveType.Boolean
+            case FlexType(FlexAffinity.String):
+                return PrimitiveType.String
+            case FlexType(FlexAffinity.Rune):
+                return PrimitiveType.Rune
+            case FlexType(FlexAffinity.Nil):
+                diagnostics.error(f"cannot infer type of nil", context)
+                return ast.TypeState.Impossible
+            case _:
+                return evaluated_type
+
+    if dest_type is ast.TypeState.Flexible:  # specifically for constants and nothing else
+        return evaluated_type
+
+    assert not (
+        isinstance(dest_type, ast.TypeState)
+        or isinstance(dest_type.canonical, ast.TypeState)), \
+        f"the dest type {dest_type} should have been evaluated by now"
+
+    if evaluated_type == dest_type.canonical:
+        return evaluated_type
 
     return dest_type.canonical
 

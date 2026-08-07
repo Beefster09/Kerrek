@@ -18,7 +18,9 @@ let uninitialized: SomeEnum = ...;
 
 - A plain numeric literal in hex, octal, or binary is inferred as `UInt64`
 - An expression made of integer literals and no fractional division (floor division is ok) is inferred as `Integer`
-- Any other numeric value is inferred as `Decimal`
+- Hexfloats and numbers with an `f` suffix are inferred as `Float64`
+	- Using these literals without first importing `intrinsics:float` should emit a warning
+- Any other numeric value is inferred as `Decimal` (the floating point decimal version, not some arbitrary fixed point decimal type)
 - String literals are inferred as `String`
 - Rune literals are inferred as `Rune`
 - `true` and `false` are inferred as `Boolean`

@@ -20,10 +20,6 @@ def _symbol_gen():
 _NEXT_SYM = _symbol_gen()
 SYMBOLS_BY_ID: dict[SymbolID, _Symbol] = {}
 
-class EvalState(Enum):
-    Unresolved = auto()
-    Uncomputable = auto()
-
 
 class PrimitiveType(Enum):
     Integer = 'Integer'
@@ -47,6 +43,8 @@ class PrimitiveType(Enum):
     String = 'String'
     Rune = 'Rune'
     Byte = 'Byte'
+
+    TypeID = 'TypeID'
 
     Any = 'Any'
 
@@ -280,6 +278,10 @@ BUILTINS = {
         # - FUNCTIONS -
         'len',
         'cap',
+        'owned_shallow_clone',
+        'owned_deep_clone',
+        'shared_shallow_clone',
+        'shared_deep_clone',
     ]
 }
 

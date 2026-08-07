@@ -7,11 +7,11 @@ from pathlib import Path
 from types import EllipsisType
 from typing import TYPE_CHECKING, Any, Literal
 
-from frontend.lexer import Identifier, Numeric
 from frontend.common import Location
+from frontend.lexer import Identifier, Numeric
 
 if TYPE_CHECKING:
-    from frontend.resolver import CanonicalUnit, Named, AnyType
+    from frontend.resolver import AnyType, CanonicalUnit, Named
 
 
 @dataclass(kw_only=True)
@@ -183,10 +183,11 @@ class ConstantFolding(Enum):
 
 
 class TypeState(Enum):
-    NotDetermined = auto()
-    Flexible = auto()  # i.e. the value assumes whatever compatible type it might need to be
-    Impossible = auto()  # i.e. the expression cannot possibly be evaluated
-    Failed = auto()  # i.e. an error occured while trying to evaluate the type
+    NotDetermined = auto()   # to be determined during a semantic pass
+    NeedsInference = auto()  # this type will be inferred during type checking
+    Flexible = auto()        # the value assumes whatever compatible type it might need to be
+    Impossible = auto()      # the expression cannot possibly be evaluated
+    Failed = auto()          # an error occured while trying to evaluate the type
 
 
 @dataclass(kw_only=True)
@@ -377,7 +378,7 @@ class UnboundVar(Node):
 @dataclass(kw_only=True)
 class LocalVariable(Statement):
     name: Identifier
-    type: TypeExpression | Literal[TypeState.NotDetermined]
+    type: TypeExpression | Literal[TypeState.NeedsInference]
     expr: Expression | UnboundVar | None
 
 
