@@ -144,7 +144,8 @@ type CompoundType = (
     | MapType
 )
 
-type AnyType = CompoundType | BaseType | TemplateType
+type AnyType = CompoundType | BaseType | GenericType
+type RealizedType = AnyType | Literal[ast.TypeState.Impossible, ast.TypeState.Failed]
 
 
 @dataclass(kw_only=True)
@@ -163,8 +164,6 @@ class Constant(_Symbol):
 @dataclass(kw_only=True)
 class Variable(_Symbol):
     name: Identifier
-    type: BaseType | None = None
-    initial_value: Any = ast.ConstantFolding.NotEvaluated
     definition: ast.GlobalVariable | ast.LocalVariable | ast.FormalParameter
 
 
@@ -289,11 +288,12 @@ WRITE_ONLY = Builtin(Identifier('_'))
 
 
 @dataclass
-class TemplateType:
+class GenericType:
     name: Identifier
+    bound: AnyType | None = None
 
 
-Named = _Symbol | Builtin | TemplateType | AnyType
+Named = _Symbol | Builtin | GenericType | AnyType
 
 class CanonicalUnit(Counter[SymbolID]):
     def __str__(self):
@@ -446,8 +446,8 @@ class Resolver:
                     params[param.name] = Variable(name=param.name, definition=param)
 
                     for sub in param.type.walk():
-                        if isinstance(sub, ast.SimpleTemplateType):
-                            templates[sub.name] = TemplateType(sub.name)
+                        if isinstance(sub, ast.GenericType):
+                            templates[sub.name] = GenericType(sub.name)
 
                     self._resolve_names(module, param.type, templates, *scopes)
 
@@ -511,6 +511,7 @@ class Resolver:
                 return
 
             qualname.resolves_to = WRITE_ONLY
+            qualname.remaining_fields = []
             return
 
         elif '_' in qualname.path:
@@ -534,6 +535,7 @@ class Resolver:
             raise NotImplementedError("qualified name traversal not yet supported")
 
         qualname.resolves_to = resolved
+        qualname.remaining_fields = rest
 
     def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
         def check_shadowing(node: ast.Node, kind: type, name: Identifier):
@@ -590,6 +592,7 @@ class Resolver:
                 for node in named.definition.walk():
                     if isinstance(node, ast.TypeExpression):
                         self._ensure_type_built(node)
+                        # import rich; rich.print(node, node.canonical)
 
         diagnostics.report()
 
@@ -613,13 +616,13 @@ class Resolver:
                 diagnostics.error("unable to evaluate type declaration", decl)
                 return ast.TypeState.Failed
 
-    def _ensure_type_built(self, type_expr: ast.TypeExpression) -> AnyType | ast.TypeState:
-        if type_expr.canonical is ast.TypeState.NotDetermined:
+    def _ensure_type_built(self, type_expr: ast.TypeExpression) -> RealizedType:
+        if type_expr.canonical is None:
             type_expr.canonical = self._build_type(type_expr)
 
         return type_expr.canonical
 
-    def _build_type(self, type_expr: ast.TypeExpression) -> AnyType | ast.TypeState:
+    def _build_type(self, type_expr: ast.TypeExpression) -> RealizedType:
         match type_expr:
             case ast.SimpleType():
                 resolved = type_expr.type_name.resolves_to
@@ -635,14 +638,23 @@ class Resolver:
                         resolved.canonical = self._eval_type_decl(resolved.definition)
                     return resolved.canonical
 
-                elif isinstance(resolved, (EnumType, StructType, DistinctType, TemplateType)):
+                elif isinstance(resolved, (EnumType, StructType, DistinctType, GenericType)):
                     return resolved
 
                 diagnostics.error(f"'{'.'.join(type_expr.type_name.path)}' does not name a type", type_expr)
                 return ast.TypeState.Impossible
 
+            case ast.TypeWithUnit():
+                if type_expr.base:
+                    return self._build_type(type_expr.base)
+                else:
+                    return ast.TypeState.NeedsInference
+
+            case ast.GenericType():
+                return GenericType(type_expr.name)
+
             case _:
-                return ast.TypeState.Failed
+                raise NotImplementedError(f"no support for {type(type_expr).__qualname__}")
 
     def canonicalize_units(self):
         for module in self.modules.values():

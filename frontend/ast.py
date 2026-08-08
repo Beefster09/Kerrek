@@ -11,6 +11,7 @@ from frontend.common import Location
 from frontend.lexer import Identifier, Numeric
 
 if TYPE_CHECKING:
+    from frontend.exprs import ComptimeType, RealizedType
     from frontend.resolver import AnyType, CanonicalUnit, Named
 
 
@@ -63,7 +64,9 @@ class Node:
 class QualifiedName(Node):
     path: list[Identifier]
 
+    # populated by resolver
     resolves_to: Named | None = field(default=None, repr=False)
+    remaining_fields: list[Identifier] | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
@@ -88,7 +91,7 @@ class Import(TopLevelItem):
 
 
 @dataclass(kw_only=True)
-class ImportWithNames(Import):
+class ImportUsingNames(Import):
     names: list[Identifier]
 
 
@@ -100,15 +103,19 @@ class TopLevelDeclaration(TopLevelItem):
 @dataclass(kw_only=True)
 class GlobalConstant(TopLevelDeclaration):
     name: Identifier
-    type: TypeExpression | Literal[TypeState.Flexible]
+    type: TypeExpression | None
     expr: Expression
+
+    realized_type: ComptimeType | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
 class GlobalVariable(TopLevelDeclaration):
     name: Identifier
-    type: TypeExpression | Literal[TypeState.NotDetermined]
+    type: TypeExpression | None
     expr: Expression | None
+
+    realized_type: RealizedType | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
@@ -118,11 +125,19 @@ class TypeAlias(TopLevelDeclaration):
 
 @dataclass(kw_only=True)
 class UnitTypeDecl(TopLevelDeclaration):
+    """
+    e.g.
+    unit type length;
+    """
     name: Identifier
 
 
 @dataclass(kw_only=True)
 class UnitTypeAliasDecl(TopLevelDeclaration):
+    """
+    e.g.
+    unit type volume is length^3;
+    """
     name: Identifier
     base: CompoundUnit
 
@@ -131,7 +146,7 @@ class UnitTypeAliasDecl(TopLevelDeclaration):
 class UnitDecl(TopLevelDeclaration):
     """
     e.g.
-    unit meter: length
+    unit meter: length;
     """
     name: Identifier
     unit_type: QualifiedName | None = None
@@ -141,7 +156,7 @@ class UnitDecl(TopLevelDeclaration):
 class UnitAlias(TopLevelDeclaration):
     """
     e.g.
-    unit newton is kg m / s^2
+    unit newton is kg m / s^2;
     """
     name: Identifier
     base: CompoundUnit
@@ -151,7 +166,7 @@ class UnitAlias(TopLevelDeclaration):
 class UnitConversionDef(TopLevelDeclaration):
     """
     e.g.
-    unit radians = 3.14159265358979 * degrees / 180
+    unit radians = 3.14159265358979 * degrees / 180;
     """
     dest: Identifier
     src: QualifiedName
@@ -202,6 +217,12 @@ class QualnameExpr(Expression):
 
 
 @dataclass(kw_only=True)
+class FieldAccessExpr(Expression):
+    base: Expression
+    field: Identifier
+
+
+@dataclass(kw_only=True)
 class ScalarLiteralExpr(Expression):
     value: Numeric
     unit: CompoundUnit | None
@@ -220,15 +241,17 @@ class RuneValue:
 class SimpleLiteralExpr(Expression):
     value: RuneValue | str | bool | None
 
-    def __post_init__(self):
-        self.folded_value = self.value
 
 @dataclass
 class ImplicitEnum(Expression):
+    """
+    e.g. .Foo("bar")
+    """
     name: Identifier
+    payload: Expression | None
 
 
-class Operator(Enum):
+class BinaryOp(Enum):
     Add = '+'
     Subtract = '-'
     Multiply = '*'
@@ -253,9 +276,32 @@ class Operator(Enum):
 
 @dataclass(kw_only=True)
 class BinopExpr(Expression):
+    op: BinaryOp
     lhs: Expression
     rhs: Expression
-    op: Operator
+
+
+class UnaryOp(Enum):
+    Positive = '+'
+    Negate = '-'
+
+    Not = "not"
+
+
+@dataclass(kw_only=True)
+class UnaryExpr(Expression):
+    op: UnaryOp
+    expr: Expression
+
+
+@dataclass(kw_only=True)
+class AddressOfExpr(Expression):
+    expr: Expression
+
+
+@dataclass(kw_only=True)
+class DereferenceExpr(Expression):
+    expr: Expression
 
 
 @dataclass(kw_only=True)
@@ -265,7 +311,7 @@ class CastExpr(Expression):
 
 
 @dataclass(kw_only=True)
-class ExplicitUnitConversion(Expression):
+class UnitConvExpr(Expression):
     expr: Expression
     to: CompoundUnit
 
@@ -277,7 +323,7 @@ class IndexExpr(Expression):
 
 
 @dataclass(kw_only=True)
-class CallExpr(Expression):
+class CallishExpr(Expression):
     callee: Expression
     args: list[Argument]
 
@@ -287,7 +333,7 @@ class CallExpr(Expression):
 
 @dataclass(kw_only=True)
 class TypeExpression(Node):
-    canonical: AnyType | TypeState = field(default=TypeState.NotDetermined, repr=False)
+    canonical: RealizedType | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
@@ -296,8 +342,9 @@ class SimpleType(TypeExpression):
 
 
 @dataclass(kw_only=True)
-class SimpleTemplateType(TypeExpression):
+class GenericType(TypeExpression):
     name: Identifier
+    bound: TypeExpression | None
 
 
 @dataclass(kw_only=True)
@@ -378,15 +425,19 @@ class UnboundVar(Node):
 @dataclass(kw_only=True)
 class LocalVariable(Statement):
     name: Identifier
-    type: TypeExpression | Literal[TypeState.NeedsInference]
+    type: TypeExpression | None
     expr: Expression | UnboundVar | None
+
+    realized_type: RealizedType | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
 class LocalConstant(Statement):
     name: Identifier
-    type: TypeExpression | Literal[TypeState.Flexible]
+    type: TypeExpression | None
     expr: Expression
+
+    realized_type: AnyType | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)

@@ -100,7 +100,7 @@ class Keyword(Enum):
     Map = 'map'
     Struct = 'struct'
     Interface = 'interface'
-    VTable = 'vtable'
+    Impl = 'impl'
     Func = 'func'
 
     TypeOf = 'type_of'

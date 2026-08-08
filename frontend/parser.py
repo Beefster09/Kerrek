@@ -27,29 +27,29 @@ class Associativity(Enum):
 
 
 BINOPS = {
-    Punctuation.DStar: (100, ast.Operator.Power, Associativity.Right),
+    Punctuation.DStar: (100, ast.BinaryOp.Power, Associativity.Right),
 
-    Punctuation.Star: (80, ast.Operator.Multiply, Associativity.Left),
-    Punctuation.Slash: (80, ast.Operator.Divide, Associativity.Left),
-    Punctuation.DSlash: (80, ast.Operator.FloorDivide, Associativity.Left),
-    Punctuation.Percent: (80, ast.Operator.Remainder, Associativity.Left),
+    Punctuation.Star: (80, ast.BinaryOp.Multiply, Associativity.Left),
+    Punctuation.Slash: (80, ast.BinaryOp.Divide, Associativity.Left),
+    Punctuation.DSlash: (80, ast.BinaryOp.FloorDivide, Associativity.Left),
+    Punctuation.Percent: (80, ast.BinaryOp.Remainder, Associativity.Left),
 
-    Punctuation.Plus: (50, ast.Operator.Add, Associativity.Left),
-    Punctuation.Minus: (50, ast.Operator.Subtract, Associativity.Left),
+    Punctuation.Plus: (50, ast.BinaryOp.Add, Associativity.Left),
+    Punctuation.Minus: (50, ast.BinaryOp.Subtract, Associativity.Left),
 
-    Keyword.Mod: (40, ast.Operator.Modulo, Associativity.Left),
+    Keyword.Mod: (40, ast.BinaryOp.Modulo, Associativity.Left),
 
-    Keyword.Is: (30, ast.Operator.Is, Associativity.NonAssociative),
-    Punctuation.EQ: (30, ast.Operator.Equal, Associativity.NonAssociative),
-    Punctuation.NE: (30, ast.Operator.NotEqual, Associativity.NonAssociative),
-    Punctuation.GT: (30, ast.Operator.Greater, Associativity.NonAssociative),
-    Punctuation.GE: (30, ast.Operator.GreaterEqual, Associativity.NonAssociative),
-    Punctuation.LT: (30, ast.Operator.Less, Associativity.NonAssociative),
-    Punctuation.LE: (30, ast.Operator.LessEqual, Associativity.NonAssociative),
+    Keyword.Is: (30, ast.BinaryOp.Is, Associativity.NonAssociative),
+    Punctuation.EQ: (30, ast.BinaryOp.Equal, Associativity.NonAssociative),
+    Punctuation.NE: (30, ast.BinaryOp.NotEqual, Associativity.NonAssociative),
+    Punctuation.GT: (30, ast.BinaryOp.Greater, Associativity.NonAssociative),
+    Punctuation.GE: (30, ast.BinaryOp.GreaterEqual, Associativity.NonAssociative),
+    Punctuation.LT: (30, ast.BinaryOp.Less, Associativity.NonAssociative),
+    Punctuation.LE: (30, ast.BinaryOp.LessEqual, Associativity.NonAssociative),
 
-    Keyword.And: (20, ast.Operator.And, Associativity.Left),
+    Keyword.And: (20, ast.BinaryOp.And, Associativity.Left),
 
-    Keyword.Or: (10, ast.Operator.Or, Associativity.Left),
+    Keyword.Or: (10, ast.BinaryOp.Or, Associativity.Left),
 }
 
 
@@ -613,11 +613,12 @@ class Parser:
         match self.tokens.what():
             case Punctuation.Dollar:
                 if template := self.tokens.match(Punctuation.Dollar, Identifier):
-                    typ = ast.SimpleTemplateType(
+                    typ = ast.GenericType(
                         file=template[0].file,
                         start=template[0].start,
                         end=template[1].end,
                         name=template[1].what,
+                        bound=None,
                     )
 
                 if not allow_templates:
@@ -850,7 +851,7 @@ class Parser:
                         start=tok.start,
                         end=value.end if value else tok.end,
                         name=name.what,
-                        type=typ or ast.TypeState.Flexible,
+                        type=typ,
                         expr=value,
                     )
                 else:
@@ -859,7 +860,7 @@ class Parser:
                         start=tok.start,
                         end=value.end if value else tok.end,
                         name=name.what,
-                        type=typ or ast.TypeState.NotDetermined,
+                        type=typ,
                         expr=value,
                     )
 

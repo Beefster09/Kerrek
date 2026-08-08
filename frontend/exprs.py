@@ -6,11 +6,22 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum, auto
 from fractions import Fraction
+from numbers import Complex
 from typing import Any, Literal, NamedTuple
 
 from frontend import ast, diagnostics
 from frontend.lexer import NumberLiteralForm
-from frontend.resolver import AnyType, CanonicalUnit, Constant, PrimitiveType, Unit, Variable
+from frontend.resolver import (
+    AnyType,
+    CanonicalUnit,
+    Constant,
+    DistinctType,
+    FixedDecimal,
+    PrimitiveType,
+    TypeAlias,
+    Unit,
+    Variable,
+)
 
 type Num = int | float | Decimal | Fraction
 
@@ -43,6 +54,7 @@ class FlexType:
 
 type ComptimeValue = ScalarValue | ast.RuneValue | str | bool | None | ast.ConstantFolding
 type ComptimeType = AnyType | FlexType | Literal[ast.TypeState.Impossible, ast.TypeState.Failed]
+type RealizedType = AnyType | Literal[ast.TypeState.Impossible, ast.TypeState.Failed]
 type ExprResult = tuple[ComptimeValue, ComptimeType]
 
 
@@ -50,21 +62,35 @@ def _ensure_const_evaluated(const_sym: Constant) -> ExprResult:
     const_def = const_sym.definition
     if const_def.expr.folded_value is ast.ConstantFolding.NotEvaluated:
         val, typ = fold_constants(const_def.expr)
-        typ = _check_type(const_def.type, typ)
+        if const_def.type is not None:
+            typ = check_type(const_def.type, typ, const_def)
+
         return val, typ
 
     return const_def.expr.folded_value, const_def.expr.result_type
 
 
-def _ensure_type_inferred(var: Variable) -> ComptimeType:
-    if var.type is None:
-        if isinstance(var.definition, (ast.LocalVariable, ast.GlobalVariable)) \
-                and isinstance(var.definition.expr, ast.Expression):
-            _, typ = fold_constants(var.definition.expr)
-            typ = _check_type(var.definition.type, typ)
-            return typ
+def _ensure_type_inferred(var: Variable) -> RealizedType:
+    if isinstance(var.definition, ast.FormalParameter):
+        assert var.definition.type.canonical, f"parameter type should have been evaluated by now: {var.definition}"
+        return var.definition.type.canonical
 
-    return var.type or ast.TypeState.Failed
+    if (
+        var.definition.realized_type is None
+        and isinstance(var.definition.expr, ast.Expression)
+    ):
+        _, typ = fold_constants(var.definition.expr)
+
+        if var.definition.type is None:
+            typ = infer_type(typ, var.definition)
+            var.definition.realized_type = typ
+        else:
+            typ = check_type(var.definition.type, typ, var.definition)
+            assert not isinstance(typ, FlexType)
+            var.definition.realized_type = typ
+
+    assert var.definition.realized_type, f"variable type should have been evaluated by now: {var.definition}"
+    return var.definition.realized_type or ast.TypeState.Failed
 
 
 def fold_constants(node: ast.Expression) -> ExprResult:
@@ -75,11 +101,13 @@ def fold_constants(node: ast.Expression) -> ExprResult:
         value, typ = _evaluate(node)
     except Exception as err:
         import traceback; traceback.print_exc()
-        diagnostics.error(f"compile time evaluation failed: {err}", node)
+        diagnostics.error(f"constant evaluation failed: {err}", node)
         value = ast.ConstantFolding.Failed
         typ = ast.TypeState.Failed
     else:
         if typ in (ast.TypeState.Failed, ast.TypeState.Impossible):
+            if value is not ast.ConstantFolding.Failed:
+                diagnostics.error(f"type evaluation resolved to .{typ.name} here", node)
             value = ast.ConstantFolding.Failed
 
     node.folded_value = value
@@ -134,40 +162,43 @@ def _evaluate(node: ast.Expression) -> ExprResult:
             raise NotImplementedError(f"no evaluation implemented for {type(node).__qualname__}")
 
 
-def _check_type(
-    dest_type: ast.TypeExpression | ast.TypeState,
+
+def infer_type(
+    evaluated_type: ComptimeType,
+    context: ast.Node,
+) -> RealizedType:
+    match evaluated_type:
+        case FlexType(FlexAffinity.Integer):
+            return PrimitiveType.Integer
+        case FlexType(FlexAffinity.UInt):
+            return PrimitiveType.UInt64
+        case FlexType(FlexAffinity.Decimal):
+            return PrimitiveType.Decimal
+        case FlexType(FlexAffinity.Float):
+            return PrimitiveType.Float64
+        case FlexType(FlexAffinity.Boolean):
+            return PrimitiveType.Boolean
+        case FlexType(FlexAffinity.String):
+            return PrimitiveType.String
+        case FlexType(FlexAffinity.Rune):
+            return PrimitiveType.Rune
+        case FlexType(FlexAffinity.Nil):
+            diagnostics.error(f"cannot infer type of nil", context)
+            return ast.TypeState.Impossible
+        case FlexType(affinity):
+            raise NotImplementedError(f"missing a case for {affinity}")
+        case _:
+            return evaluated_type
+
+
+def check_type(
+    dest_type: ast.TypeExpression,
     evaluated_type: ComptimeType,
     context: ast.Node,
 ) -> ComptimeType:
-    if dest_type is ast.TypeState.NeedsInference:
-        match evaluated_type:
-            case FlexType(FlexAffinity.Integer):
-                return PrimitiveType.Integer
-            case FlexType(FlexAffinity.UInt):
-                return PrimitiveType.UInt64
-            case FlexType(FlexAffinity.Decimal):
-                return PrimitiveType.Decimal
-            case FlexType(FlexAffinity.Float):
-                return PrimitiveType.Float64
-            case FlexType(FlexAffinity.Boolean):
-                return PrimitiveType.Boolean
-            case FlexType(FlexAffinity.String):
-                return PrimitiveType.String
-            case FlexType(FlexAffinity.Rune):
-                return PrimitiveType.Rune
-            case FlexType(FlexAffinity.Nil):
-                diagnostics.error(f"cannot infer type of nil", context)
-                return ast.TypeState.Impossible
-            case _:
-                return evaluated_type
 
-    if dest_type is ast.TypeState.Flexible:  # specifically for constants and nothing else
-        return evaluated_type
-
-    assert not (
-        isinstance(dest_type, ast.TypeState)
-        or isinstance(dest_type.canonical, ast.TypeState)), \
-        f"the dest type {dest_type} should have been evaluated by now"
+    assert not isinstance(dest_type.canonical, ast.TypeState), \
+        f"the dest type of {context} should have been evaluated by now"
 
     if evaluated_type == dest_type.canonical:
         return evaluated_type
@@ -192,29 +223,29 @@ def modulo(lhs, rhs):
 
 
 BINOP_FUNCS = {
-    ast.Operator.Add: operator.add,
-    ast.Operator.Subtract: operator.sub,
-    ast.Operator.Multiply: operator.mul,
-    ast.Operator.Divide: operator.truediv,
-    ast.Operator.FloorDivide: operator.floordiv,
-    ast.Operator.Power: operator.pow,
+    ast.BinaryOp.Add: operator.add,
+    ast.BinaryOp.Subtract: operator.sub,
+    ast.BinaryOp.Multiply: operator.mul,
+    ast.BinaryOp.Divide: operator.truediv,
+    ast.BinaryOp.FloorDivide: operator.floordiv,
+    ast.BinaryOp.Power: operator.pow,
 
-    ast.Operator.Modulo: modulo,
-    ast.Operator.Remainder: remainder,
+    ast.BinaryOp.Modulo: modulo,
+    ast.BinaryOp.Remainder: remainder,
 
-    ast.Operator.Equal: operator.eq,
-    ast.Operator.NotEqual: operator.ne,
-    ast.Operator.Less: operator.lt,
-    ast.Operator.LessEqual: operator.le,
-    ast.Operator.Greater: operator.gt,
-    ast.Operator.GreaterEqual: operator.ge,
+    ast.BinaryOp.Equal: operator.eq,
+    ast.BinaryOp.NotEqual: operator.ne,
+    ast.BinaryOp.Less: operator.lt,
+    ast.BinaryOp.LessEqual: operator.le,
+    ast.BinaryOp.Greater: operator.gt,
+    ast.BinaryOp.GreaterEqual: operator.ge,
 }
 
 
 def _eval_binop(binop: ast.BinopExpr) -> ExprResult:
     lhs, lhs_type = fold_constants(binop.lhs)
     rhs, rhs_type = fold_constants(binop.rhs)
-    return _eval_binop_value(binop, lhs, rhs), _eval_binop_type(binop.op, lhs_type, rhs_type)
+    return _eval_binop_value(binop, lhs, rhs), _eval_binop_type(binop, lhs_type, rhs_type)
 
 def _eval_binop_value(binop: ast.BinopExpr, lhs: ComptimeValue, rhs: ComptimeValue) -> ComptimeValue:
     if lhs is ast.ConstantFolding.Failed or rhs is ast.ConstantFolding.Failed:
@@ -226,37 +257,37 @@ def _eval_binop_value(binop: ast.BinopExpr, lhs: ComptimeValue, rhs: ComptimeVal
     op = binop.op
 
     match op, lhs, rhs:
-        case (ast.Operator.Equal, None, _) | (ast.Operator.Equal, _, None):
+        case (ast.BinaryOp.Equal, None, _) | (ast.BinaryOp.Equal, _, None):
             return lhs is None and rhs is None
 
-        case (ast.Operator.NotEqual, None, _) | (ast.Operator.NotEqual, _, None):
+        case (ast.BinaryOp.NotEqual, None, _) | (ast.BinaryOp.NotEqual, _, None):
             return not (lhs is None and rhs is None)
 
         case (_, None, _) | (_, _, None):
             return None
 
-        case ast.Operator.Multiply, bool(), _:
+        case ast.BinaryOp.Multiply, bool(), _:
             return rhs if lhs else _zero(rhs)
 
-        case ast.Operator.Multiply, _, bool():
+        case ast.BinaryOp.Multiply, _, bool():
             return lhs if rhs else _zero(lhs)
 
-        case ast.Operator.Add, str(), str():
+        case ast.BinaryOp.Add, str(), str():
             return lhs + rhs
 
-        case ast.Operator.And, _, _:
+        case ast.BinaryOp.And, _, _:
             return _truthy(lhs) and _truthy(rhs)
 
-        case ast.Operator.Or, _, _:
+        case ast.BinaryOp.Or, _, _:
             return _truthy(lhs) or _truthy(rhs)
 
         case (
             (
-                ast.Operator.Add | ast.Operator.Subtract
-                | ast.Operator.Remainder | ast.Operator.Modulo
-                | ast.Operator.Equal | ast.Operator.NotEqual
-                | ast.Operator.Less | ast.Operator.Greater
-                | ast.Operator.LessEqual | ast.Operator.GreaterEqual
+                ast.BinaryOp.Add | ast.BinaryOp.Subtract
+                | ast.BinaryOp.Remainder | ast.BinaryOp.Modulo
+                | ast.BinaryOp.Equal | ast.BinaryOp.NotEqual
+                | ast.BinaryOp.Less | ast.BinaryOp.Greater
+                | ast.BinaryOp.LessEqual | ast.BinaryOp.GreaterEqual
             ),
             ScalarValue(), ScalarValue(),
         ):
@@ -266,25 +297,25 @@ def _eval_binop_value(binop: ast.BinopExpr, lhs: ComptimeValue, rhs: ComptimeVal
             else:
                 raise ValueError(f"incompatible units: ({lhs.unit}) and ({rhs.unit})")
 
-        case ast.Operator.Multiply, ScalarValue(), ScalarValue():
+        case ast.BinaryOp.Multiply, ScalarValue(), ScalarValue():
             return ScalarValue(
                 operator.mul(*_coerce(lhs.value, rhs.value)),
                 CanonicalUnit.combine(lhs.unit, 1, rhs.unit, 1),
             )
 
-        case ast.Operator.Divide, ScalarValue(), ScalarValue():
+        case ast.BinaryOp.Divide, ScalarValue(), ScalarValue():
             return ScalarValue(
                 Fraction(lhs.value) / Fraction(rhs.value),
                 CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1),
             )
 
-        case ast.Operator.FloorDivide, ScalarValue(), ScalarValue():
+        case ast.BinaryOp.FloorDivide, ScalarValue(), ScalarValue():
             return ScalarValue(
                 operator.floordiv(*_coerce(lhs.value, rhs.value)),
                 CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1),
             )
 
-        case ast.Operator.Power, ScalarValue(), ScalarValue():
+        case ast.BinaryOp.Power, ScalarValue(), ScalarValue():
             if rhs.unit:
                 raise ValueError("exponents must be unitless")
 
@@ -376,59 +407,301 @@ def _coerce(a: Num, b: Num) -> tuple[int, int] | tuple[float, float] | tuple[Dec
             return a, b
 
 
-def _eval_binop_type(op: ast.Operator, lhs: ComptimeType, rhs: ComptimeType) -> ComptimeType:
+def _eval_binop_type(binop: ast.BinopExpr, lhs: ComptimeType, rhs: ComptimeType) -> ComptimeType:
+    op = binop.op
+
     match op, lhs, rhs:
         case (
-            (ast.Operator.Equal | ast.Operator.NotEqual),
-            (PrimitiveType.Float32 | PrimitiveType.Float64),
-            (PrimitiveType.Float32 | PrimitiveType.Float64),
+            (ast.BinaryOp.Equal | ast.BinaryOp.NotEqual),
+            (PrimitiveType.Float32 | PrimitiveType.Float64 | FlexType(FlexAffinity.Float)),
+            (PrimitiveType.Float32 | PrimitiveType.Float64 | FlexType(FlexAffinity.Float)),
         ):
-            # quick and dirty: should probably handled by the case below, once compatibility checks are added in
+            diagnostics.error(f"binary floats do not support {op.value}", binop)
             return ast.TypeState.Impossible
 
         case (
             (
-                ast.Operator.Equal | ast.Operator.NotEqual
-                | ast.Operator.Less | ast.Operator.Greater
-                | ast.Operator.LessEqual | ast.Operator.GreaterEqual
+                ast.BinaryOp.Equal | ast.BinaryOp.NotEqual
+                | ast.BinaryOp.Less | ast.BinaryOp.Greater
+                | ast.BinaryOp.LessEqual | ast.BinaryOp.GreaterEqual
             ),
             _, _,
         ):
             # TODO: actually check type compatibility of the comparison operator
             return PrimitiveType.Boolean
 
-        case ast.Operator.Multiply, PrimitiveType.Boolean, _:
+        case ast.BinaryOp.Multiply, PrimitiveType.Boolean, _:
             return rhs
 
-        case ast.Operator.Multiply, _, PrimitiveType.Boolean:
+        case ast.BinaryOp.Multiply, _, PrimitiveType.Boolean:
             return lhs
 
-        case ast.Operator.Add, PrimitiveType.String, PrimitiveType.String:
+        case ast.BinaryOp.Add, PrimitiveType.String, PrimitiveType.String:
             return PrimitiveType.String
 
         case (
-            (ast.Operator.And | ast.Operator.Or),
+            (ast.BinaryOp.And | ast.BinaryOp.Or),
             PrimitiveType.Boolean, PrimitiveType.Boolean,
         ):
             return PrimitiveType.Boolean
 
         case (
+            ast.BinaryOp.Divide,
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt),
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt),
+        ):
+            # This is supported for comptime integers, but not runtime integers
+            return FlexType(FlexAffinity.Decimal)
+
+        case ast.BinaryOp.Divide, _, _ if _is_integer_type(lhs) and _is_integer_type(rhs):
+            diagnostics.error(
+                "true division is not supported for integer types."
+                + " use // if you meant to do floor division",
+                binop)
+            return ast.TypeState.Impossible
+
+        case (
+            ast.BinaryOp.FloorDivide,
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Decimal | FlexAffinity.Float),
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Decimal | FlexAffinity.Float),
+        ):
+            return FlexType(FlexAffinity.Integer)
+
+        case (
             (
-                ast.Operator.Add | ast.Operator.Subtract
-                | ast.Operator.Remainder | ast.Operator.Modulo
-                | ast.Operator.Multiply | ast.Operator.Power
-                | ast.Operator.Divide | ast.Operator.FloorDivide
+                ast.BinaryOp.Add | ast.BinaryOp.Subtract
+                | ast.BinaryOp.Remainder | ast.BinaryOp.Modulo
+                | ast.BinaryOp.Multiply | ast.BinaryOp.Power
+                | ast.BinaryOp.Divide | ast.BinaryOp.FloorDivide
             ),
             _, _,
-        ):
-            if lhs == rhs:
-                # TODO: this isn't quite right but it's good enough for a first pass
-                # this is overly strict for numeric types and doesn't allow implicit conversions
-                # it doesn't factor in units at all
-                # other types which do not actually support these operators are let through
-                return lhs
+        ) if _is_numeric_type(lhs) and _is_numeric_type(rhs):
+            if coerced_left := _implicit_convert(lhs, rhs):
+                return coerced_left
+            if coerced_right := _implicit_convert(rhs, lhs):
+                return coerced_right
             else:
+                diagnostics.error(f"cannot implicitly coalesce {lhs} and {rhs}", binop)
                 return ast.TypeState.Impossible
 
         case _:
+            diagnostics.error(f"operator {op.value} is not defined for types {lhs} and {rhs}", binop)
             return ast.TypeState.Impossible
+
+
+def _implicit_convert(dest: ComptimeType, src: ComptimeType) -> ComptimeType:
+    if src == dest:
+        return src
+
+    match dest, src:
+        # TODO: composite types
+
+        case FlexType(FlexAffinity.Integer), FlexType(FlexAffinity.UInt):
+            return dest
+
+        case FlexType(FlexAffinity.Float), FlexType(FlexAffinity.Integer | FlexAffinity.UInt):
+            return dest
+
+        case FlexType(FlexAffinity.Decimal), FlexType(FlexAffinity.Integer | FlexAffinity.UInt):
+            return dest
+
+        case PrimitiveType.Integer, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+            | PrimitiveType.Int64
+            | PrimitiveType.Int32
+            | PrimitiveType.Int16
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt64
+            | PrimitiveType.UInt32
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+        ):
+            return dest
+
+        case PrimitiveType.Int64, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+            | PrimitiveType.Int32
+            | PrimitiveType.Int16
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt32
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+        ):
+            return dest
+
+        case PrimitiveType.Int32, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+            | PrimitiveType.Int16
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+        ):
+            return dest
+
+        case PrimitiveType.Int16, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt8
+        ):
+            return dest
+
+        case PrimitiveType.Int8, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+        ):
+            return dest
+
+        case PrimitiveType.UInt64, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+            | PrimitiveType.UInt32
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+        ):
+            return dest
+
+        case PrimitiveType.UInt32, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+        ):
+            return dest
+
+        case PrimitiveType.UInt16, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+            | PrimitiveType.UInt8
+        ):
+            return dest
+
+        case PrimitiveType.UInt8, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+        ):
+            return dest
+
+        case PrimitiveType.Decimal, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Decimal)
+            | FixedDecimal()
+            | PrimitiveType.Integer
+            | PrimitiveType.Int64
+            | PrimitiveType.Int32
+            | PrimitiveType.Int16
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt64
+            | PrimitiveType.UInt32
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+            | PrimitiveType.Decimal
+            | PrimitiveType.Dec64
+            | PrimitiveType.Dec32
+        ):
+            return dest
+
+        case PrimitiveType.Dec64, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Decimal)
+            | PrimitiveType.Int32
+            | PrimitiveType.Int16
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt32
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+            | PrimitiveType.Dec32
+        ):
+            return dest
+
+        case PrimitiveType.Dec32, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Decimal)
+            | PrimitiveType.Int16
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+        ):
+            return dest
+
+        case FixedDecimal(dig_dest, prec_dest), FixedDecimal(dig_src, prec_src):
+            if prec_dest >= prec_src and dig_dest - prec_dest >= dig_src - prec_src:
+                return dest
+            else:
+                return ast.TypeState.Impossible
+
+        case FixedDecimal(), (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Decimal)
+            # TODO: conversion from primitive types (it needs to factor in digits to the left of the decimal point)
+        ):
+            return dest
+
+        case PrimitiveType.Float64, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Float)
+            | PrimitiveType.Integer
+            | PrimitiveType.Int32
+            | PrimitiveType.Int16
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt32
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+            | PrimitiveType.Float32
+        ):
+            return dest
+
+        case PrimitiveType.Float32, (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Float)
+            | PrimitiveType.Integer
+            | PrimitiveType.Int16
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+        ):
+            return dest
+
+        case _:
+            return ast.TypeState.Impossible
+
+
+def _is_integer_type(typ: ComptimeType) -> bool:
+    match typ:
+        case (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+            | PrimitiveType.Integer
+            | PrimitiveType.Int64
+            | PrimitiveType.Int32
+            | PrimitiveType.Int16
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt64
+            | PrimitiveType.UInt32
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+        ):
+            return True
+
+        case DistinctType():
+            assert typ.definition.underlying.canonical, f"underlying type of distinct type should have been evaluated by now: {typ.definition}"
+            return _is_integer_type(typ.definition.underlying.canonical)
+
+        case _:
+            return False
+
+
+def _is_numeric_type(typ: ComptimeType) -> bool:
+    match typ:
+        case (
+            FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Decimal | FlexAffinity.Float)
+            | PrimitiveType.Integer
+            | PrimitiveType.Int64
+            | PrimitiveType.Int32
+            | PrimitiveType.Int16
+            | PrimitiveType.Int8
+            | PrimitiveType.UInt64
+            | PrimitiveType.UInt32
+            | PrimitiveType.UInt16
+            | PrimitiveType.UInt8
+            | PrimitiveType.Decimal
+            | PrimitiveType.Dec64
+            | PrimitiveType.Dec32
+            | PrimitiveType.Float64
+            | PrimitiveType.Float32
+        ):
+            return True
+
+        case DistinctType():
+            assert typ.definition.underlying.canonical, f"underlying type of distinct type should have been evaluated by now: {typ.definition}"
+            return _is_numeric_type(typ.definition.underlying.canonical)
+
+        case _:
+            return False
