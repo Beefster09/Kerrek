@@ -19,22 +19,21 @@ Numbers at compile time should be stored as losslessly as possible (e.g. rationa
 ## Integers
 
 - `Integer`: High-range integer able to hold at least 35 decimal digits, positive or negative
-	- Its inline size must not be larger than 256 bits (32 bytes) even if the value itself is stored in heap memory
+	- Its inline size must not be larger than 40 bytes even if the value itself is stored in heap memory
 	- A fully zeroed inline value must be semantically zero
 	- overflow/underflow may allocate an arbitrary-sized integer to hold the value
-	- if it does not, an `OverflowError` should be omitted
+	- if it does not, an `OverflowError` should be omitted, which will panic if not handled
 	- for all practical intents and purposes, an `Integer` has the semantics of an unbounded mathematical integer, but it is *not guaranteed* to be an arbitrary precision integer that never overflows (and technically BigInteger implementations have a limit too, it's just that you'll practically never reach it)
 		- If you need a type that is guaranteed to be arbitrary precision, for instance in cryptographic code, use `core:math/bigint`
-- Sized integers behave as expected for machine integers
-	- overflow and underflow *must* wrap for sized integers, as that is the behavior most commonly expected for machine integers
+	- The compiler may use a smaller machine integer if it can prove that would never overflow
+- Sized integers (`Int64`, `UInt32`, etc...) behave as expected for machine integers
+	- overflow and underflow wrap by default for sized integers, as that is the behavior most commonly expected for machine integers
 
 ### Operator Semantics
 
-All mathematical operators except for `/` are defined for integers.
+All mathematical operators except for `/` are defined for integers. The operator you are looking for is `//`, the floor-division operator. Requiring you to opt into floor division instead of silently truncating helps to prevent subtle logic bugs and surprises.
 
-The operator you are looking for is `//`, the floor-division operator. Requiring you to opt into floor division instead of silently truncating helps to prevent subtle logic bugs and surprises.
-
-Division by zero emits a `ZeroDivisionError` which must be handled unless the divisor is known not to be zero.
+Division by zero emits a `ZeroDivisionError` which panics by default
 
 ## Decimals
 
@@ -44,16 +43,41 @@ The Decimal types are:
 	- `d` must be a compile-time known positive integer
 	- `p` must be a compile-time known integer < `d` (negative is well-defined albeit not useful)
 	- The compiler must support up to 30 significant digits at minimum
-	- The storage must be inline when applicable
+	- The overall size of the value may be no larger than the smallest multiple of whatever the pointer size is on the target hardware that can hold the number of requested digits
+	- The storage must be inline when applicable (e.g. structs, enums, stack if possible)
+	- When `p == 0`, the value may implicitly convert to `Integer`
 - `Decimal`: High-precision floating point decimal able to hold at least 30 significant decimal digits with an exponent able to represent at least +-100 orders of magnitude; plus NaN and +-Infinity
-	- Its inline size must not exceed 256 bits (32 bytes) even if the value itself is stored in heap memory or similar.
+	- Its inline size must not exceed 40 bytes even if the value itself is stored in heap memory or similar.
 	- A fully zeroed inline value must be semantically zero
-- `Dec64`: floating point decimal; exactly 64 bits, representing at least all possible values represented by IEEE decimal64
-- `Dec32`: floating point decimal; exactly 32 bits, representing at least all possible values represented by IEEE decimal32
+	- an IEEE decimal128 conforms to these requirements
+- `Dec64`: IEEE decimal64 or semantic equivalent that fits in 64 bits
+- `Dec32`: IEEE decimal32 or semantic equivalent that fits in 32 bits
 
-## Floats
+## Binary Floats
 
-Floats are inaccessible in the default namespace and exposed via `intrinsics:float`
+Floats are inaccessible in the default namespace and exposed via `intrinsics:floats`. As useful as they are, they have some non-obvious subtleties to them which trip up many programmers and silently make programs incorrect. By placing them out of reach of the default namespace, it helps to add some friction so that programmers are more inclined to reach for the tools that are more likely to be correct. Use floats only when you know for sure you need them.
+
+This exposes two types:
+
+- `Float64`
+- `Float32`
+
+these may be renamed to `BinFloat64` and `BinFloat32` before version 1.0 to further reinforce the fact that they have some surprising semantics and point out that the floating point is, in fact, a binary point between binary digits rather than a decimal point as many might expect.
+
+### Operator Semantics
+
+All mathematical binary operators are supported for floats except for `==` and `!=`. These have been known to surprise programmers for a variety of reasons: `0.1 + 0.2 != 0.3` is one of those classic examples but there's also `NaN != NaN` and some other nuances.
+
+This additionally means that floats are not allowed to be the keys of a map.
+
+if you would like to opt into the conventional equality operator, with all of its sharp edges, it is available as the `ieee_equal` function in `intrinsics:floats`. Otherwise, you may prefer one of the approximate equality functions:
+
+```kerrek
+floats.approx_equal(0.1f + 0.2f, 0.3f, 0.000001f);  \\ values are within 0.000001f of each other
+floats.approx_equal_ulp(0.1f + 0.2f, 0.3f, 3);  \\ values are within 3 ulps
+floats.round_equal(0.1f + 0.2f, 0.3f, 3);  \\ would round to the same decimal value with 3 digits after the decimal point
+floats.trunc_equal(0.1f + 0.2f, 0.3f, 3);  \\ would truncate to the same decimal value with 3 digits after the decimal point
+```
 
 # Non-Numeric Types
 

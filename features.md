@@ -2,19 +2,22 @@
 
 Kerrek comes with all of the trappings of a many other procedural language: structs, functions, enums, distinct types, compile-time constants, etc... Programmers from C, Zig, Odin, and Go should all feel at home.
 
-Additionally, there are some other notable features that may feel novel or unusual:
+Some feature highlights:
 - Decimal as the default real type
-- Floats do not support == and !=
+- Built-in fixed-point decimal
+- Floats do not support `==` and `!=`
+- Integers do not support `/` for division.
+	- Use `//` instead, to show you intended floor division.
+- Double backslash for comments
 - Numeric types can have units, which the type checker verifies are correct
-- Capabilities: constrained mutation and function calls
 - Value labels: tools for things like taint analysis
-- Explicit interface vtables and interface objects
-- Builtin smart pointers; no GC
-- `async` anything as long as you don't leak it
-- Errors are values, with Result-like semantics
+- Capabilities: constrained mutation and function calls
+- [Explicit interface vtables and interface objects](/spec/interfaces.md)
+- [Builtin smart pointers; no GC](/spec/pointers.md)
+- [Constrained `async`/`await` threaded concurrency](/spec/concurrency.md)
+- [A fresh new take on error handling](/spec/errors.md)
 - Constrained long-range control flow with `abort`
 - Backtick-escaped identifiers for avoiding conflicts with keywords
-- Double backslash for comments
 - Modulo operator (`mod`) with looser binding than addition
 
 

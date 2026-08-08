@@ -507,6 +507,7 @@ def _implicit_convert(dest: ComptimeType, src: ComptimeType) -> ComptimeType:
 
         case PrimitiveType.Integer, (
             FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
+            | FixedDecimal(_, 0)
             | PrimitiveType.Int64
             | PrimitiveType.Int32
             | PrimitiveType.Int16
