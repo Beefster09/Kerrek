@@ -209,6 +209,7 @@ class TypeState(Enum):
 class Expression(Node):
     folded_value: Any = field(default=ConstantFolding.NotEvaluated, repr=False)
     result_type: Any = field(default=TypeState.NotDetermined, repr=False)
+    required_type: Any = field(default=None, repr=False)  # the type it would be implicitly converted to if different from result_type
 
 
 @dataclass(kw_only=True)
@@ -402,7 +403,7 @@ class Statement(Node):
 
 @dataclass(kw_only=True)
 class ReturnStatement(Statement):
-    value: Expression | None
+    values: list[Expression]
 
 
 @dataclass(kw_only=True)

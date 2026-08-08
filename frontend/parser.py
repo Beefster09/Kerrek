@@ -800,13 +800,22 @@ class Parser:
 
             case Keyword.Return:
                 self.tokens.advance()
-                retval = self._expr()
+                values = []
+                first_ret = self._expr()
+                if first_ret:
+                    values.append(first_ret)
+                    while self.tokens.match_one(Punctuation.Comma):
+                        val = self._expr()
+                        if val:
+                            values.append(val)
+                        else:
+                            break
 
                 stmt = ast.ReturnStatement(
                     file=tok.file,
                     start=tok.start,
-                    end=retval.end if retval else tok.end,
-                    value=retval,
+                    end=values[-1].end if values else tok.end,
+                    values=values,
                 )
 
             case Keyword.Let | Keyword.Const:

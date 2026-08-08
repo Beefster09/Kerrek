@@ -1,7 +1,7 @@
 
 from dataclasses import dataclass
 
-from frontend import ast, exprs
+from frontend import ast, diagnostics, exprs
 from frontend.lexer import Identifier
 
 
@@ -30,33 +30,32 @@ def validate(node: ast.TopLevelDeclaration):
     """
     match node:
         case ast.GlobalConstant():
-            exprs.fold_constants(node.expr)
+            exprs.evaluate(node.expr)
 
         case ast.GlobalVariable():
             if node.expr and not isinstance(node.expr, ast.UnboundVar):
-                exprs.fold_constants(node.expr)
+                exprs.evaluate(node.expr)
 
         case ast.FuncDefinition():
             params_scope: Scope = {}
             for param in node.params:
                 if param.default:
-                    _, typ = exprs.fold_constants(param.default)
+                    _, typ = exprs.evaluate(param.default)
                     exprs.check_type(param.type, typ, param)
                     params_scope[param.name] = ParamVar(declaration=param)
 
-            _validate_block(node.body, params_scope)
+            _validate_block(node, node.body, params_scope)
 
 
-def _validate_block(block: ast.Block, *scopes: Scope):
+def _validate_block(func: ast.FuncDefinition, block: ast.Block, *scopes: Scope):
     local_scope: Scope = {}
     for stmt in block.body:
         match stmt:
             case ast.Block():
-                _validate_block(stmt, local_scope, *scopes)
+                _validate_block(func, stmt, local_scope, *scopes)
 
             case ast.LocalConstant():
-                val, typ = exprs.fold_constants(stmt.expr)
-                print(stmt.name, typ, val)
+                _, typ = exprs.evaluate(stmt.expr)
                 if stmt.type:
                     exprs.check_type(stmt.type, typ, stmt)
 
@@ -67,7 +66,7 @@ def _validate_block(block: ast.Block, *scopes: Scope):
                         possibly_unbound=True,
                     )
                 elif stmt.expr:
-                    _, typ = exprs.fold_constants(stmt.expr)
+                    _, typ = exprs.evaluate(stmt.expr)
 
                     if stmt.type is None:
                         typ = exprs.infer_type(typ, stmt)
@@ -78,5 +77,24 @@ def _validate_block(block: ast.Block, *scopes: Scope):
                         stmt.realized_type = typ
 
                     local_scope[stmt.name] = VarState(declaration=stmt)
+
+            case ast.ReturnStatement():
+                if len(stmt.values) < len(func.return_types):
+                    diagnostics.error("return statement has too few values"
+                        + f" (expected {len(func.return_types)}, got {len(stmt.values)})",
+                        stmt)
+                    continue
+
+                if len(stmt.values) > len(func.return_types):
+                    diagnostics.error("return statement has too many values"
+                        + f" (expected {len(func.return_types)}, got {len(stmt.values)})",
+                        stmt)
+                    continue
+
+                for req_type, value in zip(func.return_types, stmt.values, strict=True):
+                    _, typ = exprs.evaluate(value)
+                    typ = exprs.check_type(req_type, typ, value)
+                    value.required_type = typ
+
 
 

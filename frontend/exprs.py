@@ -61,7 +61,7 @@ type ExprResult = tuple[ComptimeValue, ComptimeType]
 def _ensure_const_evaluated(const_sym: Constant) -> ExprResult:
     const_def = const_sym.definition
     if const_def.expr.folded_value is ast.ConstantFolding.NotEvaluated:
-        val, typ = fold_constants(const_def.expr)
+        val, typ = evaluate(const_def.expr)
         if const_def.type is not None:
             typ = check_type(const_def.type, typ, const_def)
 
@@ -79,7 +79,7 @@ def _ensure_type_inferred(var: Variable) -> RealizedType:
         var.definition.realized_type is None
         and isinstance(var.definition.expr, ast.Expression)
     ):
-        _, typ = fold_constants(var.definition.expr)
+        _, typ = evaluate(var.definition.expr)
 
         if var.definition.type is None:
             typ = infer_type(typ, var.definition)
@@ -93,7 +93,7 @@ def _ensure_type_inferred(var: Variable) -> RealizedType:
     return var.definition.realized_type or ast.TypeState.Failed
 
 
-def fold_constants(node: ast.Expression) -> ExprResult:
+def evaluate(node: ast.Expression) -> ExprResult:
     if node.folded_value is not ast.ConstantFolding.NotEvaluated:
         return node.folded_value
 
@@ -156,6 +156,7 @@ def _evaluate(node: ast.Expression) -> ExprResult:
                 else:
                     return ScalarValue(1, CanonicalUnit([resolved.id])), FlexType(FlexAffinity.Integer)
 
+            diagnostics.error(f"qualname expression references unexpected symbol: {resolved}", node)
             return ast.ConstantFolding.RuntimeValue, ast.TypeState.Impossible # TODO: do something more sensible here
 
         case _:
@@ -243,8 +244,8 @@ BINOP_FUNCS = {
 
 
 def _eval_binop(binop: ast.BinopExpr) -> ExprResult:
-    lhs, lhs_type = fold_constants(binop.lhs)
-    rhs, rhs_type = fold_constants(binop.rhs)
+    lhs, lhs_type = evaluate(binop.lhs)
+    rhs, rhs_type = evaluate(binop.rhs)
     return _eval_binop_value(binop, lhs, rhs), _eval_binop_type(binop, lhs_type, rhs_type)
 
 def _eval_binop_value(binop: ast.BinopExpr, lhs: ComptimeValue, rhs: ComptimeValue) -> ComptimeValue:
@@ -476,9 +477,9 @@ def _eval_binop_type(binop: ast.BinopExpr, lhs: ComptimeType, rhs: ComptimeType)
             ),
             _, _,
         ) if _is_numeric_type(lhs) and _is_numeric_type(rhs):
-            if coerced_left := _implicit_convert(lhs, rhs):
+            if (coerced_left := _implicit_convert(lhs, rhs)) is not ast.TypeState.Impossible:
                 return coerced_left
-            if coerced_right := _implicit_convert(rhs, lhs):
+            if (coerced_right := _implicit_convert(rhs, lhs)) is not ast.TypeState.Impossible:
                 return coerced_right
             else:
                 diagnostics.error(f"cannot implicitly coalesce {lhs} and {rhs}", binop)
@@ -505,7 +506,7 @@ def _implicit_convert(dest: ComptimeType, src: ComptimeType) -> ComptimeType:
         case FlexType(FlexAffinity.Decimal), FlexType(FlexAffinity.Integer | FlexAffinity.UInt):
             return dest
 
-        case PrimitiveType.Integer, (
+        case (PrimitiveType.Integer | FlexType(FlexAffinity.Integer)), (
             FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
             | FixedDecimal(_, 0)
             | PrimitiveType.Int64
@@ -517,7 +518,7 @@ def _implicit_convert(dest: ComptimeType, src: ComptimeType) -> ComptimeType:
             | PrimitiveType.UInt16
             | PrimitiveType.UInt8
         ):
-            return dest
+            return PrimitiveType.Integer
 
         case PrimitiveType.Int64, (
             FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
@@ -577,7 +578,7 @@ def _implicit_convert(dest: ComptimeType, src: ComptimeType) -> ComptimeType:
         ):
             return dest
 
-        case PrimitiveType.Decimal, (
+        case (PrimitiveType.Decimal | FlexType(FlexAffinity.Decimal)), (
             FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Decimal)
             | FixedDecimal()
             | PrimitiveType.Integer
@@ -593,7 +594,7 @@ def _implicit_convert(dest: ComptimeType, src: ComptimeType) -> ComptimeType:
             | PrimitiveType.Dec64
             | PrimitiveType.Dec32
         ):
-            return dest
+            return PrimitiveType.Decimal
 
         case PrimitiveType.Dec64, (
             FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Decimal)
