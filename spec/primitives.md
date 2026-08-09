@@ -93,6 +93,8 @@ Booleans within structs may be no larger than 8 bits
 
 ### Operator Semantics
 
+Booleans support the logic operators `and`, `or`, and `not`
+
 Booleans support equality operators, but not the other four comparison operators
 
 They also support multiplication with any other type with a well-defined and valid zero value:

@@ -229,7 +229,7 @@ def report(warnings_as_errors=False):
     """
     global _diagnostics
 
-    def highlight_diagnostic(diag: Diagnostic):
+    def show_diagnostic_source(diag: Diagnostic):
         if diag.file is None or diag.start is None:
             return False
 
@@ -274,7 +274,7 @@ def report(warnings_as_errors=False):
             f"  {ANSI_GRAY}(in {diag.file or '(stdin)'}",
             f" on line {diag.start.line if diag.start else '???'}){ANSI_CLEAR}",
             sep='', file=sys.stderr)
-        highlight_diagnostic(diag)
+        show_diagnostic_source(diag)
 
     if err_count:
         print(f"encountered {err_count} errors. aborting.")
