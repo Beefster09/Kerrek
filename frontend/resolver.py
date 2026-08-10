@@ -348,23 +348,18 @@ class CanonicalUnit(Counter[SymbolID]):
 
     @staticmethod
     def combine(
-        a: CanonicalUnit | None,
+        a: CanonicalUnit,
         a_exp: int,
-        b: CanonicalUnit | None,
+        b: CanonicalUnit,
         b_exp: int,
-    ) -> CanonicalUnit | None:
-        if a is None and b is None:
-            return None
-
+    ) -> CanonicalUnit:
         result = CanonicalUnit()
 
-        if a is not None:
-            for comp, exp in a.items():
-                result[comp] += exp * a_exp
+        for comp, exp in a.items():
+            result[comp] += exp * a_exp
 
-        if b is not None:
-            for comp, exp in b.items():
-                result[comp] += exp * b_exp
+        for comp, exp in b.items():
+            result[comp] += exp * b_exp
 
         return result
 

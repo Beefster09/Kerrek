@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum, auto
 from fractions import Fraction
-from typing import Any
+from typing import Any, Never
 
 from frontend import ast, diagnostics
 from frontend.lexer import NumberLiteralForm
@@ -150,6 +150,10 @@ def _ensure_type_inferred(var: Variable) -> RealizedType:
     return var.definition.realized_type or ast.TypeSentinels.Impossible
 
 
+def _ensure_unit_known(var: Variable) -> ComptimeUnit:
+    return ast.UnitSentinels.Flexible  # TODO
+
+
 def evaluate(node: ast.Expression) -> EvalResult:
     if node.evaluated_value is not ast.ValueSentinels.NotEvaluated:
         assert node.evaluated_type is not ast.TypeSentinels.NotDetermined
@@ -249,8 +253,7 @@ def _evaluate(node: ast.Expression) -> EvalResult:
                 return EvalResult(
                     ast.ValueSentinels.RuntimeValue,
                     _ensure_type_inferred(resolved),
-                    # _ensure_unit_known(resolved),
-                    ast.UnitSentinels.NoUnit,
+                    _ensure_unit_known(resolved),
                 )
             elif isinstance(resolved, Unit):
                 if isinstance(resolved.definition, ast.UnitAlias):
@@ -362,12 +365,16 @@ def modulo(lhs, rhs):
         return rhs + rem
 
 
+def floordiv(lhs, rhs):
+    return Fraction(lhs // rhs)
+
+
 BINOP_FUNCS: dict[ast.BinaryOp, Callable[[Any, Any], Any]] = {
     ast.BinaryOp.Add: operator.add,
     ast.BinaryOp.Subtract: operator.sub,
     ast.BinaryOp.Multiply: operator.mul,
     ast.BinaryOp.TrueDivide: operator.truediv,
-    ast.BinaryOp.FloorDivide: operator.floordiv,
+    ast.BinaryOp.FloorDivide: floordiv,
     ast.BinaryOp.Power: operator.pow,
     ast.BinaryOp.Modulo: modulo,
     ast.BinaryOp.Remainder: remainder,
@@ -457,7 +464,7 @@ def _eval_binop(binop: ast.BinopExpr) -> EvalResult:
     return EvalResult(
         val,
         coerced_type,
-        lhs.unit,  # TODO: needs to actually check the unit coherence
+        _eval_binop_unit(binop, lhs, rhs),
     )
 
 
@@ -564,261 +571,146 @@ def zero_of(typ: ComptimeType) -> ComptimeValue:
             return ast.ValueSentinels.RuntimeValue
 
 
-def _eval_binop_value(
-    binop: ast.BinopExpr, lhs: ComptimeValue, rhs: ComptimeValue
-) -> ComptimeValue:
+def _eval_binop_unit(
+    binop: ast.BinopExpr, lhs: EvalResult, rhs: EvalResult
+) -> ComptimeUnit:
     if (
-        lhs is ast.ValueSentinels.CannotEvaluate
-        or rhs is ast.ValueSentinels.CannotEvaluate
+        lhs.unit is ast.UnitSentinels.Incoherent
+        or rhs.unit is ast.UnitSentinels.Incoherent
     ):
-        return ast.ValueSentinels.CannotEvaluate
+        return ast.UnitSentinels.Incoherent
 
-    if lhs is ast.ValueSentinels.RuntimeValue or rhs is ast.ValueSentinels.RuntimeValue:
-        return (
-            ast.ValueSentinels.RuntimeValue
-        )  # might still be invalid depending on typechecking result
+    if (
+        lhs.unit is ast.UnitSentinels.NotApplicable
+        and rhs.unit is ast.UnitSentinels.NotApplicable
+    ):
+        return ast.UnitSentinels.NotApplicable
 
     op = binop.op
 
-    match op, lhs, rhs:
-        case (ast.BinaryOp.Equal, None, _) | (ast.BinaryOp.Equal, _, None):
-            return lhs is None and rhs is None
-
-        case (ast.BinaryOp.NotEqual, None, _) | (ast.BinaryOp.NotEqual, _, None):
-            return not (lhs is None and rhs is None)
-
-        case (_, None, _) | (_, _, None):
-            return None
-
-        case ast.BinaryOp.Multiply, bool(), _:
-            return rhs if lhs else _zero(rhs)
-
-        case ast.BinaryOp.Multiply, _, bool():
-            return lhs if rhs else _zero(lhs)
-
-        case ast.BinaryOp.Add, str(), str():
-            return lhs + rhs
-
-        case ast.BinaryOp.And, _, _:
-            return _truthy(lhs) and _truthy(rhs)
-
-        case ast.BinaryOp.Or, _, _:
-            return _truthy(lhs) or _truthy(rhs)
+    match op:
+        case ast.BinaryOp.And | ast.BinaryOp.Or:
+            # booleans are always not applicable to the unit checker
+            # so if this is erroneous, the diagnostic would be emitted by the type checking
+            return ast.UnitSentinels.NotApplicable
 
         case (
-            (
-                ast.BinaryOp.Add
-                | ast.BinaryOp.Subtract
-                | ast.BinaryOp.Remainder
-                | ast.BinaryOp.Modulo
-                | ast.BinaryOp.Equal
-                | ast.BinaryOp.NotEqual
-                | ast.BinaryOp.Less
-                | ast.BinaryOp.Greater
-                | ast.BinaryOp.LessEqual
-                | ast.BinaryOp.GreaterEqual
-            ),
-            ScalarValue(),
-            ScalarValue(),
+            ast.BinaryOp.Equal
+            | ast.BinaryOp.NotEqual
+            | ast.BinaryOp.Less
+            | ast.BinaryOp.Greater
+            | ast.BinaryOp.LessEqual
+            | ast.BinaryOp.GreaterEqual
+            | ast.BinaryOp.Is
+            | ast.BinaryOp.IsNot
         ):
-            if lhs.unit == rhs.unit:
-                opfunc = BINOP_FUNCS[op]
-                return ScalarValue(opfunc(*_coerce(lhs.value, rhs.value)), lhs.unit)
+            if lhs.unit != rhs.unit:  # TODO: check convertibility
+                diagnostics.error(
+                    f"units ({lhs.unit}) and ({rhs.unit}) do not match"
+                    + " and do not have any known conversions",
+                    binop,
+                )
+
+            return ast.UnitSentinels.NotApplicable  # booleans don't have units
+
+        case (
+            ast.BinaryOp.Add
+            | ast.BinaryOp.Subtract
+            | ast.BinaryOp.Remainder
+            | ast.BinaryOp.Modulo
+        ):
+            if lhs.unit != rhs.unit:  # TODO: check convertibility
+                diagnostics.error(
+                    f"units ({lhs.unit}) and ({rhs.unit}) do not match"
+                    + " and do not have any known conversions",
+                    binop,
+                )
+                return ast.UnitSentinels.Incoherent
+
+            return lhs.unit
+
+        case ast.BinaryOp.Multiply:
+            l_has_unit = isinstance(lhs.unit, CanonicalUnit)
+            r_has_unit = isinstance(rhs.unit, CanonicalUnit)
+            if l_has_unit and r_has_unit:
+                return CanonicalUnit.combine(lhs.unit, 1, rhs.unit, 1)  # pyright: ignore - it doesn't understand the substituted type refinement
+            elif l_has_unit and rhs.unit is ast.UnitSentinels.Flexible:
+                return lhs.unit
+            elif r_has_unit and lhs.unit is ast.UnitSentinels.Flexible:
+                return rhs.unit
+            elif (
+                lhs.unit is ast.UnitSentinels.Flexible
+                and rhs.unit is ast.UnitSentinels.Flexible
+            ):
+                return ast.UnitSentinels.Flexible
+            elif lhs.unit in (
+                ast.UnitSentinels.NoUnit,
+                ast.UnitSentinels.Flexible,
+            ) and rhs.unit in (ast.UnitSentinels.NoUnit, ast.UnitSentinels.Flexible):
+                return ast.UnitSentinels.NoUnit
             else:
-                raise ValueError(f"incompatible units: ({lhs.unit}) and ({rhs.unit})")
+                diagnostics.error(
+                    "you cannot multiply a unitless value with a value with units"
+                    + f" (|{lhs.unit}| {op.value} |{rhs.unit}|)",
+                    binop,
+                )
+                return ast.UnitSentinels.Incoherent
 
-        case ast.BinaryOp.Multiply, ScalarValue(), ScalarValue():
-            return ScalarValue(
-                operator.mul(*_coerce(lhs.value, rhs.value)),
-                CanonicalUnit.combine(lhs.unit, 1, rhs.unit, 1),
-            )
+        case ast.BinaryOp.TrueDivide | ast.BinaryOp.FloorDivide:
+            l_has_unit = isinstance(lhs.unit, CanonicalUnit)
+            r_has_unit = isinstance(rhs.unit, CanonicalUnit)
+            if l_has_unit and r_has_unit:
+                return CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1)  # pyright: ignore - it doesn't understand the substituted type refinement
+            elif l_has_unit and rhs.unit is ast.UnitSentinels.Flexible:
+                return lhs.unit
+            elif r_has_unit and lhs.unit is ast.UnitSentinels.Flexible:
+                return rhs.unit * -1  # pyright: ignore - it doesn't understand the substituted type refinement
+            elif (
+                lhs.unit is ast.UnitSentinels.Flexible
+                and rhs.unit is ast.UnitSentinels.Flexible
+            ):
+                return ast.UnitSentinels.Flexible
+            elif lhs.unit in (
+                ast.UnitSentinels.NoUnit,
+                ast.UnitSentinels.Flexible,
+            ) and rhs.unit in (ast.UnitSentinels.NoUnit, ast.UnitSentinels.Flexible):
+                return ast.UnitSentinels.NoUnit
+            else:
+                diagnostics.error(
+                    "you cannot divide a unitless value by a value with units or vice-versa"
+                    + f" (|{lhs.unit}| {op.value} |{rhs.unit}|)",
+                    binop,
+                )
+                return ast.UnitSentinels.Incoherent
 
-        case ast.BinaryOp.TrueDivide, ScalarValue(), ScalarValue():
-            return ScalarValue(
-                Fraction(lhs.value) / Fraction(rhs.value),
-                CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1),
-            )
+        case ast.BinaryOp.Power:
+            if isinstance(lhs, CanonicalUnit):
+                if isinstance(rhs.value, Fraction) and (
+                    rhs.unit in (ast.UnitSentinels.NoUnit, ast.UnitSentinels.Flexible)
+                    or (isinstance(rhs.unit, CanonicalUnit) and not rhs.unit)
+                ):
+                    if rhs.value.is_integer():
+                        return lhs * rhs.value.numerator
 
-        case ast.BinaryOp.FloorDivide, ScalarValue(), ScalarValue():
-            return ScalarValue(
-                operator.floordiv(*_coerce(lhs.value, rhs.value)),
-                CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1),
-            )
-
-        case ast.BinaryOp.Power, ScalarValue(), ScalarValue():
-            if rhs.unit:
-                raise ValueError("exponents must be unitless")
-
-            if lhs.unit:
-                frac_exp = Fraction(rhs.value)
-                if frac_exp.is_integer():
-                    new_unit = lhs.unit * frac_exp.numerator
-
+                    else:
+                        diagnostics.error(
+                            "fractional exponents are not currently supported for values with units",
+                            binop.rhs,
+                        )
+                        return ast.UnitSentinels.Incoherent
                 else:
-                    raise ValueError(
-                        "fractional exponents not yet supported for values with units"
+                    diagnostics.error(
+                        "exponents of unit expressions must be statically known unitless integers",
+                        binop.rhs,
                     )
+                    return ast.UnitSentinels.Incoherent
+            elif lhs.unit is ast.UnitSentinels.Flexible:
+                return ast.UnitSentinels.Flexible
             else:
-                new_unit = None
+                return ast.UnitSentinels.NoUnit
 
-            return ScalarValue(
-                operator.pow(*_coerce(lhs.value, rhs.value)),
-                new_unit,
-            )
-
-        case _:
-            diagnostics.error(
-                f"no evaluation defined for operator {op.value}"
-                + f" on types {type(lhs).__name__} and {type(rhs).__name__}",
-                binop,
-            )
-
-            return ast.ValueSentinels.CannotEvaluate
-
-
-def _zero(value):
-    match value:
-        case ScalarValue():
-            return ScalarValue(type(value.value)(), value.unit)
-        case str():
-            return ""
-        case bool():
-            return False
-        case None:
-            return None
-        case _:
-            raise TypeError(f"cannot determine zero value for {type(value)}")
-
-
-def _truthy(value) -> bool:
-    match value:
-        case bool():
-            return value
-        case None:
-            return False
-        case _:
-            raise TypeError("compile-time truthiness is only defined for bool and nil")
-
-
-def _eval_binop_type(
-    binop: ast.BinopExpr, lhs: ComptimeType, rhs: ComptimeType
-) -> ComptimeType:
-    op = binop.op
-
-    match op, lhs, rhs:
-        case (
-            (ast.BinaryOp.Equal | ast.BinaryOp.NotEqual),
-            (
-                PrimitiveType.Float32
-                | PrimitiveType.Float64
-                | FlexType(FlexAffinity.Float)
-            ),
-            (
-                PrimitiveType.Float32
-                | PrimitiveType.Float64
-                | FlexType(FlexAffinity.Float)
-            ),
-        ):
-            diagnostics.error(f"binary floats do not support {op.value}", binop)
-            return ast.TypeSentinels.Impossible
-
-        case (
-            (
-                ast.BinaryOp.Equal
-                | ast.BinaryOp.NotEqual
-                | ast.BinaryOp.Less
-                | ast.BinaryOp.Greater
-                | ast.BinaryOp.LessEqual
-                | ast.BinaryOp.GreaterEqual
-            ),
-            _,
-            _,
-        ):
-            # TODO: actually check type compatibility of the comparison operator
-            return PrimitiveType.Boolean
-
-        case ast.BinaryOp.Multiply, PrimitiveType.Boolean, _:
-            return rhs
-
-        case ast.BinaryOp.Multiply, _, PrimitiveType.Boolean:
-            return lhs
-
-        case ast.BinaryOp.Add, PrimitiveType.String, PrimitiveType.String:
-            return PrimitiveType.String
-
-        case (
-            (ast.BinaryOp.And | ast.BinaryOp.Or),
-            PrimitiveType.Boolean,
-            PrimitiveType.Boolean,
-        ):
-            return PrimitiveType.Boolean
-
-        case (
-            ast.BinaryOp.TrueDivide,
-            FlexType(FlexAffinity.Integer | FlexAffinity.UInt),
-            FlexType(FlexAffinity.Integer | FlexAffinity.UInt),
-        ):
-            # This is supported for comptime integers, but not runtime integers
-            return FlexType(FlexAffinity.Decimal)
-
-        case ast.BinaryOp.TrueDivide, _, _ if _is_integer_type(
-            lhs
-        ) and _is_integer_type(rhs):
-            diagnostics.error(
-                "true division is not supported for integer types."
-                + " use // if you meant to do floor division",
-                binop,
-            )
-            return ast.TypeSentinels.Impossible
-
-        case (
-            ast.BinaryOp.FloorDivide,
-            FlexType(
-                FlexAffinity.Integer
-                | FlexAffinity.UInt
-                | FlexAffinity.Decimal
-                | FlexAffinity.Float
-            ),
-            FlexType(
-                FlexAffinity.Integer
-                | FlexAffinity.UInt
-                | FlexAffinity.Decimal
-                | FlexAffinity.Float
-            ),
-        ):
-            return FlexType(FlexAffinity.Integer)
-
-        case (
-            (
-                ast.BinaryOp.Add
-                | ast.BinaryOp.Subtract
-                | ast.BinaryOp.Remainder
-                | ast.BinaryOp.Modulo
-                | ast.BinaryOp.Multiply
-                | ast.BinaryOp.Power
-                | ast.BinaryOp.TrueDivide
-                | ast.BinaryOp.FloorDivide
-            ),
-            _,
-            _,
-        ) if _is_numeric_type(lhs) and _is_numeric_type(rhs):
-            if (
-                coerced_left := _implicit_convert(lhs, rhs)
-            ) is not ast.TypeSentinels.Impossible:
-                return coerced_left
-            if (
-                coerced_right := _implicit_convert(rhs, lhs)
-            ) is not ast.TypeSentinels.Impossible:
-                return coerced_right
-            else:
-                diagnostics.error(f"cannot implicitly coalesce {lhs} and {rhs}", binop)
-                return ast.TypeSentinels.Impossible
-
-        case _:
-            diagnostics.error(
-                f"operator {op.value} is not defined for types {lhs} and {rhs}", binop
-            )
-            return ast.TypeSentinels.Impossible
+        case Never():
+            raise AssertionError(f"missing branch for {op.value}")
 
 
 class ConversionSentinels(Enum):
