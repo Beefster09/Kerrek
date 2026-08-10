@@ -1,38 +1,38 @@
 import functools
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TextIO, overload
+from typing import Self, TextIO, overload
 
 from frontend import ast, lexer
 from frontend.common import Location
 
-ANSI_CLEAR = '\x1b[0m'
+ANSI_CLEAR = "\x1b[0m"
 
-ANSI_BLACK = '\x1b[30m'
-ANSI_RED = '\x1b[31m'
-ANSI_GREEN = '\x1b[32m'
-ANSI_YELLOW = '\x1b[33m'
-ANSI_BLUE = '\x1b[34m'
-ANSI_MAGENTA = '\x1b[35m'
-ANSI_CYAN = '\x1b[36m'
-ANSI_GRAY = '\x1b[37m'
+ANSI_BLACK = "\x1b[30m"
+ANSI_RED = "\x1b[31m"
+ANSI_GREEN = "\x1b[32m"
+ANSI_YELLOW = "\x1b[33m"
+ANSI_BLUE = "\x1b[34m"
+ANSI_MAGENTA = "\x1b[35m"
+ANSI_CYAN = "\x1b[36m"
+ANSI_GRAY = "\x1b[37m"
 
-ANSI_SILVER = '\x1b[90m'
-ANSI_BR_RED = '\x1b[91m'
-ANSI_BR_GREEN = '\x1b[92m'
-ANSI_BR_YELLOW = '\x1b[93m'
-ANSI_BR_BLUE = '\x1b[94m'
-ANSI_BR_MAGENTA = '\x1b[95m'
-ANSI_BR_CYAN = '\x1b[96m'
-ANSI_WHITE = '\x1b[97m'
+ANSI_SILVER = "\x1b[90m"
+ANSI_BR_RED = "\x1b[91m"
+ANSI_BR_GREEN = "\x1b[92m"
+ANSI_BR_YELLOW = "\x1b[93m"
+ANSI_BR_BLUE = "\x1b[94m"
+ANSI_BR_MAGENTA = "\x1b[95m"
+ANSI_BR_CYAN = "\x1b[96m"
+ANSI_WHITE = "\x1b[97m"
 
 
 class DiagnosticLevel(Enum):
-    Error = 2    # i.e. the program can't compile because of this error
+    Error = 2  # i.e. the program can't compile because of this error
     Warning = 1  # vet issues: valid and can compile but frowned upon (e.g. unused variables/imports)
-    Notice = 0   # may be surprising but not explicitly discouraged (e.g. shadowing)
+    Notice = 0  # may be surprising but not explicitly discouraged (e.g. shadowing)
 
     def pretty(self, out: TextIO):
         if out.isatty():
@@ -47,6 +47,13 @@ class DiagnosticLevel(Enum):
             return self.name.lower()
 
 
+class DiagnosticReference:
+    message: str
+    file: Path | None
+    start: Location | None
+    end: Location | None
+
+
 @dataclass(kw_only=True)
 class Diagnostic:
     level: DiagnosticLevel
@@ -56,6 +63,17 @@ class Diagnostic:
     file: Path | None
     start: Location | None
     end: Location | None
+
+    suggestions: list[str] = field(default_factory=list)
+    references: list[DiagnosticReference] = field(default_factory=list)
+
+    def suggest(self, message: str) -> Self:
+        self.suggestions.append(message)
+        return self
+
+    def reference(self, message: str, file, start, end) -> Self:
+        # STUB / TODO
+        return self
 
 
 _diagnostics: list[Diagnostic] = []
@@ -68,11 +86,11 @@ def _emit_diagnostic(
     file: Path | None,
     start: Location | None,
     end: Location | None = None,
-    /, *,
-    code: str = 'XXX',
-    category: str = 'general',
-):
-    ...
+    /,
+    *,
+    code: str = "XXX",
+    category: str = "general",
+) -> Diagnostic: ...
 
 
 @overload
@@ -80,11 +98,11 @@ def _emit_diagnostic(
     level: DiagnosticLevel,
     message: str,
     node: ast.Node,
-    /, *,
-    code: str = 'XXX',
-    category: str = 'general',
-):
-    ...
+    /,
+    *,
+    code: str = "XXX",
+    category: str = "general",
+) -> Diagnostic: ...
 
 
 def _emit_diagnostic(
@@ -94,9 +112,9 @@ def _emit_diagnostic(
     start_maybe: Location | None = None,
     end_maybe: Location | None = None,
     *,
-    code: str = 'XXX',
-    category: str = 'general',
-):
+    code: str = "XXX",
+    category: str = "general",
+) -> Diagnostic:
     if isinstance(file_or_node, ast.Node):
         file = file_or_node.file
         start = file_or_node.start
@@ -110,7 +128,7 @@ def _emit_diagnostic(
         start = start_maybe
         end = end_maybe
 
-    _diagnostics.append(Diagnostic(
+    diag = Diagnostic(
         level=level,
         message=message,
         file=file,
@@ -118,7 +136,10 @@ def _emit_diagnostic(
         end=end,
         code=code,
         category=category,
-    ))
+    )
+    _diagnostics.append(diag)
+
+    return diag
 
 
 @overload
@@ -127,26 +148,26 @@ def error(
     file: Path | None,
     start: Location | None,
     end: Location | None = None,
-    /, *,
-    code: str = 'XXX',
-    category: str = 'general',
-):
-    ...
+    /,
+    *,
+    code: str = "XXX",
+    category: str = "general",
+) -> Diagnostic: ...
 
 
 @overload
 def error(
     message: str,
     node: ast.Node,
-    /, *,
-    code: str = 'XXX',
-    category: str = 'general',
-):
-    ...
+    /,
+    *,
+    code: str = "XXX",
+    category: str = "general",
+) -> Diagnostic: ...
 
 
-def error(*args, **kwargs):
-    _emit_diagnostic(DiagnosticLevel.Error, *args, **kwargs)
+def error(*args, **kwargs) -> Diagnostic:
+    return _emit_diagnostic(DiagnosticLevel.Error, *args, **kwargs)
 
 
 @overload
@@ -155,26 +176,26 @@ def warning(
     file: Path | None,
     start: Location | None,
     end: Location | None = None,
-    /, *,
-    code: str = 'XXX',
-    category: str = 'general',
-):
-    ...
+    /,
+    *,
+    code: str = "XXX",
+    category: str = "general",
+) -> Diagnostic: ...
 
 
 @overload
 def warning(
     message: str,
     node: ast.Node,
-    /, *,
-    code: str = 'XXX',
-    category: str = 'general',
-):
-    ...
+    /,
+    *,
+    code: str = "XXX",
+    category: str = "general",
+) -> Diagnostic: ...
 
 
-def warning(*args, **kwargs):
-    _emit_diagnostic(DiagnosticLevel.Warning, *args, **kwargs)
+def warning(*args, **kwargs) -> Diagnostic:
+    return _emit_diagnostic(DiagnosticLevel.Warning, *args, **kwargs)
 
 
 @overload
@@ -183,34 +204,31 @@ def notice(
     file: Path | None,
     start: Location | None,
     end: Location | None = None,
-    /, *,
-    code: str = 'XXX',
-    category: str = 'general',
-):
-    ...
+    /,
+    *,
+    code: str = "XXX",
+    category: str = "general",
+) -> Diagnostic: ...
 
 
 @overload
 def notice(
     message: str,
     node: ast.Node,
-    /, *,
-    code: str = 'XXX',
-    category: str = 'general',
-):
-    ...
+    /,
+    *,
+    code: str = "XXX",
+    category: str = "general",
+) -> Diagnostic: ...
 
 
-def notice(*args, **kwargs):
-    _emit_diagnostic(DiagnosticLevel.Notice, *args, **kwargs)
+def notice(*args, **kwargs) -> Diagnostic:
+    return _emit_diagnostic(DiagnosticLevel.Notice, *args, **kwargs)
 
 
 @functools.cache
 def _get_lines(file: Path) -> list[str]:
-    return [
-        line.expandtabs(lexer.TAB_WIDTH)
-        for line in file.read_text().splitlines()
-    ]
+    return [line.expandtabs(lexer.TAB_WIDTH) for line in file.read_text().splitlines()]
 
 
 def count_leading_spaces(s: str) -> int:
@@ -225,8 +243,7 @@ def count_leading_spaces(s: str) -> int:
 
 
 def report(warnings_as_errors=False):
-    """prints all of the diagnostics are returns True if any were errors
-    """
+    """prints all of the diagnostics are returns True if any were errors"""
     global _diagnostics
 
     def show_diagnostic_source(diag: Diagnostic):
@@ -236,29 +253,25 @@ def report(warnings_as_errors=False):
         start = diag.start
         end = diag.end or start
 
-        lines = _get_lines(diag.file)[start.line-1:end.line]
+        lines = _get_lines(diag.file)[start.line - 1 : end.line]
 
         if len(lines) == 1:
-            line = lines[0].lstrip(' ')
+            line = lines[0].lstrip(" ")
             sp = count_leading_spaces(lines[0])
-            print(
-                ANSI_BLUE,
-                " -> ",
-                ANSI_CLEAR,
-                line,
-                sep='', file=sys.stderr)
+            print(ANSI_BLUE, " -> ", ANSI_CLEAR, line, sep="", file=sys.stderr)
             print(
                 " " * 4,
                 " " * max(0, start.col - 1 - sp),
                 ANSI_BR_YELLOW,
-                '^' * max(1, end.col - start.col),
+                "^" * max(1, end.col - start.col),
                 ANSI_CLEAR,
-                sep='', file=sys.stderr)
+                sep="",
+                file=sys.stderr,
+            )
         elif len(lines) < 5:
             pass
         else:
             pass
-
 
     err_count = 0
     warn_count = 0
@@ -273,7 +286,9 @@ def report(warnings_as_errors=False):
         print(
             f"  {ANSI_GRAY}(in {diag.file or '(stdin)'}",
             f" on line {diag.start.line if diag.start else '???'}){ANSI_CLEAR}",
-            sep='', file=sys.stderr)
+            sep="",
+            file=sys.stderr,
+        )
         show_diagnostic_source(diag)
 
     if err_count:

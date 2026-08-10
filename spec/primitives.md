@@ -134,11 +134,6 @@ Runes must not be larger than 32 bits
 
 Runes are fully comparable, supporting all six comparison operators.
 
-Additionally, the following mathematical operators are defined:
-- Rune - Rune -> Integer
-- Rune + Integer -> Rune
-- Integer + Rune -> Rune
-
 All other operations are not allowed
 
 

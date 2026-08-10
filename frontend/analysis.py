@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 
 from frontend import ast, diagnostics, exprs
@@ -40,8 +39,8 @@ def validate(node: ast.TopLevelDeclaration):
             params_scope: Scope = {}
             for param in node.params:
                 if param.default:
-                    _, typ = exprs.evaluate(param.default)
-                    exprs.check_type(param.type, typ, param)
+                    result = exprs.evaluate(param.default)
+                    exprs.check_type(param.type, result.type, param)
                     params_scope[param.name] = ParamVar(declaration=param)
 
             _validate_block(node, node.body, params_scope)
@@ -55,9 +54,9 @@ def _validate_block(func: ast.FuncDefinition, block: ast.Block, *scopes: Scope):
                 _validate_block(func, stmt, local_scope, *scopes)
 
             case ast.LocalConstant():
-                _, typ = exprs.evaluate(stmt.expr)
+                result = exprs.evaluate(stmt.expr)
                 if stmt.type:
-                    exprs.check_type(stmt.type, typ, stmt)
+                    exprs.check_type(stmt.type, result.type, stmt)
 
             case ast.LocalVariable():
                 if isinstance(stmt.expr, ast.UnboundVar):
@@ -66,13 +65,13 @@ def _validate_block(func: ast.FuncDefinition, block: ast.Block, *scopes: Scope):
                         possibly_unbound=True,
                     )
                 elif stmt.expr:
-                    _, typ = exprs.evaluate(stmt.expr)
+                    result = exprs.evaluate(stmt.expr)
 
                     if stmt.type is None:
-                        typ = exprs.infer_type(typ, stmt)
+                        typ = exprs.infer_type(result.type, stmt)
                         stmt.realized_type = typ
                     else:
-                        typ = exprs.check_type(stmt.type, typ, stmt)
+                        typ = exprs.check_type(stmt.type, result.type, stmt)
                         assert not isinstance(typ, exprs.FlexType)
                         stmt.realized_type = typ
 
@@ -80,21 +79,23 @@ def _validate_block(func: ast.FuncDefinition, block: ast.Block, *scopes: Scope):
 
             case ast.ReturnStatement():
                 if len(stmt.values) < len(func.return_types):
-                    diagnostics.error("return statement has too few values"
+                    diagnostics.error(
+                        "return statement has too few values"
                         + f" (expected {len(func.return_types)}, got {len(stmt.values)})",
-                        stmt)
+                        stmt,
+                    )
                     continue
 
                 if len(stmt.values) > len(func.return_types):
-                    diagnostics.error("return statement has too many values"
+                    diagnostics.error(
+                        "return statement has too many values"
                         + f" (expected {len(func.return_types)}, got {len(stmt.values)})",
-                        stmt)
+                        stmt,
+                    )
                     continue
 
                 for req_type, value in zip(func.return_types, stmt.values, strict=True):
-                    _, typ = exprs.evaluate(value)
-                    typ = exprs.check_type(req_type, typ, value)
+                    result = exprs.evaluate(value)
+                    typ = exprs.check_type(req_type, result.type, value)
+                    assert not isinstance(typ, exprs.FlexType)
                     value.required_type = typ
-
-
-

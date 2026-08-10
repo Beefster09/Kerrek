@@ -3,15 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from decimal import Decimal
 from enum import Enum, auto
+from fractions import Fraction
 from pathlib import Path
 from types import EllipsisType
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 from frontend.common import Location
 from frontend.lexer import Identifier, Numeric
 
 if TYPE_CHECKING:
-    from frontend.exprs import ComptimeType, RealizedType
+    from frontend.exprs import ComptimeType, ComptimeValue, RealizedType
     from frontend.resolver import AnyType, CanonicalUnit, Named
 
 
@@ -43,8 +44,7 @@ class Node:
             if not value:
                 continue
             elif isinstance(value, (list, tuple)) and isinstance(value[0], Node):
-                for sub in value:
-                    yield sub
+                yield from value
             elif isinstance(value, Node):
                 yield value
 
@@ -86,8 +86,7 @@ class Import(TopLevelItem):
     module_path: list[str]
     namespace: Identifier
 
-    def get_filepath(self, build_root: Path, from_file: Path) -> Path:
-        ...
+    def get_filepath(self, build_root: Path, from_file: Path) -> Path: ...
 
 
 @dataclass(kw_only=True)
@@ -129,6 +128,7 @@ class UnitTypeDecl(TopLevelDeclaration):
     e.g.
     unit type length;
     """
+
     name: Identifier
 
 
@@ -138,6 +138,7 @@ class UnitTypeAliasDecl(TopLevelDeclaration):
     e.g.
     unit type volume is length^3;
     """
+
     name: Identifier
     base: CompoundUnit
 
@@ -148,6 +149,7 @@ class UnitDecl(TopLevelDeclaration):
     e.g.
     unit meter: length;
     """
+
     name: Identifier
     unit_type: QualifiedName | None = None
 
@@ -158,6 +160,7 @@ class UnitAlias(TopLevelDeclaration):
     e.g.
     unit newton is kg m / s^2;
     """
+
     name: Identifier
     base: CompoundUnit
 
@@ -168,6 +171,7 @@ class UnitConversionDef(TopLevelDeclaration):
     e.g.
     unit radians = 3.14159265358979 * degrees / 180;
     """
+
     dest: Identifier
     src: QualifiedName
     mult: Decimal = Decimal(1)
@@ -191,30 +195,70 @@ class CompoundUnit(Node):
 # === EXPRESSIONS ===
 
 
-class ConstantFolding(Enum):
-    NotEvaluated = auto()
-    RuntimeValue = auto()
-    Failed = auto()
+# - some sentinel values for indeterminate states during semantic analysis -
 
 
-class TypeState(Enum):
-    NotDetermined = auto()   # to be determined during a semantic pass
-    NeedsInference = auto()  # this type will be inferred during type checking
-    Flexible = auto()        # the value assumes whatever compatible type it might need to be
-    Impossible = auto()      # the expression cannot possibly be evaluated
-    Failed = auto()          # an error occured while trying to evaluate the type
+class ValueSentinels(Enum):
+    NotEvaluated = auto()  # value has yet to be determined from semantic analysis
+    RuntimeValue = auto()  # value is not known at compile time
+    CannotEvaluate = auto()  # it is not possible to evaluate the expression
+
+
+class TypeSentinels(Enum):
+    NotDetermined = auto()  # type has yet to be determined from semantic analysis
+    NeedsInference = auto()  # this type must be inferred during type checking
+    Unforced = auto()  # the type isn't yet forced to be anything
+    Impossible = (
+        auto()
+    )  # the type cannot be inferred because the expression cannot be evaluated
+
+
+class UnitSentinels(Enum):
+    NotDetermined = auto()  # unit has yet to be determined from semantic analysis
+    NotApplicable = auto()  # originates from a non-numeric value; i.e. one that cannot have units attached to it
+    Flexible = (
+        auto()
+    )  # originates from a numeric literal or constant without explicit unit information
+    NoUnit = auto()  # originates from a runtime value which did not declare a unit
+    Incoherent = auto()  # dimensional analysis failed to produce a coherent result unit or a unit was applied to a value which cannot have units
+
+
+# - abstract base node -
 
 
 @dataclass(kw_only=True)
 class Expression(Node):
-    folded_value: Any = field(default=ConstantFolding.NotEvaluated, repr=False)
-    result_type: Any = field(default=TypeState.NotDetermined, repr=False)
-    required_type: Any = field(default=None, repr=False)  # the type it would be implicitly converted to if different from result_type
+    evaluated_value: ComptimeValue | Literal[ValueSentinels.NotEvaluated] = field(
+        default=ValueSentinels.NotEvaluated, repr=False
+    )
+    evaluated_type: ComptimeType | Literal[TypeSentinels.NotDetermined] = field(
+        default=TypeSentinels.NotDetermined, repr=False
+    )
+    evaluated_unit: CanonicalUnit | UnitSentinels = field(
+        default=UnitSentinels.NotDetermined, repr=False
+    )
+
+    required_type: RealizedType | Literal[TypeSentinels.Unforced] = field(
+        default=TypeSentinels.Unforced, repr=False
+    )
+    required_unit: CanonicalUnit | UnitSentinels = field(
+        default=UnitSentinels.NotDetermined, repr=False
+    )
+
+    unit_conv_multiplier: Fraction | None = field(default=None, repr=False)
+
+
+# - concrete nodes and supporting types -
 
 
 @dataclass(kw_only=True)
 class QualnameExpr(Expression):
     name: QualifiedName
+
+
+@dataclass(kw_only=True)
+class PlaceholderExpr(Expression):
+    pass
 
 
 @dataclass(kw_only=True)
@@ -237,6 +281,8 @@ class RuneValue:
     def char(self):
         return chr(self.codepoint)
 
+    # TODO: validation
+
 
 @dataclass(kw_only=True)
 class SimpleLiteralExpr(Expression):
@@ -248,28 +294,30 @@ class ImplicitEnum(Expression):
     """
     e.g. .Foo("bar")
     """
+
     name: Identifier
     payload: Expression | None
 
 
 class BinaryOp(Enum):
-    Add = '+'
-    Subtract = '-'
-    Multiply = '*'
-    Divide = '/'
-    FloorDivide = '//'
-    Remainder = '%'
-    Modulo = 'mod'
-    Power = '**'
+    Add = "+"
+    Subtract = "-"
+    Multiply = "*"
+    TrueDivide = "/"
+    FloorDivide = "//"
+    Remainder = "%"
+    Modulo = "mod"
+    Power = "**"
 
-    Equal = '=='
-    NotEqual = '!='
-    Less = '<'
-    LessEqual = '<='
-    Greater = '>'
-    GreaterEqual = '>='
+    Equal = "=="
+    NotEqual = "!="
+    Less = "<"
+    LessEqual = "<="
+    Greater = ">"
+    GreaterEqual = ">="
 
     Is = "is"
+    IsNot = "is_not"
 
     And = "and"
     Or = "or"
@@ -283,8 +331,8 @@ class BinopExpr(Expression):
 
 
 class UnaryOp(Enum):
-    Positive = '+'
-    Negate = '-'
+    Positive = "+"
+    Negate = "-"
 
     Not = "not"
 
@@ -371,7 +419,9 @@ class PointerType(TypeExpression):
 @dataclass(kw_only=True)
 class TypeWithUnit(TypeExpression):
     base: TypeExpression | None  # None means the base type is implicit
-    unit: CompoundUnit | None  # None means the unit is explicitly cleared from the type via <nil>
+    unit: (
+        CompoundUnit | None
+    )  # None means the unit is explicitly cleared from the type via <nil>
 
 
 @dataclass(kw_only=True)
@@ -468,7 +518,9 @@ class FuncDefinition(TopLevelDeclaration, Statement):
     name: Identifier
     params: list[FormalParameter]
     return_types: list[TypeExpression]
-    error_type: TypeExpression | EllipsisType | None = None  # Ellipsis as the error type indicates the function can fail but the error type is void
+    error_type: TypeExpression | EllipsisType | None = (
+        None  # Ellipsis as the error type indicates the function can fail but the error type is void
+    )
     requires: CapabilityExpression | None = None
     body: Block
 
@@ -514,7 +566,9 @@ class InterfaceMethod(Node):
     name: Identifier
     params: list[FormalParameter]
     return_types: list[TypeExpression]
-    error_type: TypeExpression | EllipsisType | None = None  # Ellipsis as the error type indicates the function can fail but the error type is void
+    error_type: TypeExpression | EllipsisType | None = (
+        None  # Ellipsis as the error type indicates the function can fail but the error type is void
+    )
     requires: CapabilityExpression | None = None
     is_optional: bool = False
 

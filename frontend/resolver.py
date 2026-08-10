@@ -10,43 +10,46 @@ from typing import Any, Literal, NewType
 from frontend import ast, diagnostics, parser
 from frontend.lexer import Identifier
 
-SymbolID = NewType('SymbolID', int)
+SymbolID = NewType("SymbolID", int)
+
+
 def _symbol_gen():
     sym_id = 1
     while True:
         yield SymbolID(sym_id)
         sym_id += 1
 
+
 _NEXT_SYM = _symbol_gen()
 SYMBOLS_BY_ID: dict[SymbolID, _Symbol] = {}
 
 
 class PrimitiveType(Enum):
-    Integer = 'Integer'
-    Int64 = 'Int64'
-    Int32 = 'Int32'
-    Int16 = 'Int16'
-    Int8 = 'Int8'
-    UInt64 = 'UInt64'
-    UInt32 = 'UInt32'
-    UInt16 = 'UInt16'
-    UInt8 = 'UInt8'
+    Integer = "Integer"
+    Int64 = "Int64"
+    Int32 = "Int32"
+    Int16 = "Int16"
+    Int8 = "Int8"
+    UInt64 = "UInt64"
+    UInt32 = "UInt32"
+    UInt16 = "UInt16"
+    UInt8 = "UInt8"
 
-    Decimal = 'Decimal'
-    Dec64 = 'Dec64'
-    Dec32 = 'Dec32'
+    Decimal = "Decimal"
+    Dec64 = "Dec64"
+    Dec32 = "Dec32"
 
-    Float64 = 'Float64'
-    Float32 = 'Float32'
+    Float64 = "Float64"
+    Float32 = "Float32"
 
-    Boolean = 'Boolean'
-    String = 'String'
-    Rune = 'Rune'
-    Byte = 'Byte'
+    Boolean = "Boolean"
+    String = "String"
+    Rune = "Rune"
+    Byte = "Byte"
 
-    TypeID = 'TypeID'
+    TypeID = "TypeID"
 
-    Any = 'Any'
+    Any = "Any"
 
 
 @dataclass
@@ -90,11 +93,13 @@ class DistinctType(_Symbol):
 @dataclass(kw_only=True)
 class TypeAlias(_Symbol):
     name: Identifier
-    canonical: AnyType | ast.TypeState = ast.TypeState.NotDetermined
+    canonical: AnyType | ast.TypeSentinels = ast.TypeSentinels.NotDetermined
     definition: ast.TypeAliasDecl
 
 
-BaseType = PrimitiveType | FixedDecimal | EnumType | StructType | DistinctType
+BaseType = (
+    PrimitiveType | FixedDecimal | EnumType | StructType | DistinctType | InterfaceType
+)
 
 
 @dataclass(kw_only=True)
@@ -112,7 +117,6 @@ class OptionalType:
 class StaticArrayType:
     elem: AnyType
     shape: tuple[int, ...]
-    ownership: ast.PointerOwnership
 
 
 @dataclass(kw_only=True)
@@ -145,7 +149,6 @@ type CompoundType = (
 )
 
 type AnyType = CompoundType | BaseType | GenericType
-type RealizedType = AnyType | Literal[ast.TypeState.Impossible, ast.TypeState.Failed]
 
 
 @dataclass(kw_only=True)
@@ -261,30 +264,24 @@ BUILTINS = {
     Identifier(name): Builtin(Identifier(name))
     for name in [
         # - TYPES -
-        *(
-            prim.value
-            for prim in PrimitiveType
-            if not prim.value.startswith('Float')
-        ),
-
+        *(prim.value for prim in PrimitiveType if not prim.value.startswith("Float")),
         # - ANNOTATIONS -
-        'deprecated',
-        'forward',
-        'pure',
-        'layout',
-        'calling_convention',
-
+        "deprecated",
+        "forward",
+        "pure",
+        "layout",
+        "calling_convention",
         # - FUNCTIONS -
-        'len',
-        'cap',
-        'owned_shallow_clone',
-        'owned_deep_clone',
-        'shared_shallow_clone',
-        'shared_deep_clone',
+        "len",
+        "cap",
+        "owned_shallow_clone",
+        "owned_deep_clone",
+        "shared_shallow_clone",
+        "shared_deep_clone",
     ]
 }
 
-WRITE_ONLY = Builtin(Identifier('_'))
+WRITE_ONLY = Builtin(Identifier("_"))
 
 
 @dataclass
@@ -295,6 +292,7 @@ class GenericType:
 
 Named = _Symbol | Builtin | GenericType | AnyType
 
+
 class CanonicalUnit(Counter[SymbolID]):
     def __str__(self):
         components = []
@@ -303,7 +301,7 @@ class CanonicalUnit(Counter[SymbolID]):
                 continue
 
             unit = SYMBOLS_BY_ID[comp_id]
-            unit_name = unit.name if isinstance(unit, (Unit, UnitType)) else '???'
+            unit_name = unit.name if isinstance(unit, (Unit, UnitType)) else "???"
 
             if exp == 1:
                 components.append(str(unit_name))
@@ -311,9 +309,9 @@ class CanonicalUnit(Counter[SymbolID]):
                 components.append(f"{unit_name}^{exp}")
 
         if components:
-            return ' '.join(components)
+            return " ".join(components)
         else:
-            return '<ratio>'
+            return "<ratio>"
 
     def __repr__(self):
         components = []
@@ -322,7 +320,7 @@ class CanonicalUnit(Counter[SymbolID]):
                 continue
 
             unit = SYMBOLS_BY_ID[comp_id]
-            unit_name = unit.name if isinstance(unit, (Unit, UnitType)) else '???'
+            unit_name = unit.name if isinstance(unit, (Unit, UnitType)) else "???"
 
             if exp == 1:
                 components.append(str(unit_name))
@@ -332,7 +330,7 @@ class CanonicalUnit(Counter[SymbolID]):
         if components:
             return f"unit({' '.join(components)})"
         else:
-            return 'unit()'
+            return "unit()"
 
     def __mul__(self, exponent: int):
         result = CanonicalUnit()
@@ -350,8 +348,10 @@ class CanonicalUnit(Counter[SymbolID]):
 
     @staticmethod
     def combine(
-        a: CanonicalUnit | None, a_exp: int,
-        b: CanonicalUnit | None, b_exp: int,
+        a: CanonicalUnit | None,
+        a_exp: int,
+        b: CanonicalUnit | None,
+        b_exp: int,
     ) -> CanonicalUnit | None:
         if a is None and b is None:
             return None
@@ -376,8 +376,7 @@ class Resolver:
         self._deferred_unit_convs: list[ast.UnitConversionDef] = []
 
     def require(self, path: Path) -> Module:
-        """Resolves imported modules and parses them if missing
-        """
+        """Resolves imported modules and parses them if missing"""
         path = path.absolute()
 
         if path in self.modules:
@@ -394,16 +393,17 @@ class Resolver:
                 diagnostics.error(
                     f"import of {'/'.join(imp.module_path)}"
                     + f" conflicts with existing import of {shadowed.file.source}",
-                    imp)
+                    imp,
+                )
 
             module.imports[imp.namespace] = self.require(
-                imp.get_filepath(self.project_root, path))
+                imp.get_filepath(self.project_root, path)
+            )
 
         return module
 
     def resolve_names(self):
-        """Resolves qualified names to point to their definitions
-        """
+        """Resolves qualified names to point to their definitions"""
 
         for module in self.modules.values():
             for decl in module.file.declarations:
@@ -415,15 +415,13 @@ class Resolver:
 
         diagnostics.report()
 
-
     def _resolve_names(
         self,
         module: Module,
         node: ast.Node,
         *scopes: dict[Identifier, Named],
     ):
-        """Resolves qualified names to point to their definitions
-        """
+        """Resolves qualified names to point to their definitions"""
         match node:
             case ast.QualifiedName():
                 self._resolve_name(module, node, *scopes)
@@ -436,12 +434,16 @@ class Resolver:
                 templates: dict[Identifier, Named] = {}
 
                 for param in node.params:
-                    if param.name == '_':
-                        diagnostics.error("placeholder ('_') is not a valid parameter name", node)
+                    if param.name == "_":
+                        diagnostics.error(
+                            "placeholder ('_') is not a valid parameter name", node
+                        )
                         return
 
                     if param.name in params:
-                        diagnostics.error(f"duplicate parameter name '{param.name}'", param)
+                        diagnostics.error(
+                            f"duplicate parameter name '{param.name}'", param
+                        )
 
                     params[param.name] = Variable(name=param.name, definition=param)
 
@@ -468,8 +470,10 @@ class Resolver:
                     self._resolve_names(module, stmt, local_scope, *scopes)
 
             case ast.LocalVariable() | ast.LocalConstant():
-                if node.name == '_':
-                    diagnostics.error("placeholder ('_') is not a valid variable name", node)
+                if node.name == "_":
+                    diagnostics.error(
+                        "placeholder ('_') is not a valid variable name", node
+                    )
                     return
 
                 if isinstance(node.type, ast.Expression):
@@ -479,12 +483,18 @@ class Resolver:
 
                 local_scope = scopes[0]
                 if node.name in local_scope:
-                    diagnostics.error(f"local with name '{node.name}' is already defined", node)
+                    diagnostics.error(
+                        f"local with name '{node.name}' is already defined", node
+                    )
                     return
                 elif any(node.name in scope for scope in scopes[1:]):
-                    diagnostics.notice(f"local '{node.name}' shadows previously defined local", node)
+                    diagnostics.notice(
+                        f"local '{node.name}' shadows previously defined local", node
+                    )
                 elif node.name in module:
-                    diagnostics.notice(f"local '{node.name}' shadows module global", node)
+                    diagnostics.notice(
+                        f"local '{node.name}' shadows module global", node
+                    )
                 elif node.name in BUILTINS:
                     diagnostics.warning(f"local '{node.name}' shadows builtin", node)
 
@@ -505,17 +515,21 @@ class Resolver:
     ):
         base_name, *rest = qualname.path
 
-        if base_name == '_':
+        if base_name == "_":
             if rest:
-                diagnostics.error("placeholder ('_') does not support field access", qualname)
+                diagnostics.error(
+                    "placeholder ('_') does not support field access", qualname
+                )
                 return
 
             qualname.resolves_to = WRITE_ONLY
             qualname.remaining_fields = []
             return
 
-        elif '_' in qualname.path:
-            diagnostics.error("placeholder ('_') is not a valid accessible field", qualname)
+        elif "_" in qualname.path:
+            diagnostics.error(
+                "placeholder ('_') is not a valid accessible field", qualname
+            )
             return
 
         for scope in scopes:
@@ -545,7 +559,9 @@ class Resolver:
                     node,
                 )
             elif shadowed := BUILTINS.get(name):
-                diagnostics.notice(f"{kind.__name__.lower()} '{name}' shadows a builtin", node)
+                diagnostics.notice(
+                    f"{kind.__name__.lower()} '{name}' shadows a builtin", node
+                )
 
         match decl:
             case ast.FuncDefinition():
@@ -596,7 +612,7 @@ class Resolver:
 
         diagnostics.report()
 
-    def _eval_type_decl(self, decl: ast.TypeDeclaration) -> AnyType | ast.TypeState:
+    def _eval_type_decl(self, decl: ast.TypeDeclaration) -> AnyType | ast.TypeSentinels:
         match decl:
             case ast.TypeAliasDecl():
                 return self._ensure_type_built(decl.orig_type)
@@ -606,23 +622,23 @@ class Resolver:
 
             case ast.StructDefinition():
                 diagnostics.error("unable to evaluate struct declaration", decl)
-                return ast.TypeState.Failed
+                raise NotImplementedError("TODO")
 
             case ast.EnumDefinition():
                 diagnostics.error("unable to evaluate enum declaration", decl)
-                return ast.TypeState.Failed
+                raise NotImplementedError("TODO")
 
             case _:
                 diagnostics.error("unable to evaluate type declaration", decl)
-                return ast.TypeState.Failed
+                raise NotImplementedError("TODO")
 
-    def _ensure_type_built(self, type_expr: ast.TypeExpression) -> RealizedType:
+    def _ensure_type_built(self, type_expr: ast.TypeExpression) -> AnyType:
         if type_expr.canonical is None:
             type_expr.canonical = self._build_type(type_expr)
 
         return type_expr.canonical
 
-    def _build_type(self, type_expr: ast.TypeExpression) -> RealizedType:
+    def _build_type(self, type_expr: ast.TypeExpression) -> AnyType:
         match type_expr:
             case ast.SimpleType():
                 resolved = type_expr.type_name.resolves_to
@@ -634,27 +650,34 @@ class Resolver:
                         pass
 
                 elif isinstance(resolved, TypeAlias):
-                    if resolved.canonical is ast.TypeState.NotDetermined:
+                    if resolved.canonical is ast.TypeSentinels.NotDetermined:
                         resolved.canonical = self._eval_type_decl(resolved.definition)
                     return resolved.canonical
 
-                elif isinstance(resolved, (EnumType, StructType, DistinctType, GenericType)):
+                elif isinstance(
+                    resolved, (EnumType, StructType, DistinctType, GenericType)
+                ):
                     return resolved
 
-                diagnostics.error(f"'{'.'.join(type_expr.type_name.path)}' does not name a type", type_expr)
-                return ast.TypeState.Impossible
+                diagnostics.error(
+                    f"'{'.'.join(type_expr.type_name.path)}' does not name a type",
+                    type_expr,
+                )
+                return ast.TypeSentinels.Impossible
 
             case ast.TypeWithUnit():
                 if type_expr.base:
                     return self._build_type(type_expr.base)
                 else:
-                    return ast.TypeState.NeedsInference
+                    return ast.TypeSentinels.NeedsInference
 
             case ast.GenericType():
                 return GenericType(type_expr.name)
 
             case _:
-                raise NotImplementedError(f"no support for {type(type_expr).__qualname__}")
+                raise NotImplementedError(
+                    f"no support for {type(type_expr).__qualname__}"
+                )
 
     def canonicalize_units(self):
         for module in self.modules.values():
@@ -678,12 +701,15 @@ class Resolver:
                     self._ensure_canonical_unit(resolved.definition.base)
                     assert resolved.definition.base.canonical is not None
                     unit.canonical.inplace_combine(
-                        resolved.definition.base.canonical, component.exponent,
+                        resolved.definition.base.canonical,
+                        component.exponent,
                     )
                 else:
                     unit.canonical[resolved.id] += component.exponent
             else:
-                diagnostics.error(f"{component.base} is not a unit or unit type", component.base)
+                diagnostics.error(
+                    f"{component.base} is not a unit or unit type", component.base
+                )
 
     def build_unit_conversions(self):
         for conv in self._deferred_unit_convs:

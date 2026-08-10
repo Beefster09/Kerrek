@@ -1,8 +1,9 @@
+from collections.abc import Iterable
 from decimal import Decimal
 from enum import Enum, auto
 from pathlib import Path
 from types import EllipsisType
-from typing import Iterable, cast, overload
+from typing import cast, overload
 
 from frontend import ast, diagnostics
 from frontend.common import Location
@@ -28,27 +29,22 @@ class Associativity(Enum):
 
 BINOPS = {
     Punctuation.DStar: (100, ast.BinaryOp.Power, Associativity.Right),
-
     Punctuation.Star: (80, ast.BinaryOp.Multiply, Associativity.Left),
-    Punctuation.Slash: (80, ast.BinaryOp.Divide, Associativity.Left),
+    Punctuation.Slash: (80, ast.BinaryOp.TrueDivide, Associativity.Left),
     Punctuation.DSlash: (80, ast.BinaryOp.FloorDivide, Associativity.Left),
     Punctuation.Percent: (80, ast.BinaryOp.Remainder, Associativity.Left),
-
     Punctuation.Plus: (50, ast.BinaryOp.Add, Associativity.Left),
     Punctuation.Minus: (50, ast.BinaryOp.Subtract, Associativity.Left),
-
     Keyword.Mod: (40, ast.BinaryOp.Modulo, Associativity.Left),
-
     Keyword.Is: (30, ast.BinaryOp.Is, Associativity.NonAssociative),
+    Keyword.IsNot: (30, ast.BinaryOp.IsNot, Associativity.NonAssociative),
     Punctuation.EQ: (30, ast.BinaryOp.Equal, Associativity.NonAssociative),
     Punctuation.NE: (30, ast.BinaryOp.NotEqual, Associativity.NonAssociative),
     Punctuation.GT: (30, ast.BinaryOp.Greater, Associativity.NonAssociative),
     Punctuation.GE: (30, ast.BinaryOp.GreaterEqual, Associativity.NonAssociative),
     Punctuation.LT: (30, ast.BinaryOp.Less, Associativity.NonAssociative),
     Punctuation.LE: (30, ast.BinaryOp.LessEqual, Associativity.NonAssociative),
-
     Keyword.And: (20, ast.BinaryOp.And, Associativity.Left),
-
     Keyword.Or: (10, ast.BinaryOp.Or, Associativity.Left),
 }
 
@@ -92,7 +88,12 @@ class Parser:
 
         def _match_seq(
             self,
-            *tok_sequence: TokenData | type[TokenData] | tuple[TokenData | type[TokenData], ...] | EllipsisType,
+            *tok_sequence: (
+                TokenData
+                | type[TokenData]
+                | tuple[TokenData | type[TokenData], ...]
+                | EllipsisType
+            ),
             offset: int = 0,
         ) -> list[Token] | None:
             assert tok_sequence
@@ -110,7 +111,7 @@ class Parser:
                 if not self._token_is(actual, expected):
                     return None
 
-            return self._tokens[base:base+len(tok_sequence)]
+            return self._tokens[base : base + len(tok_sequence)]
 
         def _token_is[E: TokenData](
             self,
@@ -131,7 +132,12 @@ class Parser:
 
         def match(
             self,
-            *tok_sequence: TokenData | type[TokenData] | tuple[TokenData | type[TokenData], ...] | EllipsisType,
+            *tok_sequence: (
+                TokenData
+                | type[TokenData]
+                | tuple[TokenData | type[TokenData], ...]
+                | EllipsisType
+            ),
         ) -> list[Token] | None:
             """match and consume the next tokens if they match the sequence
 
@@ -200,20 +206,16 @@ class Parser:
         self.max_errors = max_errors
 
     @overload
-    def _emit_error(self, message: str):
-        ...
+    def _emit_error(self, message: str): ...
 
     @overload
-    def _emit_error(self, message: str, token: Token, /):
-        ...
+    def _emit_error(self, message: str, token: Token, /): ...
 
     @overload
-    def _emit_error(self, message: str, loc: Location, /):
-        ...
+    def _emit_error(self, message: str, loc: Location, /): ...
 
     @overload
-    def _emit_error(self, message: str, start: Location, end: Location, /):
-        ...
+    def _emit_error(self, message: str, start: Location, end: Location, /): ...
 
     def _emit_error(
         self,
@@ -223,15 +225,26 @@ class Parser:
     ):
         if isinstance(token_or_start, Location):
             if end_maybe:
-                diagnostics.error(message, self.src, token_or_start, end_maybe, category='syntax')
+                diagnostics.error(
+                    message, self.src, token_or_start, end_maybe, category="syntax"
+                )
             else:
-                diagnostics.error(message, self.src, token_or_start, token_or_start, category='syntax')
+                diagnostics.error(
+                    message, self.src, token_or_start, token_or_start, category="syntax"
+                )
         else:
             bad_tok = token_or_start or self.tokens.peek()
             if bad_tok:
-                diagnostics.error(message, self.src, bad_tok.start, bad_tok.end, category='syntax')
+                diagnostics.error(
+                    message, self.src, bad_tok.start, bad_tok.end, category="syntax"
+                )
             else:
-                diagnostics.error(message, self.src, self.tokens[-1].end if self.tokens._size else None, category='syntax')
+                diagnostics.error(
+                    message,
+                    self.src,
+                    self.tokens[-1].end if self.tokens._size else None,
+                    category="syntax",
+                )
 
     def parse(self) -> ast.File:
         if first_tok := self.tokens.peek():
@@ -240,6 +253,7 @@ class Parser:
             return ast.File(source=None)  # file is empty
 
         annotations: list[ast.Annotation] = []
+
         def apply_annotations(it: ast.TopLevelItem):
             nonlocal annotations
             if annotations:
@@ -291,7 +305,7 @@ class Parser:
                     case Keyword():
                         tok_str = f"'{tok.what.value}'"
                     case Enum():
-                        tok_str = tok.what.name.rstrip('_')
+                        tok_str = tok.what.name.rstrip("_")
                     case Identifier():
                         tok_str = f"Identifier '{tok.what}'"
                     case Numeric():
@@ -402,8 +416,13 @@ class Parser:
         ):
             if m2 := self.tokens.match(Numeric, Punctuation.Star):
                 mul = m2[0]
-                if mul.what.form not in (NumberLiteralForm.DecimalInteger, NumberLiteralForm.Decimal):
-                    self._emit_error("decimal number required as multiplier for unit conversion", mul)
+                if mul.what.form not in (
+                    NumberLiteralForm.DecimalInteger,
+                    NumberLiteralForm.Decimal,
+                ):
+                    self._emit_error(
+                        "decimal number required as multiplier for unit conversion", mul
+                    )
 
                 multiplier = Decimal(mul.what.value)
 
@@ -422,8 +441,14 @@ class Parser:
 
                 if m2 := self.tokens.match(Punctuation.Star, Numeric):
                     mul = m2[1]
-                    if mul.what.form not in (NumberLiteralForm.DecimalInteger, NumberLiteralForm.Decimal):
-                        self._emit_error("decimal number required as multiplier for unit conversion", mul)
+                    if mul.what.form not in (
+                        NumberLiteralForm.DecimalInteger,
+                        NumberLiteralForm.Decimal,
+                    ):
+                        self._emit_error(
+                            "decimal number required as multiplier for unit conversion",
+                            mul,
+                        )
 
                     multiplier = Decimal(mul.what.value)
                     end = mul.end
@@ -432,8 +457,13 @@ class Parser:
 
             if m2 := self.tokens.match(Punctuation.Slash, Numeric):
                 div = m2[1]
-                if div.what.form not in (NumberLiteralForm.DecimalInteger, NumberLiteralForm.Decimal):
-                    self._emit_error("decimal number required as divisor for unit conversion", div)
+                if div.what.form not in (
+                    NumberLiteralForm.DecimalInteger,
+                    NumberLiteralForm.Decimal,
+                ):
+                    self._emit_error(
+                        "decimal number required as divisor for unit conversion", div
+                    )
 
                 divisor = Decimal(div.what.value)
                 end = div.end
@@ -469,7 +499,7 @@ class Parser:
                     name=m[1].what,
                 )
 
-        self._emit_error(f"invalid form of unit declaration")
+        self._emit_error("invalid form of unit declaration")
         self.tokens.advance()
         self.tokens.skip_line()
 
@@ -497,13 +527,15 @@ class Parser:
             if in_denominator:
                 exponent = -exponent
 
-            components.append(ast.UnitComponent(
-                file=qualname.file,
-                start=comp_start,
-                end=comp_end,
-                base=qualname,
-                exponent=exponent,
-            ))
+            components.append(
+                ast.UnitComponent(
+                    file=qualname.file,
+                    start=comp_start,
+                    end=comp_end,
+                    base=qualname,
+                    exponent=exponent,
+                )
+            )
 
             if self.tokens.match(Keyword.Per):
                 in_denominator = True
@@ -589,14 +621,16 @@ class Parser:
             else:
                 default = None
 
-            params.append(ast.FormalParameter(
-                file=m[0].file,
-                start=m[0].start,
-                end=param_type.end,
-                name=m[0].what,
-                type=param_type,
-                default=default,
-            ))
+            params.append(
+                ast.FormalParameter(
+                    file=m[0].file,
+                    start=m[0].start,
+                    end=param_type.end,
+                    name=m[0].what,
+                    type=param_type,
+                    default=default,
+                )
+            )
 
             if not self.tokens.match_one(Punctuation.Comma):
                 break
@@ -607,7 +641,9 @@ class Parser:
 
         return params
 
-    def _type_expr(self, *, allow_no_base=False, allow_templates=False) -> ast.TypeExpression | None:
+    def _type_expr(
+        self, *, allow_no_base=False, allow_templates=False
+    ) -> ast.TypeExpression | None:
         typ = None
 
         match self.tokens.what():
@@ -624,7 +660,13 @@ class Parser:
                 if not allow_templates:
                     self._emit_error("type templates are not allowed here")
 
-            case Punctuation.Caret | Keyword.Owned | Keyword.Shared | Keyword.Weak | Keyword.UnsafePtr:
+            case (
+                Punctuation.Caret
+                | Keyword.Owned
+                | Keyword.Shared
+                | Keyword.Weak
+                | Keyword.UnsafePtr
+            ):
                 typ = self._pointer_type()
 
             case Punctuation.LSquare:
@@ -644,7 +686,9 @@ class Parser:
                         base=inner,
                     )
                 else:
-                    self._emit_error("expected a type expression after the optional specifier")
+                    self._emit_error(
+                        "expected a type expression after the optional specifier"
+                    )
 
             case Punctuation.LParen:
                 lp = self.tokens.pop()
@@ -658,7 +702,9 @@ class Parser:
                     else:
                         self._emit_error("parenthesized type expression was not closed")
                 else:
-                    self._emit_error("expected a type expression inside the parentheses")
+                    self._emit_error(
+                        "expected a type expression inside the parentheses"
+                    )
 
             case _:
                 if st := self._simple_type():
@@ -795,7 +841,9 @@ class Parser:
         match tok.what:
             case Punctuation.Semicolon:
                 self.tokens.advance()
-                diagnostics.notice("empty statement", tok.file, tok.start, tok.start, category='syntax')
+                diagnostics.notice(
+                    "empty statement", tok.file, tok.start, tok.start, category="syntax"
+                )
                 return None
 
             case Keyword.Return:
@@ -852,7 +900,9 @@ class Parser:
 
                 if is_const:
                     if value is None or isinstance(value, ast.UnboundVar):
-                        self._emit_error("const declarations must be given a value", tok)
+                        self._emit_error(
+                            "const declarations must be given a value", tok
+                        )
                         return None
 
                     stmt = ast.LocalConstant(
@@ -875,10 +925,14 @@ class Parser:
 
             case _:
                 if expr := self._expr():
-                    if assign_tok := self.tokens.match_any(Punctuation.Assign, Punctuation.Move):
+                    if assign_tok := self.tokens.match_any(
+                        Punctuation.Assign, Punctuation.Move
+                    ):
                         src = self._expr()
                         if src is None:
-                            self._emit_error(f"expected an expression after the {tok.what.value}")
+                            self._emit_error(
+                                f"expected an expression after the {tok.what.value}"
+                            )
                             self.tokens.skip_line()
                             return None
 
@@ -898,7 +952,9 @@ class Parser:
                     self.tokens.skip_line()
                     return None
 
-        assert stmt is not None, "you should have set stmt by now or error-returned, you dolt"
+        assert stmt is not None, (
+            "you should have set stmt by now or error-returned, you dolt"
+        )
 
         if self._end_of_statement():
             return stmt
@@ -981,8 +1037,12 @@ class Parser:
         return atom
 
     def _literal_expr(self):
-        match tok := self.tokens.peek():
-            case Token(what=Numeric()):
+        tok = self.tokens.peek()
+        if tok is None:
+            return None
+
+        match tok.what:
+            case Numeric():
                 self.tokens.advance()
 
                 unit = self._compound_unit()
@@ -995,7 +1055,7 @@ class Parser:
                     unit=unit,
                 )
 
-            case Token(what=String()):
+            case String():
                 self.tokens.advance()
                 return ast.SimpleLiteralExpr(
                     file=tok.file,
@@ -1004,7 +1064,7 @@ class Parser:
                     value=tok.what.value,
                 )
 
-            case Token(what=Rune()):
+            case Rune():
                 self.tokens.advance()
                 return ast.SimpleLiteralExpr(
                     file=tok.file,
@@ -1013,7 +1073,7 @@ class Parser:
                     value=ast.RuneValue(tok.what.codepoint),
                 )
 
-            case Token(what=Keyword.True_):
+            case Keyword.True_:
                 self.tokens.advance()
                 return ast.SimpleLiteralExpr(
                     file=tok.file,
@@ -1022,7 +1082,7 @@ class Parser:
                     value=True,
                 )
 
-            case Token(what=Keyword.False_):
+            case Keyword.False_:
                 self.tokens.advance()
                 return ast.SimpleLiteralExpr(
                     file=tok.file,
@@ -1031,7 +1091,7 @@ class Parser:
                     value=False,
                 )
 
-            case Token(what=Keyword.Nil):
+            case Keyword.Nil:
                 self.tokens.advance()
                 return ast.SimpleLiteralExpr(
                     file=tok.file,
@@ -1040,7 +1100,17 @@ class Parser:
                     value=None,
                 )
 
-    def _binop_expr(self, lhs: ast.Expression, min_precedence=0) -> ast.Expression | None:
+            case Keyword.Placeholder:
+                self.tokens.advance()
+                return ast.PlaceholderExpr(
+                    file=tok.file,
+                    start=tok.start,
+                    end=tok.end,
+                )
+
+    def _binop_expr(
+        self, lhs: ast.Expression, min_precedence=0
+    ) -> ast.Expression | None:
         while op_tok1 := self.tokens.peek():
             try:
                 prec1, op, _ = BINOPS[op_tok1.what]
@@ -1063,12 +1133,13 @@ class Parser:
                     break
 
                 if assoc is Associativity.NonAssociative and prec2 == prec1:
-                    self._emit_error(f"operators {op_tok1.what.value} and {op_tok2.what.value} are not associative")
+                    self._emit_error(
+                        f"operators {op_tok1.what.value} and {op_tok2.what.value} are not associative"
+                    )
                     return None
 
                 if not (
-                    prec2 > prec1
-                    or assoc is Associativity.Right and prec2 == prec1
+                    prec2 > prec1 or assoc is Associativity.Right and prec2 == prec1
                 ):
                     break
 
