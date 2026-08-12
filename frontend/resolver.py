@@ -599,7 +599,6 @@ class Resolver:
                 for node in named.definition.walk():
                     if isinstance(node, ast.TypeExpression):
                         self._ensure_type_built(node)
-                        # import rich; rich.print(node, node.canonical)
 
         diagnostics.report()
 

@@ -16,6 +16,38 @@ if TYPE_CHECKING:
     from frontend.resolver import AnyType, CanonicalUnit, Named
 
 
+# === SENTINEL VALUES ===
+
+
+class ValueSentinels(Enum):
+    NotEvaluated = auto()  # value has yet to be determined from semantic analysis
+    RuntimeValue = auto()  # value is not known at compile time
+    CannotEvaluate = auto()  # it is not possible to evaluate the expression
+
+
+class TypeSentinels(Enum):
+    NotDetermined = (
+        auto()
+    )  # type has yet to be determined from semantic analysis (or needs to be inferred)
+    Impossible = (
+        auto()
+    )  # the type cannot be inferred because the expression cannot be evaluated
+
+
+class UnitSentinels(Enum):
+    NotDetermined = (
+        auto()
+    )  # unit has yet to be determined from semantic analysis (or needs to be inferred)
+    Flexible = (
+        auto()
+    )  # originates from a numeric literal or constant without explicit unit information
+    NoUnit = auto()  # originates from a runtime value which did not declare a unit or a type which cannot have a unit
+    Incoherent = auto()  # dimensional analysis failed to produce a coherent result unit or a unit was applied to a value which cannot have units
+
+
+# === NODES ===
+
+
 @dataclass(kw_only=True)
 class File:
     source: Path | None = field(repr=False)
@@ -103,18 +135,22 @@ class TopLevelDeclaration(TopLevelItem):
 class GlobalConstant(TopLevelDeclaration):
     name: Identifier
     type: TypeExpression | None
+    unit: CompoundUnit | UnitSentinels
     expr: Expression
 
-    realized_type: ComptimeType | None = field(default=None, repr=False)
+    realized_type: RealizedType | None = field(default=None, repr=False)
+    realized_unit: ComptimeUnit = field(default=UnitSentinels.NotDetermined, repr=False)
 
 
 @dataclass(kw_only=True)
 class GlobalVariable(TopLevelDeclaration):
     name: Identifier
     type: TypeExpression | None
+    unit: CompoundUnit | UnitSentinels
     expr: Expression | None
 
     realized_type: RealizedType | None = field(default=None, repr=False)
+    realized_unit: ComptimeUnit = field(default=UnitSentinels.NotDetermined, repr=False)
 
 
 @dataclass(kw_only=True)
@@ -195,34 +231,6 @@ class CompoundUnit(Node):
 # === EXPRESSIONS ===
 
 
-# - some sentinel values for indeterminate states during semantic analysis -
-
-
-class ValueSentinels(Enum):
-    NotEvaluated = auto()  # value has yet to be determined from semantic analysis
-    RuntimeValue = auto()  # value is not known at compile time
-    CannotEvaluate = auto()  # it is not possible to evaluate the expression
-
-
-class TypeSentinels(Enum):
-    NotDetermined = auto()  # type has yet to be determined from semantic analysis
-    NeedsInference = auto()  # this type must be inferred during type checking
-    Unforced = auto()  # the type isn't yet forced to be anything
-    Impossible = (
-        auto()
-    )  # the type cannot be inferred because the expression cannot be evaluated
-
-
-class UnitSentinels(Enum):
-    NotDetermined = auto()  # unit has yet to be determined from semantic analysis
-    NotApplicable = auto()  # originates from a non-numeric value; i.e. one that cannot have units attached to it
-    Flexible = (
-        auto()
-    )  # originates from a numeric literal or constant without explicit unit information
-    NoUnit = auto()  # originates from a runtime value which did not declare a unit
-    Incoherent = auto()  # dimensional analysis failed to produce a coherent result unit or a unit was applied to a value which cannot have units
-
-
 # - abstract base node -
 
 
@@ -238,14 +246,14 @@ class Expression(Node):
         default=UnitSentinels.NotDetermined, repr=False
     )
 
-    required_type: RealizedType | Literal[TypeSentinels.Unforced] = field(
-        default=TypeSentinels.Unforced, repr=False
+    required_type: RealizedType | Literal[TypeSentinels.NotDetermined] = field(
+        default=TypeSentinels.NotDetermined, repr=False
     )
     required_unit: CanonicalUnit | UnitSentinels = field(
         default=UnitSentinels.NotDetermined, repr=False
     )
 
-    unit_conv_multiplier: Fraction | None = field(default=None, repr=False)
+    unit_conv_multiplier: Fraction = field(default=Fraction(1), repr=False)
 
 
 # - concrete nodes and supporting types -
@@ -475,7 +483,7 @@ class UnboundVar(Node):
 class LocalVariable(Statement):
     name: Identifier
     type: TypeExpression | None
-    unit: CompoundUnit | None
+    unit: CompoundUnit | UnitSentinels
     expr: Expression | UnboundVar | None
 
     realized_type: RealizedType | None = field(default=None, repr=False)
@@ -486,7 +494,7 @@ class LocalVariable(Statement):
 class LocalConstant(Statement):
     name: Identifier
     type: TypeExpression | None
-    unit: CompoundUnit | None
+    unit: CompoundUnit | UnitSentinels
     expr: Expression
 
     realized_type: AnyType | None = field(default=None, repr=False)

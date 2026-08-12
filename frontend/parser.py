@@ -885,15 +885,20 @@ class Parser:
                     typ = None
 
                 if self.tokens.match_one(Punctuation.Bar):
-                    unit = self._compound_unit()
+                    if self.tokens.match_one(Keyword.Nil):
+                        unit = ast.UnitSentinels.NoUnit
+                    elif self.tokens.match_one(Keyword.Placeholder):
+                        unit = ast.UnitSentinels.Flexible
+                    else:
+                        unit = self._compound_unit()
 
-                    if unit is None:
-                        self._emit_error("expected a unit here")
-                        self.tokens.attempt_recovery()
-                        return None
+                        if unit is None:
+                            self._emit_error("expected a unit here")
+                            self.tokens.attempt_recovery()
+                            return None
 
                 else:
-                    unit = None
+                    unit = ast.UnitSentinels.NotDetermined
 
                 if self.tokens.match_one(Punctuation.Assign):
                     if ell := self.tokens.match_one(Punctuation.Ellipsis_):

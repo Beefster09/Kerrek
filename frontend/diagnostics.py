@@ -246,9 +246,16 @@ def report(warnings_as_errors=False):
     """prints all of the diagnostics are returns True if any were errors"""
     global _diagnostics
 
-    def show_diagnostic_source(diag: Diagnostic):
+    def show_diagnostic_source(diag: Diagnostic | DiagnosticReference):
         if diag.file is None or diag.start is None:
             return False
+
+        print(
+            f"  {ANSI_GRAY}(in {diag.file or '(stdin)'}",
+            f" on line {diag.start.line if diag.start else '???'}){ANSI_CLEAR}",
+            sep="",
+            file=sys.stderr,
+        )
 
         start = diag.start
         end = diag.end or start
@@ -283,13 +290,14 @@ def report(warnings_as_errors=False):
                 warn_count += 1
 
         print(f"{diag.level.pretty(sys.stderr)}: {diag.message}", file=sys.stderr)
-        print(
-            f"  {ANSI_GRAY}(in {diag.file or '(stdin)'}",
-            f" on line {diag.start.line if diag.start else '???'}){ANSI_CLEAR}",
-            sep="",
-            file=sys.stderr,
-        )
         show_diagnostic_source(diag)
+
+        for ref in diag.references:
+            print(f"  {ANSI_BR_BLUE}note{ANSI_CLEAR}: {ref.message}")
+            show_diagnostic_source(ref)
+
+        for message in diag.suggestions:
+            print(f"  {ANSI_GREEN}suggestion{ANSI_CLEAR}: {message}", file=sys.stderr)
 
     if err_count:
         print(f"encountered {err_count} errors. aborting.")

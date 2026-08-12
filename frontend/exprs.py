@@ -147,11 +147,55 @@ def _ensure_type_inferred(var: Variable) -> RealizedType:
     assert var.definition.realized_type, (
         f"variable type should have been evaluated by now: {var.definition}"
     )
-    return var.definition.realized_type or ast.TypeSentinels.Impossible
+    return var.definition.realized_type
 
 
 def _ensure_unit_known(var: Variable) -> ComptimeUnit:
-    return ast.UnitSentinels.Flexible  # TODO
+    if isinstance(var.definition, ast.FormalParameter):
+        if var.definition.unit is None:
+            return ast.UnitSentinels.NoUnit
+
+        assert var.definition.unit.canonical is not None, (
+            f"parameter unit should have been evaluated by now: {var.definition}"
+        )
+        return var.definition.unit.canonical
+
+    if var.definition.realized_unit is ast.UnitSentinels.NotDetermined and isinstance(
+        var.definition.expr, ast.Expression
+    ):
+        if var.definition.unit in (
+            ast.UnitSentinels.NoUnit,
+            ast.UnitSentinels.Flexible,
+        ):
+            var.definition.realized_unit = var.definition.unit
+            return var.definition.unit
+
+        result = evaluate(var.definition.expr)
+
+        if var.definition.unit is ast.UnitSentinels.NotDetermined:
+            if result.unit is ast.UnitSentinels.Flexible:
+                var.definition.realized_unit = ast.UnitSentinels.NoUnit
+            else:
+                var.definition.realized_unit = result.unit
+        else:
+            if isinstance(var.definition.unit, ast.UnitSentinels):
+                var.definition.realized_unit = var.definition.unit
+            else:
+                assert var.definition.unit.canonical is not None, (
+                    "this should have been evaluated by now"
+                )
+                if var.definition.unit != result.unit:  # TODO: type conversions
+                    diagnostics.error(
+                        "evaluated unit does not match the declared unit"
+                        + f" (got |{result.unit}|, expected |{var.definition.unit}|)",
+                        var.definition,
+                    )
+                var.definition.realized_unit = var.definition.unit.canonical
+
+    assert var.definition.realized_unit is not ast.UnitSentinels.NotDetermined, (
+        f"variable unit should have been evaluated by now: {var.definition}"
+    )
+    return var.definition.realized_unit
 
 
 def evaluate(node: ast.Expression) -> EvalResult:
@@ -198,25 +242,25 @@ def _evaluate(node: ast.Expression) -> EvalResult:
                     return EvalResult(
                         node.value,
                         FlexType(FlexAffinity.String),
-                        ast.UnitSentinels.NotApplicable,
+                        ast.UnitSentinels.NoUnit,
                     )
                 case ast.RuneValue():
                     return EvalResult(
                         node.value,
                         FlexType(FlexAffinity.Rune),
-                        ast.UnitSentinels.NotApplicable,
+                        ast.UnitSentinels.NoUnit,
                     )
                 case bool():
                     return EvalResult(
                         node.value,
                         FlexType(FlexAffinity.Boolean),
-                        ast.UnitSentinels.NotApplicable,
+                        ast.UnitSentinels.NoUnit,
                     )
                 case None:
                     return EvalResult(
                         NilOf(FlexType(FlexAffinity.Nil)),
                         FlexType(FlexAffinity.Nil),
-                        ast.UnitSentinels.NotApplicable,
+                        ast.UnitSentinels.NoUnit,
                     )
 
         case ast.ScalarLiteralExpr():
@@ -385,7 +429,7 @@ BINOP_FUNCS: dict[ast.BinaryOp, Callable[[Any, Any], Any]] = {
     ast.BinaryOp.Multiply: operator.mul,
     ast.BinaryOp.TrueDivide: operator.truediv,
     ast.BinaryOp.FloorDivide: floordiv,
-    ast.BinaryOp.Power: operator.pow,
+    ast.BinaryOp.Power: lambda b, e: Fraction(b**e),
     ast.BinaryOp.Modulo: modulo,
     ast.BinaryOp.Remainder: remainder,
     ast.BinaryOp.Equal: operator.eq,
@@ -431,7 +475,7 @@ def _eval_binop(binop: ast.BinopExpr) -> EvalResult:
             return EvalResult(
                 lhs.value + rhs.value,
                 typ,
-                ast.UnitSentinels.NotApplicable,
+                ast.UnitSentinels.NoUnit,
             )
 
     coerced_type = _coerce(lhs, rhs)
@@ -590,11 +634,8 @@ def _eval_binop_unit(
     ):
         return ast.UnitSentinels.Incoherent
 
-    if (
-        lhs.unit is ast.UnitSentinels.NotApplicable
-        and rhs.unit is ast.UnitSentinels.NotApplicable
-    ):
-        return ast.UnitSentinels.NotApplicable
+    if lhs.unit is ast.UnitSentinels.NoUnit and rhs.unit is ast.UnitSentinels.NoUnit:
+        return ast.UnitSentinels.NoUnit
 
     op = binop.op
 
@@ -602,7 +643,7 @@ def _eval_binop_unit(
         case ast.BinaryOp.And | ast.BinaryOp.Or:
             # booleans are always not applicable to the unit checker
             # so if this is erroneous, the diagnostic would be emitted by the type checking
-            return ast.UnitSentinels.NotApplicable
+            return ast.UnitSentinels.NoUnit
 
         case (
             ast.BinaryOp.Equal
@@ -614,14 +655,17 @@ def _eval_binop_unit(
             | ast.BinaryOp.Is
             | ast.BinaryOp.IsNot
         ):
-            if lhs.unit != rhs.unit:  # TODO: check convertibility
+            coerced_unit, binop.rhs.unit_conv_multiplier = _coerce_units(
+                lhs.unit, rhs.unit
+            )
+            if coerced_unit is ast.UnitSentinels.Incoherent:
                 diagnostics.error(
                     f"units ({lhs.unit}) and ({rhs.unit}) do not match"
                     + " and do not have any known conversions",
                     binop,
                 )
 
-            return ast.UnitSentinels.NotApplicable  # booleans don't have units
+            return ast.UnitSentinels.NoUnit  # booleans don't have units
 
         case (
             ast.BinaryOp.Add
@@ -629,7 +673,10 @@ def _eval_binop_unit(
             | ast.BinaryOp.Remainder
             | ast.BinaryOp.Modulo
         ):
-            if lhs.unit != rhs.unit:  # TODO: check convertibility
+            coerced_unit, binop.rhs.unit_conv_multiplier = _coerce_units(
+                lhs.unit, rhs.unit
+            )
+            if coerced_unit is ast.UnitSentinels.Incoherent:
                 diagnostics.error(
                     f"units ({lhs.unit}) and ({rhs.unit}) do not match"
                     + " and do not have any known conversions",
@@ -637,7 +684,7 @@ def _eval_binop_unit(
                 )
                 return ast.UnitSentinels.Incoherent
 
-            return lhs.unit
+            return coerced_unit
 
         case ast.BinaryOp.Multiply:
             l_has_unit = isinstance(lhs.unit, CanonicalUnit)
@@ -721,6 +768,22 @@ def _eval_binop_unit(
 
         case Never():
             raise AssertionError(f"missing branch for {op.value}")
+
+
+def _coerce_units(
+    lhs: ComptimeUnit, rhs: ComptimeUnit
+) -> tuple[ComptimeUnit, Fraction]:
+    if lhs is ast.UnitSentinels.Flexible:
+        return rhs, Fraction(1)
+    elif rhs is ast.UnitSentinels.Flexible:
+        return lhs, Fraction(1)
+
+    if lhs == rhs:
+        return lhs, Fraction(1)
+
+    # TODO: implicit conversions and resulting fraction
+
+    return ast.UnitSentinels.Incoherent, Fraction(1)
 
 
 class ConversionSentinels(Enum):
