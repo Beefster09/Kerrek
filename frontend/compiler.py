@@ -10,8 +10,8 @@ class Backend(Protocol):
         outfile: Path,
         modules: list[resolver.Module],
         entry_point: resolver.Function,
-    ):
-        ...
+    ): ...
+
 
 def build(entry_point: Path, backend: Backend) -> bool:
     r = resolver.Resolver()

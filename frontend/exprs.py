@@ -279,6 +279,16 @@ def _evaluate(node: ast.Expression) -> EvalResult:
                 ast.UnitSentinels.Incoherent,
             )
 
+        case ast.UnitReinterpretExpr():
+            result = evaluate(node.expr)
+            return EvalResult(
+                result.value,
+                result.type,
+                node.new_unit.canonical or ast.UnitSentinels.NotDetermined
+                if result.unit is not ast.UnitSentinels.Incoherent
+                else ast.UnitSentinels.Incoherent,
+            )
+
         case ast.CastExpr():
             assert node.to.canonical, "this should have been set by now"
             result = evaluate(node.expr)

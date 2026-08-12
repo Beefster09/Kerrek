@@ -51,20 +51,20 @@ unit kelvin: temperature;
 unit celsius: temperature;
 unit fahrenheit: temperature;
 
-func celsius_to_kelvin(degrees: Decimal<#celsius>) -> Decimal<#kelvin> {
-	return degrees + 273.15 as <#kelvin>;
+func celsius_to_kelvin(degrees: Decimal | #celsius) -> Decimal | #kelvin {
+	return degrees + 273.15 reinterpret unit as #kelvin;
 }
 
-func kelvin_to_celsius(heat: Decimal<#kelvin>) -> Decimal<#celsius> {
-	return heat - 273.15 as <#celsius>;
+func kelvin_to_celsius(heat: Decimal | #kelvin) -> Decimal | #celsius {
+	return heat - 273.15 reinterpret unit as #celsius;
 }
 
-func celsius_to_fahrenheit(degrees: Decimal<#celsius>) -> Decimal<#fahrenheit> {
-	return 9 * degrees / 5 + 32 as <#fahrenheit>;
+func celsius_to_fahrenheit(degrees: Decimal | #celsius) -> Decimal | #fahrenheit {
+	return 9 * degrees / 5 + 32 reinterpret unit as #fahrenheit;
 }
 
-func fahrenheit_to_celsius(degrees: Decimal<#fahrenheit>) -> Decimal<#celsius> {
-	return (degrees - 32) * 5 / 9 as <#celsius>;
+func fahrenheit_to_celsius(degrees: Decimal | #fahrenheit) -> Decimal | #celsius {
+	return (degrees - 32) * 5 / 9 reinterpret unit as #celsius;
 }
 
 
@@ -78,9 +78,11 @@ unit btu = 1055 * joule;
 unit man;
 unit count;
 
+unit ratio is 1;
 
-func how_long_to_complete(num_workers: Integer<man>, blocks: Decimal<>)
-	-> Decimal<day>
+
+func how_long_to_complete(num_workers: Integer | man, blocks: Decimal | ratio)
+	-> Decimal | day
 {
 	const city_block_len = 0.125 mile;
 	const city_block = city_block_len * city_block_len;
@@ -91,7 +93,7 @@ func how_long_to_complete(num_workers: Integer<man>, blocks: Decimal<>)
 }
 
 
-func flapjacks_required(num_workers: Integer<man>) -> Decimal<count>
+func flapjacks_required(num_workers: Integer | man) -> Decimal | count
 {
 	let hunger = num_workers * 314.15 / 1 man;
 	hunger = (hunger + 2.717) * true;

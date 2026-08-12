@@ -78,24 +78,24 @@ def _validate_block(func: ast.FuncDefinition, block: ast.Block, *scopes: Scope):
                     local_scope[stmt.name] = VarState(declaration=stmt)
 
             case ast.ReturnStatement():
-                if len(stmt.values) < len(func.return_types):
+                if len(stmt.values) < len(func.returns):
                     diagnostics.error(
                         "return statement has too few values"
-                        + f" (expected {len(func.return_types)}, got {len(stmt.values)})",
+                        + f" (expected {len(func.returns)}, got {len(stmt.values)})",
                         stmt,
                     )
                     continue
 
-                if len(stmt.values) > len(func.return_types):
+                if len(stmt.values) > len(func.returns):
                     diagnostics.error(
                         "return statement has too many values"
-                        + f" (expected {len(func.return_types)}, got {len(stmt.values)})",
+                        + f" (expected {len(func.returns)}, got {len(stmt.values)})",
                         stmt,
                     )
                     continue
 
-                for req_type, value in zip(func.return_types, stmt.values, strict=True):
+                for ret, value in zip(func.returns, stmt.values, strict=True):
                     result = exprs.evaluate(value)
-                    typ = exprs.check_type(req_type, result.type, value)
+                    typ = exprs.check_type(ret.type, result.type, value)
                     assert not isinstance(typ, exprs.FlexType)
                     value.required_type = typ

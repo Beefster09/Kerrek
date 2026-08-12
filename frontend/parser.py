@@ -33,19 +33,25 @@ BINOPS = {
     Punctuation.Slash: (80, ast.BinaryOp.TrueDivide, Associativity.Left),
     Punctuation.DSlash: (80, ast.BinaryOp.FloorDivide, Associativity.Left),
     Punctuation.Percent: (80, ast.BinaryOp.Remainder, Associativity.Left),
-    Punctuation.Plus: (50, ast.BinaryOp.Add, Associativity.Left),
-    Punctuation.Minus: (50, ast.BinaryOp.Subtract, Associativity.Left),
-    Keyword.Mod: (40, ast.BinaryOp.Modulo, Associativity.Left),
-    Keyword.Is: (30, ast.BinaryOp.Is, Associativity.NonAssociative),
-    Keyword.IsNot: (30, ast.BinaryOp.IsNot, Associativity.NonAssociative),
-    Punctuation.EQ: (30, ast.BinaryOp.Equal, Associativity.NonAssociative),
-    Punctuation.NE: (30, ast.BinaryOp.NotEqual, Associativity.NonAssociative),
-    Punctuation.GT: (30, ast.BinaryOp.Greater, Associativity.NonAssociative),
-    Punctuation.GE: (30, ast.BinaryOp.GreaterEqual, Associativity.NonAssociative),
-    Punctuation.LT: (30, ast.BinaryOp.Less, Associativity.NonAssociative),
-    Punctuation.LE: (30, ast.BinaryOp.LessEqual, Associativity.NonAssociative),
+    Punctuation.Plus: (60, ast.BinaryOp.Add, Associativity.Left),
+    Punctuation.Minus: (60, ast.BinaryOp.Subtract, Associativity.Left),
+    Keyword.Mod: (50, ast.BinaryOp.Modulo, Associativity.Left),
+    Keyword.Is: (40, ast.BinaryOp.Is, Associativity.NonAssociative),
+    Keyword.IsNot: (40, ast.BinaryOp.IsNot, Associativity.NonAssociative),
+    Punctuation.EQ: (40, ast.BinaryOp.Equal, Associativity.NonAssociative),
+    Punctuation.NE: (40, ast.BinaryOp.NotEqual, Associativity.NonAssociative),
+    Punctuation.GT: (40, ast.BinaryOp.Greater, Associativity.NonAssociative),
+    Punctuation.GE: (40, ast.BinaryOp.GreaterEqual, Associativity.NonAssociative),
+    Punctuation.LT: (40, ast.BinaryOp.Less, Associativity.NonAssociative),
+    Punctuation.LE: (40, ast.BinaryOp.LessEqual, Associativity.NonAssociative),
     Keyword.And: (20, ast.BinaryOp.And, Associativity.Left),
     Keyword.Or: (10, ast.BinaryOp.Or, Associativity.Left),
+}
+
+UNOPS = {
+    Punctuation.Plus: (90, ast.UnaryOp.Positive),
+    Punctuation.Minus: (90, ast.UnaryOp.Negate),
+    Keyword.Not: (30, ast.UnaryOp.Not),
 }
 
 
@@ -191,10 +197,10 @@ class Parser:
             self._base = max(self._base - count, 0)
             return before - self._base
 
-        def skip_line(self):
+        def attempt_recovery(self):
             for i in range(self._base, self._size):
-                if self._tokens[i].first_on_line:
-                    self._base = i
+                if self._tokens[i].what in (Punctuation.Semicolon, Punctuation.RCurly):
+                    self._base = min(i + 1, self._size)
                     return
 
             self._base = self._size
@@ -288,11 +294,11 @@ class Parser:
             case Keyword.Type:
                 raise NotImplementedError()
 
-            case Keyword.Let:
-                raise NotImplementedError()
+            # case Keyword.Let:
+            #     raise NotImplementedError()
 
-            case Keyword.Const:
-                raise NotImplementedError()
+            # case Keyword.Const:
+            #     raise NotImplementedError()
 
             case Keyword.Unit:
                 return self._unit_decl()
@@ -316,8 +322,7 @@ class Parser:
                         tok_str = type(tok.what).__name__
 
                 self._emit_error(f"unexpected {tok_str} in '{tok.file}' at {tok.start}")
-                self.tokens.advance()
-                self.tokens.skip_line()
+                self.tokens.attempt_recovery()
                 return None
 
     def _unit_decl(self):
@@ -366,31 +371,6 @@ class Parser:
                     end=unit_type.end,
                     name=m[1].what,
                     unit_type=unit_type,
-                )
-
-        elif m := self.tokens.match(
-            Keyword.Unit,
-            Identifier,
-            Keyword.Is,
-            Punctuation.LT,
-            Punctuation.GT,
-        ):
-            # Special case for the empty compound unit a.k.a. "ratio"
-            # it is the unit returned by trig functions
-            name = m[1]
-            if self._end_of_statement():
-                return ast.UnitAlias(
-                    file=m[1].file,
-                    start=m[0].start,
-                    end=m[4].end,
-                    name=m[1].what,
-                    base=ast.CompoundUnit(
-                        file=m[3].file,
-                        start=m[3].start,
-                        end=m[4].end,
-                        components=[],
-                        is_absolute=False,
-                    ),
                 )
 
         elif m := self.tokens.match(
@@ -500,11 +480,24 @@ class Parser:
                 )
 
         self._emit_error("invalid form of unit declaration")
-        self.tokens.advance()
-        self.tokens.skip_line()
+        self.tokens.attempt_recovery()
 
     def _compound_unit(self, *, required=False):
         leading_hash = self.tokens.match_one(Punctuation.Hash)
+
+        if (
+            (t := self.tokens.peek())
+            and isinstance(t.what, Numeric)
+            and t.what.raw == "1"
+        ):
+            self.tokens.advance()
+            return ast.CompoundUnit(
+                file=t.file,
+                start=leading_hash.start if leading_hash else t.start,
+                end=t.end,
+                components=[],
+                is_absolute=leading_hash is not None,
+            )
 
         components: list[ast.UnitComponent] = []
         in_denominator = False
@@ -542,7 +535,9 @@ class Parser:
 
         if not components:
             if required:
-                self._emit_error("expected a unit here")
+                self._emit_error("expected a unit here").suggest(
+                    'did you mean the dimensionless "unit" spelled as: 1 ?'
+                )
             return None
 
         return ast.CompoundUnit(
@@ -569,19 +564,55 @@ class Parser:
             return
 
         if self.tokens.match_one(Punctuation.Arrow):
-            return_type = self._type_expr()  # TODO: multiple return types ?
+            returns: list[ast.FuncReturn] = []
 
-            if return_type:
-                return_types = [return_type]
-            else:
-                return_types = []
+            while True:
+                if m := self.tokens.match(Identifier, Punctuation.Colon):
+                    name = m[0].what
+                    start = m[0].start
+                else:
+                    name = None
+                    if t := self.tokens.peek():
+                        start = t.start
+                    else:
+                        self._emit_error("expected a return type here")
+                        return None
+
+                return_type = self._type_expr()
+                if return_type is None:
+                    self._emit_error("expected a return type here")
+                    return None
+
+                if self.tokens.match_one(Punctuation.Bar):
+                    unit = self._compound_unit()
+                    if unit is None:
+                        self._emit_error("expected a unit here")
+                        return None
+                    end = unit.end
+                else:
+                    unit = None
+                    end = return_type.end
+
+                returns.append(
+                    ast.FuncReturn(
+                        file=return_type.file,
+                        start=start,
+                        end=end,
+                        name=name,
+                        type=return_type,
+                        unit=unit,
+                    )
+                )
+
+                if not self.tokens.match_one(Punctuation.Comma):
+                    break
 
             if self.tokens.match_one(Punctuation.Bang):
                 error_type = self._type_expr() or ...
             else:
                 error_type = None
         else:
-            return_types = []
+            returns = []
             error_type = None
 
         # TODO: requires
@@ -600,7 +631,7 @@ class Parser:
             end=body.end,
             name=func_name.what,
             params=params,
-            return_types=return_types,
+            returns=returns,
             error_type=error_type,
             body=body,
         )
@@ -612,9 +643,14 @@ class Parser:
         params: list[ast.FormalParameter] = []
 
         while m := self.tokens.match(Identifier, Punctuation.Colon):
-            param_type = self._type_expr(allow_templates=True)
+            param_type = self._type_expr(allow_generics=True)
             if not param_type:
                 return
+
+            if self.tokens.match_one(Punctuation.Bar):
+                unit = self._compound_unit()
+            else:
+                unit = None
 
             if self.tokens.match_one(Punctuation.Assign):
                 default = self._expr()
@@ -628,6 +664,7 @@ class Parser:
                     end=param_type.end,
                     name=m[0].what,
                     type=param_type,
+                    unit=unit,
                     default=default,
                 )
             )
@@ -641,9 +678,7 @@ class Parser:
 
         return params
 
-    def _type_expr(
-        self, *, allow_no_base=False, allow_templates=False
-    ) -> ast.TypeExpression | None:
+    def _type_expr(self, *, allow_generics=False) -> ast.TypeExpression | None:
         typ = None
 
         match self.tokens.what():
@@ -657,8 +692,8 @@ class Parser:
                         bound=None,
                     )
 
-                if not allow_templates:
-                    self._emit_error("type templates are not allowed here")
+                if not allow_generics:
+                    self._emit_error("generic types are not allowed here")
 
             case (
                 Punctuation.Caret
@@ -678,7 +713,7 @@ class Parser:
             case Punctuation.Question:
                 q = self.tokens.pop()
                 assert q
-                if inner := self._type_expr(allow_templates=allow_templates):
+                if inner := self._type_expr(allow_generics=allow_generics):
                     typ = ast.OptionalType(
                         file=q.file,
                         start=q.start,
@@ -693,7 +728,7 @@ class Parser:
             case Punctuation.LParen:
                 lp = self.tokens.pop()
                 assert lp
-                typ = self._type_expr(allow_templates=allow_templates)
+                typ = self._type_expr(allow_generics=allow_generics)
 
                 if typ:
                     if rp := self.tokens.match_one(Punctuation.RParen):
@@ -710,49 +745,18 @@ class Parser:
                 if st := self._simple_type():
                     typ = st
 
-        if typ is None and not allow_no_base:
-            return None
-
-        while True:
-            if lt := self.tokens.match_one(Punctuation.LT):
-                if self.tokens.match_one(Keyword.Nil):
-                    unit = None
-                else:
-                    unit = self._compound_unit() or ast.CompoundUnit(
-                        file=lt.file,
-                        start=lt.end,
-                        end=lt.end,
-                        components=[],
-                        is_absolute=False,
-                    )
-
-                if gt := self.tokens.match_one(Punctuation.GT):
-                    typ = ast.TypeWithUnit(
-                        file=gt.file,
-                        start=typ.start if typ else lt.start,
-                        end=gt.end,
-                        base=typ,
-                        unit=unit,
-                    )
-                    continue
-                else:
-                    self._emit_error("unit on type not closed")
-
-            elif at := self.tokens.match_one(Punctuation.Tilde):
-                tag = self._qualname()
-                if tag:
-                    typ = ast.TypeWithTag(
-                        file=tag.file,
-                        start=typ.start if typ else at.start,
-                        end=tag.end,
-                        base=typ,
-                        tag=tag,
-                    )
-                else:
-                    self._emit_error("expected a tag name here")
-
+        while tilde := self.tokens.match_one(Punctuation.Tilde):
+            tag = self._qualname()
+            if tag:
+                typ = ast.TypeWithTag(
+                    file=tag.file,
+                    start=typ.start if typ else tilde.start,
+                    end=tag.end,
+                    base=typ,
+                    tag=tag,
+                )
             else:
-                break
+                self._emit_error("expected a tag name here")
 
         return typ
 
@@ -872,13 +876,24 @@ class Parser:
                 name = self.tokens.match_one(Identifier)
                 if name is None:
                     self._emit_error("expected variable name here")
-                    self.tokens.skip_line()
+                    self.tokens.attempt_recovery()
                     return None
 
                 if self.tokens.match_one(Punctuation.Colon):
-                    typ = self._type_expr(allow_no_base=True)
+                    typ = self._type_expr()
                 else:
                     typ = None
+
+                if self.tokens.match_one(Punctuation.Bar):
+                    unit = self._compound_unit()
+
+                    if unit is None:
+                        self._emit_error("expected a unit here")
+                        self.tokens.attempt_recovery()
+                        return None
+
+                else:
+                    unit = None
 
                 if self.tokens.match_one(Punctuation.Assign):
                     if ell := self.tokens.match_one(Punctuation.Ellipsis_):
@@ -892,7 +907,7 @@ class Parser:
 
                         if value is None:
                             self._emit_error("expected an expression here")
-                            self.tokens.skip_line()
+                            self.tokens.attempt_recovery()
                             return None
 
                 else:
@@ -911,6 +926,7 @@ class Parser:
                         end=value.end if value else tok.end,
                         name=name.what,
                         type=typ,
+                        unit=unit,
                         expr=value,
                     )
                 else:
@@ -920,6 +936,7 @@ class Parser:
                         end=value.end if value else tok.end,
                         name=name.what,
                         type=typ,
+                        unit=unit,
                         expr=value,
                     )
 
@@ -933,7 +950,7 @@ class Parser:
                             self._emit_error(
                                 f"expected an expression after the {tok.what.value}"
                             )
-                            self.tokens.skip_line()
+                            self.tokens.attempt_recovery()
                             return None
 
                         stmt = ast.AssignStatement(
@@ -948,8 +965,7 @@ class Parser:
                         stmt = ast.ExprStatement.from_node(expr, expr=expr)
                 else:
                     self._emit_error("invalid start of statement")
-                    self.tokens.advance()
-                    self.tokens.skip_line()
+                    self.tokens.attempt_recovery()
                     return None
 
         assert stmt is not None, (
@@ -960,7 +976,7 @@ class Parser:
             return stmt
         else:
             self._emit_error("expected end of statement here")
-            self.tokens.skip_line()
+            self.tokens.attempt_recovery()
 
     def _expr(self) -> ast.Expression | None:
         expr = self._expr_atom()
@@ -971,8 +987,20 @@ class Parser:
         if binop := self._binop_expr(expr):
             expr = binop
 
-        if self.tokens.match_one(Keyword.As):
-            if to_type := self._type_expr(allow_no_base=True):
+        if self.tokens.match(Keyword.Reinterpret, Keyword.Unit, Keyword.As):
+            if to_unit := self._compound_unit():
+                return ast.UnitReinterpretExpr(
+                    file=expr.file,
+                    start=expr.start,
+                    end=to_unit.end,
+                    expr=expr,
+                    new_unit=to_unit,
+                )
+            else:
+                self._emit_error("expected a target unit for unit reinterpretation")
+
+        elif self.tokens.match_one(Keyword.As):
+            if to_type := self._type_expr():
                 return ast.CastExpr(
                     file=expr.file,
                     start=expr.start,

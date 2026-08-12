@@ -12,7 +12,7 @@ from frontend.common import Location
 from frontend.lexer import Identifier, Numeric
 
 if TYPE_CHECKING:
-    from frontend.exprs import ComptimeType, ComptimeValue, RealizedType
+    from frontend.exprs import ComptimeType, ComptimeUnit, ComptimeValue, RealizedType
     from frontend.resolver import AnyType, CanonicalUnit, Named
 
 
@@ -360,9 +360,15 @@ class CastExpr(Expression):
 
 
 @dataclass(kw_only=True)
-class UnitConvExpr(Expression):
+class UnitConversionExpr(Expression):
     expr: Expression
     to: CompoundUnit
+
+
+@dataclass(kw_only=True)
+class UnitReinterpretExpr(Expression):
+    expr: Expression
+    new_unit: CompoundUnit
 
 
 @dataclass(kw_only=True)
@@ -414,14 +420,6 @@ class PointerType(TypeExpression):
     to: TypeExpression
     ownership: PointerOwnership
     nullable: bool
-
-
-@dataclass(kw_only=True)
-class TypeWithUnit(TypeExpression):
-    base: TypeExpression | None  # None means the base type is implicit
-    unit: (
-        CompoundUnit | None
-    )  # None means the unit is explicitly cleared from the type via <nil>
 
 
 @dataclass(kw_only=True)
@@ -477,18 +475,22 @@ class UnboundVar(Node):
 class LocalVariable(Statement):
     name: Identifier
     type: TypeExpression | None
+    unit: CompoundUnit | None
     expr: Expression | UnboundVar | None
 
     realized_type: RealizedType | None = field(default=None, repr=False)
+    realized_unit: ComptimeUnit = field(default=UnitSentinels.NotDetermined, repr=False)
 
 
 @dataclass(kw_only=True)
 class LocalConstant(Statement):
     name: Identifier
     type: TypeExpression | None
+    unit: CompoundUnit | None
     expr: Expression
 
     realized_type: AnyType | None = field(default=None, repr=False)
+    realized_unit: ComptimeUnit = field(default=UnitSentinels.NotDetermined, repr=False)
 
 
 @dataclass(kw_only=True)
@@ -510,14 +512,22 @@ class Block(Statement):
 class FormalParameter(Node):
     name: Identifier
     type: TypeExpression
-    default: Expression | None = None
+    unit: CompoundUnit | None
+    default: Expression | None
+
+
+@dataclass(kw_only=True)
+class FuncReturn(Node):
+    name: Identifier | None
+    type: TypeExpression
+    unit: CompoundUnit | None
 
 
 @dataclass(kw_only=True)
 class FuncDefinition(TopLevelDeclaration, Statement):
     name: Identifier
     params: list[FormalParameter]
-    return_types: list[TypeExpression]
+    returns: list[FuncReturn]
     error_type: TypeExpression | EllipsisType | None = (
         None  # Ellipsis as the error type indicates the function can fail but the error type is void
     )

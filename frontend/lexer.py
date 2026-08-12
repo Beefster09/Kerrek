@@ -115,7 +115,9 @@ class Keyword(Enum):
 
     Import = "import"
 
+    Reinterpret = "reinterpret"
     As = "as"
+
     Is = "is"
     IsNot = "is_not"
 

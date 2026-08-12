@@ -447,8 +447,10 @@ class Resolver:
                             templates[sub.name] = GenericType(sub.name)
 
                     self._resolve_names(module, param.type, templates, *scopes)
+                    if param.unit:
+                        self._resolve_names(module, param.unit, templates, *scopes)
 
-                for ret in node.return_types:
+                for ret in node.returns:
                     self._resolve_names(module, ret, templates, *scopes)
 
                 if node.error_type is not ... and node.error_type is not None:
@@ -465,12 +467,6 @@ class Resolver:
                     self._resolve_names(module, stmt, local_scope, *scopes)
 
             case ast.LocalVariable() | ast.LocalConstant():
-                if node.name == "_":
-                    diagnostics.error(
-                        "placeholder ('_') is not a valid variable name", node
-                    )
-                    return
-
                 if isinstance(node.type, ast.Expression):
                     self._resolve_names(module, node.type, *scopes)
                 if node.expr:
@@ -627,13 +623,15 @@ class Resolver:
                 diagnostics.error("unable to evaluate type declaration", decl)
                 raise NotImplementedError("TODO")
 
-    def _ensure_type_built(self, type_expr: ast.TypeExpression) -> AnyType:
+    def _ensure_type_built(
+        self, type_expr: ast.TypeExpression
+    ) -> AnyType | ast.TypeSentinels:
         if type_expr.canonical is None:
             type_expr.canonical = self._build_type(type_expr)
 
         return type_expr.canonical
 
-    def _build_type(self, type_expr: ast.TypeExpression) -> AnyType:
+    def _build_type(self, type_expr: ast.TypeExpression) -> AnyType | ast.TypeSentinels:
         match type_expr:
             case ast.SimpleType():
                 resolved = type_expr.type_name.resolves_to
@@ -660,12 +658,6 @@ class Resolver:
                 )
                 return ast.TypeSentinels.Impossible
 
-            case ast.TypeWithUnit():
-                if type_expr.base:
-                    return self._build_type(type_expr.base)
-                else:
-                    return ast.TypeSentinels.NeedsInference
-
             case ast.GenericType():
                 return GenericType(type_expr.name)
 
@@ -691,6 +683,7 @@ class Resolver:
 
         for component in unit.components:
             resolved = component.base.resolves_to
+            assert resolved is not None, "this should have been resolved by now"
             if isinstance(resolved, (Unit, UnitType)):
                 if isinstance(resolved.definition, ast.UnitAlias):
                     self._ensure_canonical_unit(resolved.definition.base)
@@ -703,7 +696,8 @@ class Resolver:
                     unit.canonical[resolved.id] += component.exponent
             else:
                 diagnostics.error(
-                    f"{component.base} is not a unit or unit type", component.base
+                    f"'{'.'.join(component.base.path)}' does not name a unit or unit type",
+                    component.base,
                 )
 
     def build_unit_conversions(self):
