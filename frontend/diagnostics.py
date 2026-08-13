@@ -242,43 +242,98 @@ def count_leading_spaces(s: str) -> int:
     return count
 
 
-def report(warnings_as_errors=False):
-    """prints all of the diagnostics are returns True if any were errors"""
-    global _diagnostics
+def _show_diagnostic_source(
+    diag: Diagnostic | DiagnosticReference,
+    *,
+    context_lines=3,
+):
+    if diag.file is None or diag.start is None:
+        return False
 
-    def show_diagnostic_source(diag: Diagnostic | DiagnosticReference):
-        if diag.file is None or diag.start is None:
-            return False
+    print(
+        f"    {ANSI_GRAY}(in {diag.file or '<stdin>'}",
+        f" on line {diag.start.line if diag.start else '???'}){ANSI_CLEAR}",
+        sep="",
+        file=sys.stderr,
+    )
 
+    start = diag.start
+    end = diag.end or start
+
+    lines = _get_lines(diag.file)[start.line - 1 : end.line]
+
+    if len(lines) == 1:
+        line = lines[0].lstrip(" ")
+        indent = count_leading_spaces(lines[0])
         print(
-            f"  {ANSI_GRAY}(in {diag.file or '(stdin)'}",
-            f" on line {diag.start.line if diag.start else '???'}){ANSI_CLEAR}",
+            ANSI_BLUE,
+            f"{start.line: 5} | ",
+            ANSI_CLEAR,
+            line,
+            sep="",
+            file=sys.stderr,
+        )
+        print(
+            " " * (8 + max(0, start.col - 1 - indent)),
+            ANSI_BR_YELLOW,
+            "^" * max(1, end.col - start.col),
+            ANSI_CLEAR,
+            sep="",
+            file=sys.stderr,
+        )
+    else:
+        indent = min(count_leading_spaces(line) for line in lines if not line.isspace())
+        print(
+            " " * (8 + max(0, start.col - 1 - indent)),
+            ANSI_BR_YELLOW,
+            "|<---",
+            ANSI_CLEAR,
             sep="",
             file=sys.stderr,
         )
 
-        start = diag.start
-        end = diag.end or start
+        should_snip = len(lines) > 3 + context_lines * 2
+        snip_start = start.line + context_lines + 1
+        snip_end = end.line - context_lines - 1
 
-        lines = _get_lines(diag.file)[start.line - 1 : end.line]
+        for line_no, line in enumerate(lines, start.line):
+            if should_snip:
+                if line_no == snip_start:
+                    print(
+                        ANSI_BLUE,
+                        "  ... | ",
+                        ANSI_GRAY,
+                        f"\\\\ ... {len(lines) - 8} lines omitted ...",
+                        ANSI_CLEAR,
+                        sep="",
+                        file=sys.stderr,
+                    )
+                    continue
+                elif snip_start <= line_no <= snip_end:
+                    continue
 
-        if len(lines) == 1:
-            line = lines[0].lstrip(" ")
-            sp = count_leading_spaces(lines[0])
-            print(ANSI_BLUE, " -> ", ANSI_CLEAR, line, sep="", file=sys.stderr)
             print(
-                " " * 4,
-                " " * max(0, start.col - 1 - sp),
-                ANSI_BR_YELLOW,
-                "^" * max(1, end.col - start.col),
+                ANSI_BLUE,
+                f"{line_no: 5} | ",
                 ANSI_CLEAR,
+                line[indent:],
                 sep="",
                 file=sys.stderr,
             )
-        elif len(lines) < 5:
-            pass
-        else:
-            pass
+
+        print(
+            " " * (4 + max(0, end.col - 1 - indent)),
+            ANSI_BR_YELLOW,
+            "--->|",
+            ANSI_CLEAR,
+            sep="",
+            file=sys.stderr,
+        )
+
+
+def report(warnings_as_errors=False):
+    """prints all of the diagnostics are returns True if any were errors"""
+    global _diagnostics
 
     err_count = 0
     warn_count = 0
@@ -290,14 +345,16 @@ def report(warnings_as_errors=False):
                 warn_count += 1
 
         print(f"{diag.level.pretty(sys.stderr)}: {diag.message}", file=sys.stderr)
-        show_diagnostic_source(diag)
+        _show_diagnostic_source(diag)
 
         for ref in diag.references:
-            print(f"  {ANSI_BR_BLUE}note{ANSI_CLEAR}: {ref.message}")
-            show_diagnostic_source(ref)
+            print(f"    {ANSI_BR_BLUE}note{ANSI_CLEAR}: {ref.message}")
+            _show_diagnostic_source(ref)
 
         for message in diag.suggestions:
-            print(f"  {ANSI_GREEN}suggestion{ANSI_CLEAR}: {message}", file=sys.stderr)
+            print(
+                f"    {ANSI_BR_GREEN}suggestion{ANSI_CLEAR}: {message}", file=sys.stderr
+            )
 
     if err_count:
         print(f"encountered {err_count} errors. aborting.")

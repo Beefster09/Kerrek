@@ -83,7 +83,6 @@ class Keyword(Enum):
 
     Assume = "assume"
     Assert = "assert"
-    StaticAssert = "static_assert"
 
     Defer = "defer"
     Where = "where"
@@ -138,6 +137,8 @@ class Keyword(Enum):
     Shared = "shared"
     Weak = "weak"
     UnsafePtr = "unsafe_ptr"
+
+    Foreign = "foreign"
 
     Placeholder = "_"
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import operator
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum, auto
 from fractions import Fraction
@@ -495,10 +495,12 @@ def _eval_binop(binop: ast.BinopExpr) -> EvalResult:
     op_compat = _op_category_of(coerced_type)
 
     if binop.op not in op_compat.supported_binops:
-        diagnostics.error(
-            f"operator {binop.op} is not supported for type {coerced_type}",
+        err = diagnostics.error(
+            f"operator {binop.op.value} is not supported for type {coerced_type}",
             binop,
         )
+        if binop.op in op_compat.suggestions:
+            err.suggest(op_compat.suggestions[binop.op])
         # TODO: suggestions based on the type and its semantics
         return EvalResult(
             ast.ValueSentinels.CannotEvaluate,
@@ -1054,6 +1056,7 @@ def _conversion_class(typ: ComptimeType) -> ConversionClass:
 class OperatorCompatCategory:
     name: str
     supported_binops: set[ast.BinaryOp]
+    suggestions: dict[ast.BinaryOp, str] = field(default_factory=dict)
 
 
 IntegerOpCategory = OperatorCompatCategory(
@@ -1072,6 +1075,9 @@ IntegerOpCategory = OperatorCompatCategory(
         ast.BinaryOp.LessEqual,
         ast.BinaryOp.Greater,
         ast.BinaryOp.GreaterEqual,
+    },
+    suggestions={
+        ast.BinaryOp.TrueDivide: "did you mean to use //, the floor division operator?"
     },
 )
 
@@ -1113,6 +1119,10 @@ BinFloatOpCategory = OperatorCompatCategory(
         ast.BinaryOp.Greater,
         ast.BinaryOp.GreaterEqual,
     },
+    suggestions={
+        ast.BinaryOp.Equal: "consider using a comparison operator or approximate equality function from intrinsics:float",
+        ast.BinaryOp.NotEqual: "consider using one of >, >=, <, or <=",
+    },
 )
 
 
@@ -1152,8 +1162,8 @@ EnumOpCategory = OperatorCompatCategory(
 )
 
 
-EqualityOnlyOpCategory = OperatorCompatCategory(
-    name="Equality Only",
+OpaqueOpCategory = OperatorCompatCategory(
+    name="Opaque",
     supported_binops={
         ast.BinaryOp.Equal,
         ast.BinaryOp.NotEqual,
@@ -1225,4 +1235,4 @@ def _op_category_of(typ: ComptimeType) -> OperatorCompatCategory:
             return BinFloatOpCategory
 
         case _:
-            return EqualityOnlyOpCategory
+            return OpaqueOpCategory

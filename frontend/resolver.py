@@ -47,9 +47,11 @@ class PrimitiveType(Enum):
     Rune = "Rune"
     Byte = "Byte"
 
-    TypeID = "TypeID"
-
-    Any = "Any"
+    Opaque = "Opaque"
+    Opaque8 = "Opaque8"
+    Opaque16 = "Opaque16"
+    Opaque32 = "Opaque32"
+    Opaque64 = "Opaque64"
 
 
 @dataclass
@@ -467,8 +469,9 @@ class Resolver:
                     self._resolve_names(module, stmt, local_scope, *scopes)
 
             case ast.LocalVariable() | ast.LocalConstant():
-                if isinstance(node.type, ast.Expression):
+                if isinstance(node.type, ast.TypeExpression):
                     self._resolve_names(module, node.type, *scopes)
+
                 if node.expr:
                     self._resolve_names(module, node.expr, *scopes)
 
@@ -634,6 +637,7 @@ class Resolver:
         match type_expr:
             case ast.SimpleType():
                 resolved = type_expr.type_name.resolves_to
+                assert resolved is not None, "this should have been resolved by now"
 
                 if isinstance(resolved, Builtin):
                     try:

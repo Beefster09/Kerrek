@@ -79,6 +79,12 @@ floats.round_equal(0.1f + 0.2f, 0.3f, 3);  \\ would round to the same decimal va
 floats.trunc_equal(0.1f + 0.2f, 0.3f, 3);  \\ would truncate to the same decimal value with 3 digits after the decimal point
 ```
 
+Or possibly you may even want:
+
+```kerrek
+floats.bits_equal(0.1f + 0.2f, 0.3f);  \\ the bit pattern is exactly the same; 0 != -0 in this case
+```
+
 # Non-Numeric Types
 
 These types do not support any form of implicit conversion between each other
@@ -99,10 +105,10 @@ Booleans support equality operators, but not the other four comparison operators
 
 They also support multiplication with any other type with a well-defined and valid zero value:
 
-- true + X -> X
-- X + true -> X
-- false + X -> (the zero value of the same type as X)
-- X + false -> (the zero value of the same type as X)
+- true \* x -> x
+- x \* true -> x
+- false \* x -> (the zero value of the same type as x)
+- x \* false -> (the zero value of the same type as x)
 
 ## String
 
@@ -110,7 +116,7 @@ Strings have value semantics and behave like values under all conditions which d
 
 - The zero value is the empty string, and a fully zeroed struct representing a string value must be an empty string.
 	- fully-zero does not need to be the only possible representation of the empty string
-- Strings are UTF-8 encoded.
+- Strings are assumed to be UTF-8 encoded.
 - Strings may contain null bytes.
 - Strings may contain invalid UTF-8 sequences.
 - Two Strings are considered equal if they are the same length and contain the same sequence of bytes
@@ -142,6 +148,16 @@ All other operations are not allowed
 A byte is a single 8-bit value without numeric semantics. It can be converted to and from numeric types and accepts both integer and rune literals (and folded constants) within range, but does not support any operators besides `==` and `!=`.
 
 The zero value is 0x00
+
+
+## Opaque
+
+The Opaque types are sized types (in 8, 16, 32, 64 bits as well as the pointer-sized bare `Opaque`) that support only equality testing. They can be converted to and from sized integers of the same size. Opaques must be explicitly converted and will never implicitly convert from integer literals, constants, or runtime values.
+
+These are mainly intended to be the underlying type for distinct types for use with foreign functions (as many C APIs operate on an opaque pointer) and certain system calls (e.g. opaque file handles from fopen, pipes, sockets, etc...)
+
+The zero value is valid, but likely not meaningful.
+
 
 # Truthiness
 
