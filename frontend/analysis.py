@@ -20,12 +20,13 @@ type Scope = dict[Identifier, VarState | ParamVar]
 
 def validate(node: ast.TopLevelDeclaration):
     """does all of the core validation of the code:
-    - constant folding
+    - simple constant evaluation
     - dependency cycle detection
     - type checking & inference
     - unit analysis
     - value label provenance checking
     - capability tracking
+    - unused variables (just a warning)
     """
     match node:
         case ast.GlobalConstant():

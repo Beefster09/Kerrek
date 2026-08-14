@@ -1,7 +1,9 @@
-from frontend import ast
+from frontend import ast, mir
+
 
 def insert_mem_management(node: ast.Node):
-	pass
+    pass
+
 
 def insert_implicit_conversions(node: ast.Node):
-	pass
+    pass

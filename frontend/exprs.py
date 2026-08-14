@@ -470,7 +470,7 @@ def _eval_binop(binop: ast.BinopExpr) -> EvalResult:
         ) if isinstance(lhs.value, str) and isinstance(rhs.value, str):
             typ = _coerce(lhs, rhs)
             assert not isinstance(typ, ConversionSentinels), (
-                "_coerce is probably broken"
+                "there is a bug in type coercion logic, probably"
             )
             return EvalResult(
                 lhs.value + rhs.value,
@@ -1077,7 +1077,7 @@ IntegerOpCategory = OperatorCompatCategory(
         ast.BinaryOp.GreaterEqual,
     },
     suggestions={
-        ast.BinaryOp.TrueDivide: "did you mean to use //, the floor division operator?"
+        ast.BinaryOp.TrueDivide: "did you mean to use // ? (the floor division operator)"
     },
 )
 
@@ -1121,7 +1121,7 @@ BinFloatOpCategory = OperatorCompatCategory(
     },
     suggestions={
         ast.BinaryOp.Equal: "consider using a comparison operator or approximate equality function from intrinsics:float",
-        ast.BinaryOp.NotEqual: "consider using one of >, >=, <, or <=",
+        ast.BinaryOp.NotEqual: "consider using a comparison operator or approximate equality function from intrinsics:float",
     },
 )
 
