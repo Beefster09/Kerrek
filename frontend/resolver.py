@@ -495,7 +495,9 @@ class Resolver:
                 if isinstance(node, ast.LocalConstant):
                     local_scope[node.name] = Constant(name=node.name, definition=node)
                 else:
-                    local_scope[node.name] = Variable(name=node.name, definition=node)
+                    var = Variable(name=node.name, definition=node)
+                    local_scope[node.name] = var
+                    node.shadow_id = var.id
 
             case _:
                 for sub in node:

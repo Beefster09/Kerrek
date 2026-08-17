@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Protocol
 
-from frontend import analysis, diagnostics, resolver
+from frontend import analysis, diagnostics, lowering, resolver
 
 
 class Backend(Protocol):
@@ -27,5 +27,11 @@ def build(entry_point: Path, backend: Backend) -> bool:
             analysis.validate(decl)
 
     diagnostics.report()
+
+    tu = lowering.translate_to_mir(r, main)
+
+    import rich
+
+    rich.print(tu)
 
     return True

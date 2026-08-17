@@ -100,7 +100,7 @@ func flapjacks_required(num_workers: Integer | man) -> Decimal | count
 
 	let a: Integer = 5;
 	let b = 8;
-	let c = a / b;
+	let c = a // b;
 
 	return count * hunger / 200;
 }

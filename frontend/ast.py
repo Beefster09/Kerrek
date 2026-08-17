@@ -6,7 +6,7 @@ from enum import Enum, auto
 from fractions import Fraction
 from pathlib import Path
 from types import EllipsisType
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from frontend.common import Location
 from frontend.lexer import Identifier, Numeric
@@ -236,6 +236,7 @@ class CompoundUnit(Node):
 
 @dataclass(kw_only=True)
 class Expression(Node):
+    # what the expression evaluated to during semantic analysis
     evaluated_value: ComptimeValue | Literal[ValueSentinels.NotEvaluated] = field(
         default=ValueSentinels.NotEvaluated, repr=False
     )
@@ -246,14 +247,18 @@ class Expression(Node):
         default=UnitSentinels.NotDetermined, repr=False
     )
 
+    # what the receiving destination needs / what it must convert to, if applicable
     required_type: RealizedType | Literal[TypeSentinels.NotDetermined] = field(
         default=TypeSentinels.NotDetermined, repr=False
     )
     required_unit: CanonicalUnit | UnitSentinels = field(
         default=UnitSentinels.NotDetermined, repr=False
     )
-
     unit_conv_multiplier: Fraction = field(default=Fraction(1), repr=False)
+
+    # when participating in the lhs of an assignment, what the destination corresponds to
+    # None means the expression isn't a valid lvalue
+    lvalue_base: Any | None = field(default=None, repr=False)
 
 
 # - concrete nodes and supporting types -
@@ -486,6 +491,7 @@ class LocalVariable(Statement):
     unit: CompoundUnit | UnitSentinels
     expr: Expression | UnboundVar | None
 
+    shadow_id: int | None = field(default=None, repr=False)  # keeps track of shadowing
     realized_type: RealizedType | None = field(default=None, repr=False)
     realized_unit: ComptimeUnit = field(default=UnitSentinels.NotDetermined, repr=False)
 

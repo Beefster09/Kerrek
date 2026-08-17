@@ -1,23 +1,30 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum, auto
 
 from frontend.resolver import SymbolID
 
 
+@dataclass(kw_only=True)
 class TranslationUnit:
-    types: list[Type]
-    globals: list[Variable]
-    functions: list[Function]
+    types: list[Type] = field(default_factory=list)
+    globals: list[Variable] = field(default_factory=list)
+    functions: list[Function] = field(default_factory=list)
 
 
+@dataclass(kw_only=True)
 class Function:
     id: SymbolID
-    blocks: list[Block]
+    params: list[Parameter]
+    returns: list[Type]
+    error: Type | None
+    locals: list[Variable] = field(default_factory=list)
+    blocks: list[Block] = field(default_factory=list)
 
 
+@dataclass(kw_only=True)
 class Block:
     id: int
     ops: list[Operation]
@@ -31,7 +38,7 @@ class Type:
     pass
 
 
-class PrimitiveType(Enum, Type):
+class PrimitiveType(Type, Enum):
     Integer = auto()
     I8 = auto()
     I16 = auto()
@@ -44,7 +51,7 @@ class PrimitiveType(Enum, Type):
     U64 = auto()
     U128 = auto()
 
-    # fixed-point decimal lowers to integer
+    # NOTE: fixed-point decimal lowers to integer
 
     D32 = auto()
     D64 = auto()
@@ -53,8 +60,9 @@ class PrimitiveType(Enum, Type):
     F32 = auto()
     F64 = auto()
 
-    String = auto()
     Boolean = auto()
+
+    String = auto()
 
     Void = auto()
 
@@ -244,16 +252,16 @@ class Terminator:
 class Jump(Terminator):
     """unconditional jump"""
 
-    next: int
+    next: int = 0
 
 
 @dataclass
-class JumpZero(Terminator):
+class BranchZero(Terminator):
     """branch depending on whether the value is zero or not"""
 
     value: Operand
-    z_branch: int
-    nz_branch: int
+    z_branch: int = 0
+    nz_branch: int = 0
 
 
 @dataclass
@@ -261,8 +269,8 @@ class WeakPtrValid(Terminator):
     """branch depending on whether the value is zero or not"""
 
     value: Operand
-    valid_branch: int
-    invalid_branch: int
+    valid_branch: int = 0
+    invalid_branch: int = 0
 
 
 @dataclass
@@ -279,9 +287,9 @@ class Compare(Terminator):
 
     lhs: Operand
     rhs: Operand
-    lt_branch: int
-    eq_branch: int
-    gt_branch: int
+    lt_branch: int = 0
+    eq_branch: int = 0
+    gt_branch: int = 0
 
 
 @dataclass
@@ -314,14 +322,20 @@ class Discard(Operand):
 
 @dataclass
 class Variable(Operand):
-    id: SymbolID
+    id: int
+    name: str
     type: Type
-    writable: bool = False
+
+
+@dataclass
+class Temporary(Operand):
+    id: int
+    type: PrimitiveType
 
 
 @dataclass
 class Parameter(Operand):
-    id: SymbolID
+    index: int
     type: Type
 
 
