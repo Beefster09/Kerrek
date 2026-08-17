@@ -4,7 +4,6 @@ import math
 import operator
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from decimal import Decimal
 from enum import Enum, auto
 from fractions import Fraction
 from typing import Any, Never
@@ -17,44 +16,17 @@ from frontend.resolver import (
     Constant,
     DistinctType,
     EnumType,
+    FixedArrayType,
     FixedDecimal,
     InterfaceType,
     OptionalType,
     PointerType,
     PrimitiveType,
-    StaticArrayType,
     StructType,
     Unit,
     Variable,
 )
-
-type Num = int | float | Decimal | Fraction
-
-
-@dataclass
-class ScalarValue:
-    value: Num
-    unit: CanonicalUnit | None
-    absolute: bool = False
-
-    def __bool__(self) -> bool:
-        return bool(self.value)
-
-
-class FlexAffinity(Enum):
-    Nil = auto()
-    UInt = auto()
-    Integer = auto()
-    Float = auto()
-    Decimal = auto()
-    Boolean = auto()
-    String = auto()
-    Rune = auto()
-
-
-@dataclass
-class FlexType:
-    affinity: FlexAffinity
+from frontend.types import FlexAffinity, FlexType, conversion_class
 
 
 @dataclass
@@ -68,34 +40,8 @@ class ByteValue:
     # TODO: validation
 
 
-class TypeKind(Enum):
-    """defines the group of mutual convertability of types"""
-
-    Numeric = (
-        auto()
-    )  # Numeric types + Rune and Byte and all distinct types backed by them
-    String = auto()
-    Boolean = auto()
-
-
-@dataclass
-class FixedArrayKind:
-    shape: tuple[int, ...]
-    inner_kind: ConversionClass
-
-
-class _Unconv:
-    def __eq__(self, other):
-        return False
-
-
-Unconvertable = _Unconv()
-
-type ConversionClass = TypeKind | FixedArrayKind | _Unconv
-
-
 type ComptimeValue = (
-    Fraction | ast.RuneValue | ByteValue | str | bool | NilOf | ast.ValueSentinels
+    Fraction | ByteValue | str | bool | NilOf | ast.RuneValue | ast.ValueSentinels
 )
 type RealizedType = AnyType | ast.TypeSentinels
 type ComptimeType = RealizedType | FlexType
@@ -570,7 +516,7 @@ def is_zeroable(typ: ComptimeType) -> bool:
             # return typ.is_zeroable()
             return False
 
-        case StaticArrayType():
+        case FixedArrayType():
             return is_zeroable(typ.elem)
 
         case PointerType():
@@ -815,12 +761,12 @@ def _implicit_convert(dest: ComptimeType, src: ComptimeType) -> ComptimeType:
     match dest, src:
         # TODO: composite types
 
-        case StaticArrayType(), StaticArrayType():
+        case FixedArrayType(), FixedArrayType():
             if dest.shape == src.shape and not isinstance(
                 (elem := _implicit_convert(dest.elem, src.elem)),
                 (ast.TypeSentinels, FlexType),
             ):
-                return StaticArrayType(
+                return FixedArrayType(
                     elem=elem,
                     shape=dest.shape,
                 )
@@ -1000,56 +946,10 @@ def _cast_allowed(dest: ComptimeType, src: ComptimeType) -> bool:
     if src == dest:
         return True
 
-    dest_kind = _conversion_class(dest)
-    src_kind = _conversion_class(src)
+    dest_kind = conversion_class(dest)
+    src_kind = conversion_class(src)
 
     return dest_kind == src_kind
-
-
-def _conversion_class(typ: ComptimeType) -> ConversionClass:
-    match typ:
-        case DistinctType():
-            assert typ.definition.underlying.canonical
-            return _conversion_class(typ.definition.underlying.canonical)
-
-        case StaticArrayType():
-            return FixedArrayKind(typ.shape, _conversion_class(typ.elem))
-
-        case FlexType(FlexAffinity.Boolean) | PrimitiveType.Boolean:
-            return TypeKind.Boolean
-
-        case FlexType(FlexAffinity.String) | PrimitiveType.String:
-            return TypeKind.String
-
-        case (
-            FlexType(
-                FlexAffinity.Integer
-                | FlexAffinity.UInt
-                | FlexAffinity.Decimal
-                | FlexAffinity.Float
-            )
-            | FixedDecimal()
-            | PrimitiveType.Integer
-            | PrimitiveType.Int64
-            | PrimitiveType.Int32
-            | PrimitiveType.Int16
-            | PrimitiveType.Int8
-            | PrimitiveType.UInt64
-            | PrimitiveType.UInt32
-            | PrimitiveType.UInt16
-            | PrimitiveType.UInt8
-            | PrimitiveType.Decimal
-            | PrimitiveType.Dec64
-            | PrimitiveType.Dec32
-            | PrimitiveType.Float64
-            | PrimitiveType.Float32
-            | PrimitiveType.Rune
-            | PrimitiveType.Byte
-        ):
-            return TypeKind.Numeric
-
-        case _:
-            return Unconvertable
 
 
 @dataclass(kw_only=True)
@@ -1189,7 +1089,7 @@ def _op_category_of(typ: ComptimeType) -> OperatorCompatCategory:
         case StructType():
             return EmptyOpCategory  # TODO: it's actually the intersection of all of its fields' categories
 
-        case StaticArrayType():
+        case FixedArrayType():
             return _op_category_of(typ.elem)
 
         case FlexType(FlexAffinity.Nil):

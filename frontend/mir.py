@@ -10,7 +10,7 @@ from frontend.resolver import SymbolID
 @dataclass(kw_only=True)
 class TranslationUnit:
     types: list[Type] = field(default_factory=list)
-    globals: list[Variable] = field(default_factory=list)
+    globals: list[GlobalVar] = field(default_factory=list)
     functions: list[Function] = field(default_factory=list)
 
 
@@ -20,7 +20,7 @@ class Function:
     params: list[Parameter]
     returns: list[Type]
     error: Type | None
-    locals: list[Variable] = field(default_factory=list)
+    locals: list[LocalVar] = field(default_factory=list)
     blocks: list[Block] = field(default_factory=list)
 
 
@@ -321,7 +321,14 @@ class Discard(Operand):
 
 
 @dataclass
-class Variable(Operand):
+class GlobalVar(Operand):
+    id: int
+    name: str
+    type: Type
+
+
+@dataclass
+class LocalVar(Operand):
     id: int
     name: str
     type: Type

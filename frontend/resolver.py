@@ -116,7 +116,7 @@ class OptionalType:
 
 
 @dataclass(kw_only=True)
-class StaticArrayType:
+class FixedArrayType:
     elem: AnyType
     shape: tuple[int, ...]
 
@@ -144,7 +144,7 @@ class MapType:
 type CompoundType = (
     PointerType
     | OptionalType
-    | StaticArrayType
+    | FixedArrayType
     | DynamicArrayType
     | DimensionedArrayType
     | MapType
