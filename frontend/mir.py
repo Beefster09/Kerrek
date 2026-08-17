@@ -150,6 +150,15 @@ class Clear(Operation):
 
 
 @dataclass
+class Convert(Operation):
+    """convert a value to the given type"""
+
+    dest: Writable
+    value: Operand
+    type: PrimitiveType
+
+
+@dataclass
 class Alloc(Operation):
     """allocate a new 'owned' block of memory"""
 
@@ -233,6 +242,23 @@ class Div(Operation):
 
 
 @dataclass
+class Rem(Operation):
+    """get the remainder of dividing one operand by another"""
+
+    dest: Writable
+    lhs: Operand
+    rhs: Operand
+
+
+@dataclass
+class Truncate(Operation):
+    """truncate the result of division"""
+
+    dest: Writable
+    value: Operand
+
+
+@dataclass
 class Call(Operation):
     """call a function, returning its values and error into the given variables"""
 
@@ -252,7 +278,7 @@ class Terminator:
 class Jump(Terminator):
     """unconditional jump"""
 
-    next: int = 0
+    next: int
 
 
 @dataclass
@@ -260,8 +286,8 @@ class BranchZero(Terminator):
     """branch depending on whether the value is zero or not"""
 
     value: Operand
-    z_branch: int = 0
-    nz_branch: int = 0
+    z_branch: int
+    nz_branch: int
 
 
 @dataclass
@@ -269,8 +295,8 @@ class WeakPtrValid(Terminator):
     """branch depending on whether the value is zero or not"""
 
     value: Operand
-    valid_branch: int = 0
-    invalid_branch: int = 0
+    valid_branch: int
+    invalid_branch: int
 
 
 @dataclass
@@ -287,9 +313,9 @@ class Compare(Terminator):
 
     lhs: Operand
     rhs: Operand
-    lt_branch: int = 0
-    eq_branch: int = 0
-    gt_branch: int = 0
+    lt_branch: int
+    eq_branch: int
+    gt_branch: int
 
 
 @dataclass

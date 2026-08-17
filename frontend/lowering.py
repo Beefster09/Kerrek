@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from decimal import Context as DecCtx
 from fractions import Fraction
+from typing import Never, overload
 
 from frontend import ast, mir, resolver, types
 from frontend.exprs import ByteValue, NilOf, RealizedType
@@ -38,7 +39,7 @@ def _translate_globalvar(var: resolver.Variable) -> mir.GlobalVar:
 
 def _translate_func(src: resolver.Function) -> mir.Function:
     builder = FuncBuilder(src)
-    builder._ast_block(src.definition.body)
+    builder.lower_block(src.definition.body)
     return builder.finish()
 
 
@@ -61,6 +62,7 @@ class FuncBuilder:
         self._block_num = itertools.count(1)
         self._vars: dict[int, mir.LocalVar] = {}
         self._current_block: FuncBuilder.WIPBlock | None = None
+        self._defers: list[list[ast.Statement]] = []
 
     def finish(self) -> mir.Function:
         self.func.blocks.sort(key=lambda b: b.id)
@@ -86,9 +88,30 @@ class FuncBuilder:
         return block
 
     def _setblock(self, block: WIPBlock):
+        assert not block.done, "set finished block as the current block"
         self._current_block = block
 
-    def _endblock(self, block: WIPBlock, end: mir.Terminator):
+    @overload
+    def _endblock(self, end: mir.Terminator, /): ...
+
+    @overload
+    def _endblock(self, block: WIPBlock, end: mir.Terminator, /): ...
+
+    def _endblock(
+        self,
+        block_or_end: WIPBlock | mir.Terminator,
+        end_maybe: mir.Terminator | None = None,
+    ):
+        if end_maybe:
+            assert isinstance(block_or_end, FuncBuilder.WIPBlock)
+            block = block_or_end
+            end = end_maybe
+        else:
+            assert isinstance(block_or_end, mir.Terminator)
+            block = self._current_block
+            end = block_or_end
+
+        assert block, "no current block"
         assert not block.done, "ended block twice; this is a programming error"
         self.func.blocks.append(
             mir.Block(
@@ -98,12 +121,15 @@ class FuncBuilder:
             )
         )
         block.done = True
+        if end_maybe is None:
+            self._current_block = None
 
     def _emit(self, op: mir.Operation):
-        assert self._current_block, "NO CURRENT BLOCK"
+        assert self._current_block, "no current block"
+        assert not self._current_block.done, "current block already ended"
         self._current_block.ops.append(op)
 
-    def _ast_block(self, src: ast.Block):
+    def lower_block(self, src: ast.Block):
         out = self._newblock()
         for stmt in src.body:
             match stmt:
@@ -115,10 +141,11 @@ class FuncBuilder:
                     if stmt.expr is None:
                         out.ops.append(mir.Clear(var))
                     elif isinstance(stmt.expr, ast.Expression):
-                        self._assign_expr(out, var, stmt.expr)
+                        self._emit(mir.Set(var, self._lower_expr(stmt.expr)))
 
                 case ast.ReturnStatement():
-                    pass
+                    retvals = [self._lower_expr(val_expr) for val_expr in stmt.values]
+                    self._endblock(mir.Return(retvals))
 
                 case _:
                     raise NotImplementedError(
@@ -133,8 +160,16 @@ class FuncBuilder:
             return self._constant(expr.evaluated_value, expr.required_type)
 
         match expr:
+            case ast.NameExpr():
+                resolved = expr.resolves_to
+                match resolved:
+                    case resolver.Variable():
+                        pass
+
+                raise NotImplementedError("idk lol")
+
             case ast.BinopExpr():
-                self._binop_expr(expr)
+                return self._binop_expr(expr)
 
             case ast.ScalarLiteralExpr() | ast.SimpleLiteralExpr():
                 import rich
@@ -144,9 +179,14 @@ class FuncBuilder:
                     "this should be hit by the evaluated_value check above"
                 )
 
+            case ast.UnitReinterpretExpr():
+                return self._lower_expr(
+                    expr.expr
+                )  # TODO: might need a conversion after this
+
             case _:
                 raise NotImplementedError(
-                    f"{type(expr).__name__} nodes not yet supported"
+                    f"{type(expr).__name__} expression nodes not yet supported"
                 )
 
     def _constant(
@@ -189,6 +229,110 @@ class FuncBuilder:
         self,
         expr: ast.BinopExpr,
     ) -> mir.Operand:
+
         match expr.op:
             case ast.BinaryOp.Add:
+                lhs = self._lower_expr(expr.lhs)
+                rhs = self._lower_expr(expr.rhs)
+                result = self._newtmp(expr.required_type)
+                self._emit(mir.Add(result, lhs, rhs))
+                return result
+
+            case ast.BinaryOp.Subtract:
+                lhs = self._lower_expr(expr.lhs)
+                rhs = self._lower_expr(expr.rhs)
+                result = self._newtmp(expr.required_type)
+                self._emit(mir.Sub(result, lhs, rhs))
+                return result
+
+            case ast.BinaryOp.Multiply:
+                lhs = self._lower_expr(expr.lhs)
+                rhs = self._lower_expr(expr.rhs)
+                result = self._newtmp(expr.required_type)
+                self._emit(mir.Mul(result, lhs, rhs))
+                return result
+
+            case ast.BinaryOp.TrueDivide:
+                lhs = self._lower_expr(expr.lhs)
+                rhs = self._lower_expr(expr.rhs)
+                result = self._newtmp(expr.required_type)
+                self._emit(mir.Div(result, lhs, rhs))
+                return result
+
+            case ast.BinaryOp.FloorDivide:
+                lhs = self._lower_expr(expr.lhs)
+                rhs = self._lower_expr(expr.rhs)
+                result = self._newtmp(expr.required_type)
+                self._emit(mir.Div(result, lhs, rhs))
+
+                if types.is_integer(expr.lhs.evaluated_type) and types.is_integer(
+                    expr.lhs.evaluated_type
+                ):
+                    self._emit(mir.Truncate(result, result))
+
+                return result
+
+            case ast.BinaryOp.Remainder:
+                lhs = self._lower_expr(expr.lhs)
+                rhs = self._lower_expr(expr.rhs)
+                result = self._newtmp(expr.required_type)
+                self._emit(mir.Rem(result, lhs, rhs))
+                return result
+
+            case ast.BinaryOp.Modulo:
+                lhs = self._lower_expr(expr.lhs)
+                rhs = self._lower_expr(expr.rhs)
+                result = self._newtmp(expr.required_type)
+                self._emit(mir.Rem(result, lhs, rhs))
+
+                before = self._current_block
+                assert before
+
+                negative = self._newblock()
+                self._emit(mir.Add(result, result, rhs))
+
+                after = self._newblock()
+
+                self._endblock(
+                    before,
+                    mir.Compare(
+                        result,
+                        mir.Constant(0),
+                        lt_branch=negative.id,
+                        eq_branch=after.id,
+                        gt_branch=after.id,
+                    ),
+                )
+                self._endblock(negative, mir.Jump(after.id))
+
+                self._setblock(after)
+
+                return result
+
+            case ast.BinaryOp.Is:
                 pass
+            case ast.BinaryOp.IsNot:
+                pass
+
+            case ast.BinaryOp.Equal:
+                pass
+            case ast.BinaryOp.NotEqual:
+                pass
+            case ast.BinaryOp.Less:
+                pass
+            case ast.BinaryOp.LessEqual:
+                pass
+            case ast.BinaryOp.Greater:
+                pass
+            case ast.BinaryOp.GreaterEqual:
+                pass
+
+            case ast.BinaryOp.And:
+                pass
+            case ast.BinaryOp.Or:
+                pass
+
+            case Never():
+                raise AssertionError("unreachable")
+
+        raise NotImplementedError(f"unable to handle binary operator {expr.op.value}")

@@ -235,8 +235,8 @@ def _evaluate(node: ast.Expression) -> EvalResult:
         case ast.BinopExpr():
             return _eval_binop(node)
 
-        case ast.QualnameExpr():
-            resolved = node.name.resolves_to
+        case ast.NameExpr():
+            resolved = node.resolves_to
             if isinstance(resolved, Constant):
                 return _ensure_const_evaluated(resolved)
             elif isinstance(resolved, Variable):

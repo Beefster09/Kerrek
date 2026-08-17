@@ -1037,8 +1037,13 @@ class Parser:
 
             atom = inner
 
-        elif qualname := self._qualname():
-            atom = ast.QualnameExpr.from_node(qualname, name=qualname)
+        elif ident := self.tokens.match_one(Identifier):
+            atom = ast.NameExpr(
+                file=ident.file,
+                start=ident.start,
+                end=ident.end,
+                name=ident.what,
+            )
 
         elif literal := self._literal_expr():
             return literal

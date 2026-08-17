@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
+import dataclasses
 from decimal import Decimal
 from enum import Enum, auto
 from fractions import Fraction
@@ -98,7 +99,6 @@ class QualifiedName(Node):
 
     # populated by resolver
     resolves_to: Named | None = field(default=None, repr=False)
-    remaining_fields: list[Identifier] | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
@@ -265,8 +265,10 @@ class Expression(Node):
 
 
 @dataclass(kw_only=True)
-class QualnameExpr(Expression):
-    name: QualifiedName
+class NameExpr(Expression):
+    name: Identifier
+
+    resolves_to: Named | None = field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)
@@ -278,6 +280,9 @@ class PlaceholderExpr(Expression):
 class FieldAccessExpr(Expression):
     base: Expression
     field: Identifier
+
+    # if this field resolves to a known-at-compile-time symbol, the symbol will be here
+    static_resolves_to: Named | None = dataclasses.field(default=None, repr=False)
 
 
 @dataclass(kw_only=True)

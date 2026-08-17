@@ -421,7 +421,24 @@ class Resolver:
         """Resolves qualified names to point to their definitions"""
         match node:
             case ast.QualifiedName():
-                self._resolve_name(module, node, *scopes)
+                self._resolve_qualname(module, node, *scopes)
+
+            case ast.NameExpr():
+                resolved = self._lookup_scoped(module, node.name, *scopes)
+
+                if resolved:
+                    node.resolves_to = resolved
+                else:
+                    diagnostics.error(f"cannot resolve name '{node.name}'", node)
+
+            case ast.FieldAccessExpr():
+                self._resolve_names(module, node.base, *scopes)
+
+                match node.base:  # TODO
+                    case ast.NameExpr():
+                        pass
+                    case ast.FieldAccessExpr() if node.static_resolves_to is not None:
+                        pass
 
             case ast.FuncDefinition():
                 for annotation in node.annotations:
@@ -503,7 +520,19 @@ class Resolver:
                 for sub in node:
                     self._resolve_names(module, sub, *scopes)
 
-    def _resolve_name(
+    def _lookup_scoped(
+        self,
+        module: Module,
+        base_name: Identifier,
+        *scopes: dict[Identifier, Named],
+    ) -> Named | None:
+        for scope in scopes:
+            if base_name in scope:
+                return scope[base_name]
+
+        return module.lookup(base_name) or BUILTINS.get(base_name)
+
+    def _resolve_qualname(
         self,
         module: Module,
         qualname: ast.QualifiedName,
@@ -511,29 +540,7 @@ class Resolver:
     ):
         base_name, *rest = qualname.path
 
-        if base_name == "_":
-            if rest:
-                diagnostics.error(
-                    "placeholder ('_') does not support field access", qualname
-                )
-                return
-
-            qualname.resolves_to = WRITE_ONLY
-            qualname.remaining_fields = []
-            return
-
-        elif "_" in qualname.path:
-            diagnostics.error(
-                "placeholder ('_') is not a valid accessible field", qualname
-            )
-            return
-
-        for scope in scopes:
-            if base_name in scope:
-                base = scope[base_name]
-                break
-        else:
-            base = module.lookup(base_name) or BUILTINS.get(base_name)
+        base = self._lookup_scoped(module, base_name, *scopes)
 
         if not base:
             diagnostics.error(f"cannot resolve '{'.'.join(qualname.path)}'", qualname)
@@ -545,7 +552,6 @@ class Resolver:
             raise NotImplementedError("qualified name traversal not yet supported")
 
         qualname.resolves_to = resolved
-        qualname.remaining_fields = rest
 
     def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
         def check_shadowing(node: ast.Node, kind: type, name: Identifier):
