@@ -173,9 +173,6 @@ class FuncBuilder:
         self,
         expr: ast.Expression,
     ) -> mir.Operand:
-        import rich
-
-        rich.print(expr.evaluated_value, expr.evaluated_type, expr.required_type, expr)
         if not isinstance(expr.evaluated_value, ast.ValueSentinels):
             assert not isinstance(
                 expr.required_type, (ast.TypeSentinels, types.FlexType)

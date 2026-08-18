@@ -78,6 +78,10 @@ def _validate_block(func: ast.FuncDefinition, block: ast.Block, *scopes: Scope):
 
                     local_scope[stmt.name] = VarState(declaration=stmt)
 
+            case ast.AssignStatement():
+                lresults = [exprs.evaluate(dest) for dest in stmt.dests]
+                rresults = [exprs.evaluate(expr) for expr in stmt.exprs]
+
             case ast.ReturnStatement():
                 if len(stmt.values) < len(func.returns):
                     diagnostics.error(
@@ -100,3 +104,9 @@ def _validate_block(func: ast.FuncDefinition, block: ast.Block, *scopes: Scope):
                     typ = exprs.check_type(ret.type, result.type, value)
                     assert not isinstance(typ, exprs.FlexType)
                     value.required_type = typ
+
+            case _:
+                diagnostics.error(
+                    f"cannot analyze {type(stmt).__name__} statements",
+                    stmt,
+                )

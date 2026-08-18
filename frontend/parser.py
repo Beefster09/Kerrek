@@ -947,27 +947,48 @@ class Parser:
 
             case _:
                 if expr := self._expr():
-                    if assign_tok := self.tokens.match_any(
-                        Punctuation.Assign, Punctuation.Move
-                    ):
-                        src = self._expr()
-                        if src is None:
-                            self._emit_error(
-                                f"expected an expression after the {tok.what.value}"
-                            )
+                    lvalues = [expr]
+
+                    while comma := self.tokens.match_one(Punctuation.Comma):
+                        lvalue = self._expr()
+
+                        if lvalue is None:
+                            self._emit_error("expected an expression after the comma")
                             self.tokens.attempt_recovery()
                             return None
+
+                        lvalues.append(lvalue)
+
+                    if eq := self.tokens.match_one(Punctuation.Assign):
+                        rvalues: list[ast.Expression] = []
+                        while True:
+                            rvalue = self._expr()
+
+                            if rvalue is None:
+                                self._emit_error("expected an expression here")
+                                self.tokens.attempt_recovery()
+                                return None
+
+                            rvalues.append(rvalue)
+
+                            if comma := self.tokens.match_one(Punctuation.Comma):
+                                pass
+                            else:
+                                break
 
                         stmt = ast.AssignStatement(
                             file=tok.file,
                             start=expr.start,
-                            end=src.end,
-                            dest=expr,
-                            expr=src,
-                            is_move=assign_tok.what is Punctuation.Move,
+                            end=rvalues[-1].end,
+                            dests=lvalues,
+                            exprs=rvalues,
                         )
+                    elif len(lvalues) != 1:
+                        self._emit_error("expected an assignment here")
+
                     else:
                         stmt = ast.ExprStatement.from_node(expr, expr=expr)
+
                 else:
                     self._emit_error("invalid start of statement")
                     self.tokens.attempt_recovery()

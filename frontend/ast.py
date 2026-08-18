@@ -254,10 +254,6 @@ class Expression(Node):
     )
     unit_conv_multiplier: Fraction = field(default=Fraction(1), repr=False)
 
-    # when participating in the lhs of an assignment, what the destination corresponds to
-    # None means the expression isn't a valid lvalue
-    lvalue_base: Any | None = field(default=None, repr=False)
-
 
 # - concrete nodes and supporting types -
 
@@ -313,6 +309,11 @@ class ImplicitEnum(Expression):
 
     name: Identifier
     payload: Expression | None
+
+
+@dataclass(kw_only=True)
+class MoveExpr(Expression):
+    expr: Expression
 
 
 class BinaryOp(Enum):
@@ -477,10 +478,8 @@ class ExprStatement(Statement):
 
 @dataclass(kw_only=True)
 class AssignStatement(Statement):
-    # TODO: multiple assignment
-    dest: Expression
-    expr: Expression
-    is_move: bool
+    dests: list[Expression]
+    exprs: list[Expression]
 
 
 @dataclass(kw_only=True)
