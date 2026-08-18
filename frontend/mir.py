@@ -53,8 +53,6 @@ class PrimitiveType(Type, Enum):
     U64 = auto()
     U128 = auto()
 
-    # NOTE: fixed-point decimal lowers to integer
-
     D32 = auto()
     D64 = auto()
     D128 = auto()
@@ -67,6 +65,12 @@ class PrimitiveType(Type, Enum):
     String = auto()
 
     Void = auto()
+
+
+@dataclass
+class FixedDecimalType(Type):
+    digits: int
+    prec: int
 
 
 @dataclass
@@ -208,6 +212,14 @@ class DeriveWeak(Operation):
 
 
 @dataclass
+class GetAddr(Operation):
+    """get the weak pointer version of an owned/shared pointer"""
+
+    dest: Writable
+    addressible: Addressable
+
+
+@dataclass
 class Add(Operation):
     """add two operands"""
 
@@ -342,6 +354,7 @@ class Operand:
 
 
 type Writable = Operand
+type Addressable = Operand
 
 
 class Discard(Operand):
@@ -388,4 +401,22 @@ class IndexOf(Operand):
 
 @dataclass
 class Constant(Operand):
-    value: int | float | Decimal | str | bool
+    value: int | float | Decimal | str | bool | None
+
+
+@dataclass
+class Dereferenced(Operand):
+    base: Operand
+    indirection: int
+
+
+def is_writable(opd: Operand) -> bool:
+    match opd:
+        case GlobalVar() | LocalVar() | Dereferenced() | Discard():
+            return True
+        case Constant() | Parameter() | Temporary():
+            return False
+        case FieldOf() | IndexOf():
+            return is_writable(opd.base)
+        case _:
+            raise NotImplementedError(f"cannot determine if {opd} is writable")

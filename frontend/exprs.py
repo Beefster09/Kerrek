@@ -454,6 +454,9 @@ def _eval_binop(binop: ast.BinopExpr) -> EvalResult:
             ast.UnitSentinels.Incoherent,
         )
 
+    binop.lhs.required_type = coerced_type
+    binop.rhs.required_type = coerced_type
+
     if (
         lhs.value is ast.ValueSentinels.RuntimeValue
         or rhs.value is ast.ValueSentinels.RuntimeValue

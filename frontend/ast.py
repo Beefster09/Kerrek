@@ -237,10 +237,10 @@ class CompoundUnit(Node):
 @dataclass(kw_only=True)
 class Expression(Node):
     # what the expression evaluated to during semantic analysis
-    evaluated_value: ComptimeValue | Literal[ValueSentinels.NotEvaluated] = field(
+    evaluated_value: ComptimeValue = field(
         default=ValueSentinels.NotEvaluated, repr=False
     )
-    evaluated_type: ComptimeType | Literal[TypeSentinels.NotDetermined] = field(
+    evaluated_type: ComptimeType = field(
         default=TypeSentinels.NotDetermined, repr=False
     )
     evaluated_unit: CanonicalUnit | UnitSentinels = field(
@@ -248,9 +248,7 @@ class Expression(Node):
     )
 
     # what the receiving destination needs / what it must convert to, if applicable
-    required_type: RealizedType | Literal[TypeSentinels.NotDetermined] = field(
-        default=TypeSentinels.NotDetermined, repr=False
-    )
+    required_type: ComptimeType = field(default=TypeSentinels.NotDetermined, repr=False)
     required_unit: CanonicalUnit | UnitSentinels = field(
         default=UnitSentinels.NotDetermined, repr=False
     )
@@ -479,6 +477,7 @@ class ExprStatement(Statement):
 
 @dataclass(kw_only=True)
 class AssignStatement(Statement):
+    # TODO: multiple assignment
     dest: Expression
     expr: Expression
     is_move: bool

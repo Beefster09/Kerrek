@@ -136,10 +136,13 @@ class FuncBuilder:
         self._current_block.ops.append(op)
 
     def lower_block(self, src: ast.Block):
+        import rich
+
         start = self._newblock()
         defers = []
 
         for stmt in src.body:
+            rich.print(stmt)
             match stmt:
                 case ast.LocalConstant():
                     continue
@@ -150,6 +153,12 @@ class FuncBuilder:
                         self._emit(mir.Clear(var))
                     elif isinstance(stmt.expr, ast.Expression):
                         self._emit(mir.Set(var, self._lower_expr(stmt.expr)))
+
+                case ast.AssignStatement():
+                    lvalue = self._lower_expr(stmt.dest)
+                    assert isinstance(
+                        lvalue, (mir.LocalVar, mir.GlobalVar, mir.Dereferenced)
+                    )
 
                 case ast.ReturnStatement():
                     retvals = [self._lower_expr(val_expr) for val_expr in stmt.values]
@@ -164,7 +173,13 @@ class FuncBuilder:
         self,
         expr: ast.Expression,
     ) -> mir.Operand:
+        import rich
+
+        rich.print(expr.evaluated_value, expr.evaluated_type, expr.required_type, expr)
         if not isinstance(expr.evaluated_value, ast.ValueSentinels):
+            assert not isinstance(
+                expr.required_type, (ast.TypeSentinels, types.FlexType)
+            ), f"required type of {expr} should have been materialized by now"
             return self._constant(expr.evaluated_value, expr.required_type)
 
         match expr:
@@ -185,7 +200,6 @@ class FuncBuilder:
                 return self._binop_expr(expr)
 
             case ast.ScalarLiteralExpr() | ast.SimpleLiteralExpr():
-                print(expr)
                 raise AssertionError(
                     "this should be hit by the evaluated_value check above"
                 )
@@ -231,11 +245,11 @@ class FuncBuilder:
                 return mir.Constant(value)
 
             case NilOf(), _ if types.is_pointer(type):
-                return mir.Constant(0)
+                return mir.Constant(None)
 
             case _:
                 print(value, type)
-                raise NotImplementedError(f"cannot create constant operand for {type}")
+                raise NotImplementedError(f"cannot create constant operand for {t}")
 
     def _binop_expr(
         self,
