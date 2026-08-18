@@ -157,7 +157,11 @@ type AnyType = CompoundType | BaseType | GenericType
 class Function(_Symbol):
     name: Identifier
     definition: ast.FuncDefinition
-    params: list[Variable] | None = None
+    params: list[Variable]
+    generics: list[GenericType]
+    returns: list[StoredType]
+    error: StoredType | None
+    fallible: bool
 
 
 @dataclass(kw_only=True)
@@ -412,6 +416,52 @@ class Resolver:
 
         diagnostics.report()
 
+    def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
+        def check_shadowing(node: ast.Node, kind: type, name: Identifier):
+            if shadowed := module.lookup(name):
+                diagnostics.warning(
+                    f"{kind.__name__.lower()} '{name}' shadows {type(shadowed).__name__} '{shadowed.name}'",
+                    node,
+                )
+            elif shadowed := BUILTINS.get(name):
+                diagnostics.notice(
+                    f"{kind.__name__.lower()} '{name}' shadows a builtin", node
+                )
+
+        match decl:
+            case ast.FuncDefinition():
+                check_shadowing(decl, Function, decl.name)
+
+                module.funcs[decl.name] = Function(
+                    name=decl.name,
+                    definition=decl,
+                    params=[],  # filled in later
+                    generics=[],  # filled in later
+                    returns=[],  # filled in later
+                    error=None,  # filled in later
+                    fallible=decl.error_type is not None,
+                )
+
+            case ast.UnitTypeDecl() | ast.UnitTypeAliasDecl():
+                check_shadowing(decl, UnitType, decl.name)
+
+                module.unit_types[decl.name] = UnitType(name=decl.name, definition=decl)
+
+            case ast.UnitDecl() | ast.UnitAlias():
+                check_shadowing(decl, Unit, decl.name)
+
+                module.units[decl.name] = Unit(name=decl.name, definition=decl)
+
+            case ast.UnitConversionDef():
+                self._deferred_unit_convs.append(decl)
+
+                if decl.dest in module.units:
+                    return  # you can duplicate unit names for conversions
+
+                check_shadowing(decl, Unit, decl.dest)
+
+                module.units[decl.dest] = Unit(name=decl.dest, definition=decl)
+
     def _resolve_names(
         self,
         module: Module,
@@ -441,11 +491,13 @@ class Resolver:
                         pass
 
             case ast.FuncDefinition():
+                func_sym = module.funcs[node.name]  # Local functions?
+
                 for annotation in node.annotations:
                     self._resolve_names(module, annotation, *scopes)
 
                 params: dict[Identifier, Named] = {}
-                templates: dict[Identifier, Named] = {}
+                generics: dict[Identifier, Named] = {}
 
                 for param in node.params:
                     if param.name == "_":
@@ -459,26 +511,40 @@ class Resolver:
                             f"duplicate parameter name '{param.name}'", param
                         )
 
-                    params[param.name] = Variable(name=param.name, definition=param)
+                    var = Variable(name=param.name, definition=param)
+                    params[param.name] = var
+                    func_sym.params.append(var)
 
                     for sub in param.type.walk():
                         if isinstance(sub, ast.GenericType):
-                            templates[sub.name] = GenericType(sub.name)
+                            gentype = GenericType(sub.name)
+                            generics[sub.name] = gentype
+                            func_sym.generics.append(gentype)
 
-                    self._resolve_names(module, param.type, templates, *scopes)
+                    self._resolve_names(module, param.type, generics, *scopes)
                     if param.unit:
-                        self._resolve_names(module, param.unit, templates, *scopes)
+                        self._resolve_names(
+                            module,
+                            param.unit,
+                            generics,
+                            *scopes,
+                        )
 
                 for ret in node.returns:
-                    self._resolve_names(module, ret, templates, *scopes)
+                    self._resolve_names(module, ret, generics, *scopes)
 
                 if node.error_type is not ... and node.error_type is not None:
-                    self._resolve_names(module, node.error_type, templates, *scopes)
+                    self._resolve_names(
+                        module,
+                        node.error_type,
+                        generics,
+                        *scopes,
+                    )
 
                 if node.requires:
                     self._resolve_names(module, node.requires, *scopes)
 
-                self._resolve_names(module, node.body, params, templates, *scopes)
+                self._resolve_names(module, node.body, params, generics, *scopes)
 
             case ast.Block():
                 local_scope = {}
@@ -552,44 +618,6 @@ class Resolver:
             raise NotImplementedError("qualified name traversal not yet supported")
 
         qualname.resolves_to = resolved
-
-    def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
-        def check_shadowing(node: ast.Node, kind: type, name: Identifier):
-            if shadowed := module.lookup(name):
-                diagnostics.warning(
-                    f"{kind.__name__.lower()} '{name}' shadows {type(shadowed).__name__} '{shadowed.name}'",
-                    node,
-                )
-            elif shadowed := BUILTINS.get(name):
-                diagnostics.notice(
-                    f"{kind.__name__.lower()} '{name}' shadows a builtin", node
-                )
-
-        match decl:
-            case ast.FuncDefinition():
-                check_shadowing(decl, Function, decl.name)
-
-                module.funcs[decl.name] = Function(name=decl.name, definition=decl)
-
-            case ast.UnitTypeDecl() | ast.UnitTypeAliasDecl():
-                check_shadowing(decl, UnitType, decl.name)
-
-                module.unit_types[decl.name] = UnitType(name=decl.name, definition=decl)
-
-            case ast.UnitDecl() | ast.UnitAlias():
-                check_shadowing(decl, Unit, decl.name)
-
-                module.units[decl.name] = Unit(name=decl.name, definition=decl)
-
-            case ast.UnitConversionDef():
-                self._deferred_unit_convs.append(decl)
-
-                if decl.dest in module.units:
-                    return  # you can duplicate unit names for conversions
-
-                check_shadowing(decl, Unit, decl.dest)
-
-                module.units[decl.dest] = Unit(name=decl.dest, definition=decl)
 
     def canonicalize_types(self):
         for module in self.modules.values():

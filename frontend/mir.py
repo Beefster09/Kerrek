@@ -17,6 +17,8 @@ class TranslationUnit:
 @dataclass(kw_only=True)
 class Function:
     id: SymbolID
+    name: str
+    no_mangle: bool = False  # never mangle the name if this is true
     params: list[Parameter]
     returns: list[Type]
     error: Type | None

@@ -6,7 +6,7 @@ from fractions import Fraction
 from typing import Never, overload
 
 from frontend import ast, mir, resolver, types
-from frontend.exprs import ByteValue, NilOf, RealizedType
+from frontend.exprs import ByteValue, ComptimeType, NilOf, RealizedType
 
 
 def translate_to_mir(
@@ -51,24 +51,30 @@ class FuncBuilder:
         done: bool = False
 
     def __init__(self, src: resolver.Function):
-        self.func = mir.Function(
-            id=src.id,
-            params=[],
-            returns=[],
-            error=None,
-        )
         self._tmp_num = itertools.count(1)
         self._var_num = itertools.count(1)
         self._block_num = itertools.count(1)
         self._vars: dict[int, mir.LocalVar] = {}
+        self._params: dict[int, mir.Parameter] = {
+            param.id: mir.Parameter(i, param.definition.type)
+            for i, param in enumerate(src.params)
+        }
         self._current_block: FuncBuilder.WIPBlock | None = None
-        self._defers: list[list[ast.Statement]] = []
+
+        self.func = mir.Function(
+            id=src.id,
+            name=src.name,
+            params=[*self._params.values()],
+            returns=[],
+            error=None,
+        )
 
     def finish(self) -> mir.Function:
         self.func.blocks.sort(key=lambda b: b.id)
         return self.func
 
-    def _newtmp(self, typ: mir.PrimitiveType) -> mir.Temporary:
+    def _newtmp(self, typ: ComptimeType) -> mir.Temporary:
+        # TODO: translate the type
         return mir.Temporary(next(self._tmp_num), typ)
 
     def _newvar(self, decl: ast.LocalVariable) -> mir.LocalVar:
@@ -130,7 +136,9 @@ class FuncBuilder:
         self._current_block.ops.append(op)
 
     def lower_block(self, src: ast.Block):
-        out = self._newblock()
+        start = self._newblock()
+        defers = []
+
         for stmt in src.body:
             match stmt:
                 case ast.LocalConstant():
@@ -139,7 +147,7 @@ class FuncBuilder:
                 case ast.LocalVariable():
                     var = self._newvar(stmt)
                     if stmt.expr is None:
-                        out.ops.append(mir.Clear(var))
+                        self._emit(mir.Clear(var))
                     elif isinstance(stmt.expr, ast.Expression):
                         self._emit(mir.Set(var, self._lower_expr(stmt.expr)))
 
@@ -164,25 +172,27 @@ class FuncBuilder:
                 resolved = expr.resolves_to
                 match resolved:
                     case resolver.Variable():
-                        pass
+                        if local := self._vars.get(resolved.id):
+                            return local
+                        if param := self._params.get(resolved.id):
+                            return param
 
-                raise NotImplementedError("idk lol")
+                raise NotImplementedError(
+                    f"cannot find operand for name expression resolving to {resolved}"
+                )
 
             case ast.BinopExpr():
                 return self._binop_expr(expr)
 
             case ast.ScalarLiteralExpr() | ast.SimpleLiteralExpr():
-                import rich
-
-                rich.print(expr)
+                print(expr)
                 raise AssertionError(
                     "this should be hit by the evaluated_value check above"
                 )
 
             case ast.UnitReinterpretExpr():
-                return self._lower_expr(
-                    expr.expr
-                )  # TODO: might need a conversion after this
+                # this is quite intentionally a no-op
+                return self._lower_expr(expr.expr)
 
             case _:
                 raise NotImplementedError(
@@ -204,8 +214,9 @@ class FuncBuilder:
                     Decimal(value.numerator, ctx) / Decimal(value.denominator, ctx)
                 )
             case Fraction(), _ if types.is_decimal(type):
+                ctx = DecCtx(rounding=ROUND_HALF_UP)
                 return mir.Constant(
-                    Decimal(value.numerator) / Decimal(value.denominator)
+                    Decimal(value.numerator, ctx) / Decimal(value.denominator, ctx)
                 )
             case Fraction(), _ if types.is_binfloat(type):
                 return mir.Constant(value.numerator / value.denominator)
@@ -223,6 +234,7 @@ class FuncBuilder:
                 return mir.Constant(0)
 
             case _:
+                print(value, type)
                 raise NotImplementedError(f"cannot create constant operand for {type}")
 
     def _binop_expr(
