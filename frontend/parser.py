@@ -608,12 +608,15 @@ class Parser:
                     break
 
             if self.tokens.match_one(Punctuation.Bang):
-                error_type = self._type_expr() or ...
+                error_type = self._type_expr()
+                fallible = True
             else:
                 error_type = None
+                fallible = False
         else:
             returns = []
             error_type = None
+            fallible = False
 
         # TODO: requires
 
@@ -633,7 +636,9 @@ class Parser:
             params=params,
             returns=returns,
             error_type=error_type,
+            fallible=fallible,
             body=body,
+            requires=None,
         )
 
     def _param_list(self) -> list[ast.FormalParameter] | None:
@@ -745,18 +750,27 @@ class Parser:
                 if st := self._simple_type():
                     typ = st
 
+        if typ is None:
+            self._emit_error("expected a type here")
+            return None
+
+        tags = []
         while tilde := self.tokens.match_one(Punctuation.Tilde):
             tag = self._qualname()
             if tag:
-                typ = ast.TypeWithTag(
-                    file=tag.file,
-                    start=typ.start if typ else tilde.start,
-                    end=tag.end,
-                    base=typ,
-                    tag=tag,
-                )
+                tags.append(tag)
             else:
                 self._emit_error("expected a tag name here")
+                return None
+
+        if tags:
+            typ = ast.TypeWithTags(
+                file=typ.file,
+                start=typ.start,
+                end=tags[-1].end,
+                base=typ,
+                tags=tags,
+            )
 
         return typ
 
@@ -794,7 +808,6 @@ class Parser:
         prefix = self.tokens.pop()
         assert prefix
 
-        nullable = self.tokens.match(Punctuation.Question) is not None
         if to := self._type_expr():
             return ast.PointerType(
                 file=prefix.file,
@@ -802,7 +815,6 @@ class Parser:
                 end=to.end,
                 to=to,
                 ownership=own,
-                nullable=nullable,
             )
         else:
             self._emit_error("pointer type must point to something")
@@ -886,9 +898,9 @@ class Parser:
 
                 if self.tokens.match_one(Punctuation.Bar):
                     if self.tokens.match_one(Keyword.Nil):
-                        unit = ast.UnitSentinels.NoUnit
+                        unit = ast.IndeterminateUnit.NoUnit
                     elif self.tokens.match_one(Keyword.Placeholder):
-                        unit = ast.UnitSentinels.Flexible
+                        unit = ast.IndeterminateUnit.Flexible
                     else:
                         unit = self._compound_unit()
 
@@ -898,7 +910,7 @@ class Parser:
                             return None
 
                 else:
-                    unit = ast.UnitSentinels.NotDetermined
+                    unit = ast.IndeterminateUnit.Inferred
 
                 if self.tokens.match_one(Punctuation.Assign):
                     if ell := self.tokens.match_one(Punctuation.Ellipsis_):

@@ -40,7 +40,7 @@ class Type:
     pass
 
 
-class PrimitiveType(Type, Enum):
+class MachineType(Type, Enum):
     Integer = auto()
     I8 = auto()
     I16 = auto()
@@ -57,6 +57,7 @@ class PrimitiveType(Type, Enum):
     D64 = auto()
     D128 = auto()
 
+    F16 = auto()
     F32 = auto()
     F64 = auto()
 
@@ -161,7 +162,7 @@ class Convert(Operation):
 
     dest: Writable
     value: Operand
-    type: PrimitiveType
+    type: MachineType
 
 
 @dataclass
@@ -378,7 +379,7 @@ class LocalVar(Operand):
 @dataclass
 class Temporary(Operand):
     id: int
-    type: PrimitiveType
+    type: MachineType
 
 
 @dataclass

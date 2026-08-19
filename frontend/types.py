@@ -8,13 +8,47 @@ from frontend import ast
 from frontend.resolver import (
     DistinctType,
     FixedArrayType,
-    FixedDecimal,
     PointerType,
-    PrimitiveType,
 )
 
 if TYPE_CHECKING:
     from frontend.exprs import ComptimeType
+
+
+class PrimitiveType(Enum):
+    Integer = "Integer"
+    Int64 = "Int64"
+    Int32 = "Int32"
+    Int16 = "Int16"
+    Int8 = "Int8"
+    UInt64 = "UInt64"
+    UInt32 = "UInt32"
+    UInt16 = "UInt16"
+    UInt8 = "UInt8"
+
+    Decimal = "Decimal"
+    Dec64 = "Dec64"
+    Dec32 = "Dec32"
+
+    Float64 = "Float64"
+    Float32 = "Float32"
+
+    Boolean = "Boolean"
+    String = "String"
+    Rune = "Rune"
+    Byte = "Byte"
+
+    Opaque = "Opaque"
+    Opaque8 = "Opaque8"
+    Opaque16 = "Opaque16"
+    Opaque32 = "Opaque32"
+    Opaque64 = "Opaque64"
+
+
+@dataclass
+class FixedDecimal:
+    digits: int
+    precision: int
 
 
 class FlexAffinity(Enum):

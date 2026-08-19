@@ -9,6 +9,7 @@ from fractions import Fraction
 from typing import Any, Never
 
 from frontend import ast, diagnostics
+from frontend.common import ByteValue, RuneValue
 from frontend.lexer import NumberLiteralForm
 from frontend.resolver import (
     AnyType,
@@ -28,24 +29,46 @@ from frontend.resolver import (
 )
 from frontend.types import FlexAffinity, FlexType, conversion_class
 
+# === SENTINEL VALUES ===
+
+
+class ValueSentinels(Enum):
+    NotEvaluated = auto()  # value has yet to be determined from semantic analysis
+    RuntimeValue = auto()  # value is not known at compile time
+    CannotEvaluate = auto()  # it is not possible to evaluate the expression
+
+
+class TypeSentinels(Enum):
+    NotDetermined = (
+        auto()
+    )  # type has yet to be determined from semantic analysis (or needs to be inferred)
+    Impossible = (
+        auto()
+    )  # the type cannot be inferred because the expression cannot be evaluated
+
+
+class UnitSentinels(Enum):
+    NotDetermined = (
+        auto()
+    )  # unit has yet to be determined from semantic analysis (or needs to be inferred)
+    Flexible = (
+        auto()
+    )  # originates from a numeric literal or constant without explicit unit information
+    NoUnit = auto()  # originates from a runtime value which did not declare a unit or a type which cannot have a unit
+    Incoherent = auto()  # dimensional analysis failed to produce a coherent result unit or a unit was applied to a value which cannot have units
+
 
 @dataclass
 class NilOf:
     type: ComptimeType
 
 
-@dataclass
-class ByteValue:
-    value: int
-    # TODO: validation
-
-
 type ComptimeValue = (
-    Fraction | ByteValue | str | bool | NilOf | ast.RuneValue | ast.ValueSentinels
+    Fraction | ByteValue | str | bool | NilOf | RuneValue | ValueSentinels
 )
-type RealizedType = AnyType | ast.TypeSentinels
+type RealizedType = AnyType | TypeSentinels
 type ComptimeType = RealizedType | FlexType
-type ComptimeUnit = CanonicalUnit | ast.UnitSentinels
+type ComptimeUnit = CanonicalUnit | UnitSentinels
 
 
 @dataclass
@@ -57,7 +80,7 @@ class EvalResult:
 
 def _ensure_const_evaluated(const_sym: Constant) -> EvalResult:
     const_def = const_sym.definition
-    if const_def.expr.evaluated_value is ast.ValueSentinels.NotEvaluated:
+    if const_def.expr.evaluated_value is ValueSentinels.NotEvaluated:
         result = evaluate(const_def.expr)
         if const_def.type is not None:
             check_type(const_def.type, result.type, const_def)
@@ -99,32 +122,32 @@ def _ensure_type_inferred(var: Variable) -> RealizedType:
 def _ensure_unit_known(var: Variable) -> ComptimeUnit:
     if isinstance(var.definition, ast.FormalParameter):
         if var.definition.unit is None:
-            return ast.UnitSentinels.NoUnit
+            return UnitSentinels.NoUnit
 
         assert var.definition.unit.canonical is not None, (
             f"parameter unit should have been evaluated by now: {var.definition}"
         )
         return var.definition.unit.canonical
 
-    if var.definition.realized_unit is ast.UnitSentinels.NotDetermined and isinstance(
+    if var.definition.realized_unit is UnitSentinels.NotDetermined and isinstance(
         var.definition.expr, ast.Expression
     ):
         if var.definition.unit in (
-            ast.UnitSentinels.NoUnit,
-            ast.UnitSentinels.Flexible,
+            UnitSentinels.NoUnit,
+            UnitSentinels.Flexible,
         ):
             var.definition.realized_unit = var.definition.unit
             return var.definition.unit
 
         result = evaluate(var.definition.expr)
 
-        if var.definition.unit is ast.UnitSentinels.NotDetermined:
-            if result.unit is ast.UnitSentinels.Flexible:
-                var.definition.realized_unit = ast.UnitSentinels.NoUnit
+        if var.definition.unit is UnitSentinels.NotDetermined:
+            if result.unit is UnitSentinels.Flexible:
+                var.definition.realized_unit = UnitSentinels.NoUnit
             else:
                 var.definition.realized_unit = result.unit
         else:
-            if isinstance(var.definition.unit, ast.UnitSentinels):
+            if isinstance(var.definition.unit, UnitSentinels):
                 var.definition.realized_unit = var.definition.unit
             else:
                 assert var.definition.unit.canonical is not None, (
@@ -138,15 +161,15 @@ def _ensure_unit_known(var: Variable) -> ComptimeUnit:
                     )
                 var.definition.realized_unit = var.definition.unit.canonical
 
-    assert var.definition.realized_unit is not ast.UnitSentinels.NotDetermined, (
+    assert var.definition.realized_unit is not UnitSentinels.NotDetermined, (
         f"variable unit should have been evaluated by now: {var.definition}"
     )
     return var.definition.realized_unit
 
 
 def evaluate(node: ast.Expression) -> EvalResult:
-    if node.evaluated_value is not ast.ValueSentinels.NotEvaluated:
-        assert node.evaluated_type is not ast.TypeSentinels.NotDetermined
+    if node.evaluated_value is not ValueSentinels.NotEvaluated:
+        assert node.evaluated_type is not TypeSentinels.NotDetermined
         return EvalResult(
             node.evaluated_value,
             node.evaluated_type,
@@ -161,17 +184,17 @@ def evaluate(node: ast.Expression) -> EvalResult:
         traceback.print_exc()
         diagnostics.error(f"constant evaluation failed: {err}", node)
         result = EvalResult(
-            ast.ValueSentinels.CannotEvaluate,
-            ast.TypeSentinels.Impossible,
-            ast.UnitSentinels.Incoherent,
+            ValueSentinels.CannotEvaluate,
+            TypeSentinels.Impossible,
+            UnitSentinels.Incoherent,
         )
     else:
-        if result.type is ast.TypeSentinels.Impossible:
-            if result.value is not ast.ValueSentinels.CannotEvaluate:
+        if result.type is TypeSentinels.Impossible:
+            if result.value is not ValueSentinels.CannotEvaluate:
                 diagnostics.error(
                     f"type evaluation resolved to .{result.type.name} here", node
                 )
-            result.value = ast.ValueSentinels.CannotEvaluate
+            result.value = ValueSentinels.CannotEvaluate
 
     node.evaluated_value = result.value
     node.evaluated_type = result.type
@@ -188,25 +211,25 @@ def _evaluate(node: ast.Expression) -> EvalResult:
                     return EvalResult(
                         node.value,
                         FlexType(FlexAffinity.String),
-                        ast.UnitSentinels.NoUnit,
+                        UnitSentinels.NoUnit,
                     )
                 case ast.RuneValue():
                     return EvalResult(
                         node.value,
                         FlexType(FlexAffinity.Rune),
-                        ast.UnitSentinels.NoUnit,
+                        UnitSentinels.NoUnit,
                     )
                 case bool():
                     return EvalResult(
                         node.value,
                         FlexType(FlexAffinity.Boolean),
-                        ast.UnitSentinels.NoUnit,
+                        UnitSentinels.NoUnit,
                     )
                 case None:
                     return EvalResult(
                         NilOf(FlexType(FlexAffinity.Nil)),
                         FlexType(FlexAffinity.Nil),
-                        ast.UnitSentinels.NoUnit,
+                        UnitSentinels.NoUnit,
                     )
 
         case ast.ScalarLiteralExpr():
@@ -229,7 +252,7 @@ def _evaluate(node: ast.Expression) -> EvalResult:
                 FlexType(affinity),
                 node.unit.canonical
                 if node.unit and node.unit.canonical
-                else ast.UnitSentinels.Flexible,
+                else UnitSentinels.Flexible,
             )
 
         case ast.BinopExpr():
@@ -241,7 +264,7 @@ def _evaluate(node: ast.Expression) -> EvalResult:
                 return _ensure_const_evaluated(resolved)
             elif isinstance(resolved, Variable):
                 return EvalResult(
-                    ast.ValueSentinels.RuntimeValue,
+                    ValueSentinels.RuntimeValue,
                     _ensure_type_inferred(resolved),
                     _ensure_unit_known(resolved),
                 )
@@ -264,9 +287,9 @@ def _evaluate(node: ast.Expression) -> EvalResult:
                 f"qualified name references unexpected symbol: {resolved}", node
             )
             return EvalResult(
-                ast.ValueSentinels.CannotEvaluate,
-                ast.TypeSentinels.Impossible,
-                ast.UnitSentinels.Incoherent,
+                ValueSentinels.CannotEvaluate,
+                TypeSentinels.Impossible,
+                UnitSentinels.Incoherent,
             )
 
         case ast.UnitReinterpretExpr():
@@ -274,9 +297,9 @@ def _evaluate(node: ast.Expression) -> EvalResult:
             return EvalResult(
                 result.value,
                 result.type,
-                node.new_unit.canonical or ast.UnitSentinels.NotDetermined
-                if result.unit is not ast.UnitSentinels.Incoherent
-                else ast.UnitSentinels.Incoherent,
+                node.new_unit.canonical or UnitSentinels.NotDetermined
+                if result.unit is not UnitSentinels.Incoherent
+                else UnitSentinels.Incoherent,
             )
 
         case ast.CastExpr():
@@ -285,7 +308,7 @@ def _evaluate(node: ast.Expression) -> EvalResult:
 
             if _cast_allowed(node.to.canonical, result.type):
                 return EvalResult(
-                    ast.ValueSentinels.RuntimeValue,  # TODO: This might be comptime-evaluatable
+                    ValueSentinels.RuntimeValue,  # TODO: This might be comptime-evaluatable
                     node.to.canonical,
                     result.unit,
                 )
@@ -294,9 +317,9 @@ def _evaluate(node: ast.Expression) -> EvalResult:
                     f"{result.type} is not convertible to {node.to.canonical}", node
                 )
                 return EvalResult(
-                    ast.ValueSentinels.CannotEvaluate,
-                    ast.TypeSentinels.Impossible,
-                    ast.UnitSentinels.Incoherent,
+                    ValueSentinels.CannotEvaluate,
+                    TypeSentinels.Impossible,
+                    UnitSentinels.Incoherent,
                 )
 
         case _:
@@ -326,7 +349,7 @@ def infer_type(
             return PrimitiveType.Rune
         case FlexType(FlexAffinity.Nil):
             diagnostics.error("cannot infer type of nil", context)
-            return ast.TypeSentinels.Impossible
+            return TypeSentinels.Impossible
         case FlexType(affinity):
             raise NotImplementedError(f"missing a case for {affinity}")
         case _:
@@ -421,7 +444,7 @@ def _eval_binop(binop: ast.BinopExpr) -> EvalResult:
             return EvalResult(
                 lhs.value + rhs.value,
                 typ,
-                ast.UnitSentinels.NoUnit,
+                UnitSentinels.NoUnit,
             )
 
     coerced_type = _coerce(lhs, rhs)
@@ -433,9 +456,9 @@ def _eval_binop(binop: ast.BinopExpr) -> EvalResult:
             binop,
         )
         return EvalResult(
-            ast.ValueSentinels.CannotEvaluate,
-            ast.TypeSentinels.Impossible,
-            ast.UnitSentinels.Incoherent,
+            ValueSentinels.CannotEvaluate,
+            TypeSentinels.Impossible,
+            UnitSentinels.Incoherent,
         )
 
     op_compat = _op_category_of(coerced_type)
@@ -449,19 +472,19 @@ def _eval_binop(binop: ast.BinopExpr) -> EvalResult:
             err.suggest(op_compat.suggestions[binop.op])
         # TODO: suggestions based on the type and its semantics
         return EvalResult(
-            ast.ValueSentinels.CannotEvaluate,
-            ast.TypeSentinels.Impossible,
-            ast.UnitSentinels.Incoherent,
+            ValueSentinels.CannotEvaluate,
+            TypeSentinels.Impossible,
+            UnitSentinels.Incoherent,
         )
 
     binop.lhs.required_type = coerced_type
     binop.rhs.required_type = coerced_type
 
     if (
-        lhs.value is ast.ValueSentinels.RuntimeValue
-        or rhs.value is ast.ValueSentinels.RuntimeValue
+        lhs.value is ValueSentinels.RuntimeValue
+        or rhs.value is ValueSentinels.RuntimeValue
     ):
-        val = ast.ValueSentinels.RuntimeValue
+        val = ValueSentinels.RuntimeValue
     else:
         op_func = BINOP_FUNCS[binop.op]
         val = op_func(lhs.value, rhs.value)
@@ -482,9 +505,9 @@ def _eval_boolean_multiply(
             binop,
         )
         return EvalResult(
-            ast.ValueSentinels.CannotEvaluate,
-            ast.TypeSentinels.Impossible,
-            ast.UnitSentinels.Incoherent,
+            ValueSentinels.CannotEvaluate,
+            TypeSentinels.Impossible,
+            UnitSentinels.Incoherent,
         )
 
     if boolval is True:
@@ -497,9 +520,9 @@ def _eval_boolean_multiply(
             nonbool.unit,
         )
 
-    elif boolval is ast.ValueSentinels.RuntimeValue:
+    elif boolval is ValueSentinels.RuntimeValue:
         return EvalResult(
-            ast.ValueSentinels.RuntimeValue,
+            ValueSentinels.RuntimeValue,
             nonbool.type,
             nonbool.unit,
         )
@@ -573,20 +596,17 @@ def zero_of(typ: ComptimeType) -> ComptimeValue:
             return ByteValue(0)
 
         case _:
-            return ast.ValueSentinels.RuntimeValue
+            return ValueSentinels.RuntimeValue
 
 
 def _eval_binop_unit(
     binop: ast.BinopExpr, lhs: EvalResult, rhs: EvalResult
 ) -> ComptimeUnit:
-    if (
-        lhs.unit is ast.UnitSentinels.Incoherent
-        or rhs.unit is ast.UnitSentinels.Incoherent
-    ):
-        return ast.UnitSentinels.Incoherent
+    if lhs.unit is UnitSentinels.Incoherent or rhs.unit is UnitSentinels.Incoherent:
+        return UnitSentinels.Incoherent
 
-    if lhs.unit is ast.UnitSentinels.NoUnit and rhs.unit is ast.UnitSentinels.NoUnit:
-        return ast.UnitSentinels.NoUnit
+    if lhs.unit is UnitSentinels.NoUnit and rhs.unit is UnitSentinels.NoUnit:
+        return UnitSentinels.NoUnit
 
     op = binop.op
 
@@ -594,7 +614,7 @@ def _eval_binop_unit(
         case ast.BinaryOp.And | ast.BinaryOp.Or:
             # booleans are always not applicable to the unit checker
             # so if this is erroneous, the diagnostic would be emitted by the type checking
-            return ast.UnitSentinels.NoUnit
+            return UnitSentinels.NoUnit
 
         case (
             ast.BinaryOp.Equal
@@ -609,14 +629,14 @@ def _eval_binop_unit(
             coerced_unit, binop.rhs.unit_conv_multiplier = _coerce_units(
                 lhs.unit, rhs.unit
             )
-            if coerced_unit is ast.UnitSentinels.Incoherent:
+            if coerced_unit is UnitSentinels.Incoherent:
                 diagnostics.error(
                     f"units ({lhs.unit}) and ({rhs.unit}) do not match"
                     + " and do not have any known conversions",
                     binop,
                 )
 
-            return ast.UnitSentinels.NoUnit  # booleans don't have units
+            return UnitSentinels.NoUnit  # booleans don't have units
 
         case (
             ast.BinaryOp.Add
@@ -627,13 +647,13 @@ def _eval_binop_unit(
             coerced_unit, binop.rhs.unit_conv_multiplier = _coerce_units(
                 lhs.unit, rhs.unit
             )
-            if coerced_unit is ast.UnitSentinels.Incoherent:
+            if coerced_unit is UnitSentinels.Incoherent:
                 diagnostics.error(
                     f"units ({lhs.unit}) and ({rhs.unit}) do not match"
                     + " and do not have any known conversions",
                     binop,
                 )
-                return ast.UnitSentinels.Incoherent
+                return UnitSentinels.Incoherent
 
             return coerced_unit
 
@@ -642,59 +662,59 @@ def _eval_binop_unit(
             r_has_unit = isinstance(rhs.unit, CanonicalUnit)
             if l_has_unit and r_has_unit:
                 return CanonicalUnit.combine(lhs.unit, 1, rhs.unit, 1)  # pyright: ignore - it doesn't understand the substituted type refinement
-            elif l_has_unit and rhs.unit is ast.UnitSentinels.Flexible:
+            elif l_has_unit and rhs.unit is UnitSentinels.Flexible:
                 return lhs.unit
-            elif r_has_unit and lhs.unit is ast.UnitSentinels.Flexible:
+            elif r_has_unit and lhs.unit is UnitSentinels.Flexible:
                 return rhs.unit
             elif (
-                lhs.unit is ast.UnitSentinels.Flexible
-                and rhs.unit is ast.UnitSentinels.Flexible
+                lhs.unit is UnitSentinels.Flexible
+                and rhs.unit is UnitSentinels.Flexible
             ):
-                return ast.UnitSentinels.Flexible
+                return UnitSentinels.Flexible
             elif lhs.unit in (
-                ast.UnitSentinels.NoUnit,
-                ast.UnitSentinels.Flexible,
-            ) and rhs.unit in (ast.UnitSentinels.NoUnit, ast.UnitSentinels.Flexible):
-                return ast.UnitSentinels.NoUnit
+                UnitSentinels.NoUnit,
+                UnitSentinels.Flexible,
+            ) and rhs.unit in (UnitSentinels.NoUnit, UnitSentinels.Flexible):
+                return UnitSentinels.NoUnit
             else:
                 diagnostics.error(
                     "you cannot multiply a unitless value with a value with units"
                     + f" (|{lhs.unit}| {op.value} |{rhs.unit}|)",
                     binop,
                 )
-                return ast.UnitSentinels.Incoherent
+                return UnitSentinels.Incoherent
 
         case ast.BinaryOp.TrueDivide | ast.BinaryOp.FloorDivide:
             l_has_unit = isinstance(lhs.unit, CanonicalUnit)
             r_has_unit = isinstance(rhs.unit, CanonicalUnit)
             if l_has_unit and r_has_unit:
                 return CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1)  # pyright: ignore - it doesn't understand the substituted type refinement
-            elif l_has_unit and rhs.unit is ast.UnitSentinels.Flexible:
+            elif l_has_unit and rhs.unit is UnitSentinels.Flexible:
                 return lhs.unit
-            elif r_has_unit and lhs.unit is ast.UnitSentinels.Flexible:
+            elif r_has_unit and lhs.unit is UnitSentinels.Flexible:
                 return rhs.unit * -1  # pyright: ignore - it doesn't understand the substituted type refinement
             elif (
-                lhs.unit is ast.UnitSentinels.Flexible
-                and rhs.unit is ast.UnitSentinels.Flexible
+                lhs.unit is UnitSentinels.Flexible
+                and rhs.unit is UnitSentinels.Flexible
             ):
-                return ast.UnitSentinels.Flexible
+                return UnitSentinels.Flexible
             elif lhs.unit in (
-                ast.UnitSentinels.NoUnit,
-                ast.UnitSentinels.Flexible,
-            ) and rhs.unit in (ast.UnitSentinels.NoUnit, ast.UnitSentinels.Flexible):
-                return ast.UnitSentinels.NoUnit
+                UnitSentinels.NoUnit,
+                UnitSentinels.Flexible,
+            ) and rhs.unit in (UnitSentinels.NoUnit, UnitSentinels.Flexible):
+                return UnitSentinels.NoUnit
             else:
                 diagnostics.error(
                     "you cannot divide a unitless value by a value with units or vice-versa"
                     + f" (|{lhs.unit}| {op.value} |{rhs.unit}|)",
                     binop,
                 )
-                return ast.UnitSentinels.Incoherent
+                return UnitSentinels.Incoherent
 
         case ast.BinaryOp.Power:
             if isinstance(lhs, CanonicalUnit):
                 if isinstance(rhs.value, Fraction) and (
-                    rhs.unit in (ast.UnitSentinels.NoUnit, ast.UnitSentinels.Flexible)
+                    rhs.unit in (UnitSentinels.NoUnit, UnitSentinels.Flexible)
                     or (isinstance(rhs.unit, CanonicalUnit) and not rhs.unit)
                 ):
                     if rhs.value.is_integer():
@@ -705,17 +725,17 @@ def _eval_binop_unit(
                             "fractional exponents are not currently supported for values with units",
                             binop.rhs,
                         )
-                        return ast.UnitSentinels.Incoherent
+                        return UnitSentinels.Incoherent
                 else:
                     diagnostics.error(
                         "exponents of unit expressions must be statically known unitless integers",
                         binop.rhs,
                     )
-                    return ast.UnitSentinels.Incoherent
-            elif lhs.unit is ast.UnitSentinels.Flexible:
-                return ast.UnitSentinels.Flexible
+                    return UnitSentinels.Incoherent
+            elif lhs.unit is UnitSentinels.Flexible:
+                return UnitSentinels.Flexible
             else:
-                return ast.UnitSentinels.NoUnit
+                return UnitSentinels.NoUnit
 
         case Never():
             raise AssertionError(f"missing branch for {op.value}")
@@ -724,9 +744,9 @@ def _eval_binop_unit(
 def _coerce_units(
     lhs: ComptimeUnit, rhs: ComptimeUnit
 ) -> tuple[ComptimeUnit, Fraction]:
-    if lhs is ast.UnitSentinels.Flexible:
+    if lhs is UnitSentinels.Flexible:
         return rhs, Fraction(1)
-    elif rhs is ast.UnitSentinels.Flexible:
+    elif rhs is UnitSentinels.Flexible:
         return lhs, Fraction(1)
 
     if lhs == rhs:
@@ -734,7 +754,7 @@ def _coerce_units(
 
     # TODO: implicit conversions and resulting fraction
 
-    return ast.UnitSentinels.Incoherent, Fraction(1)
+    return UnitSentinels.Incoherent, Fraction(1)
 
 
 class ConversionSentinels(Enum):
@@ -742,14 +762,10 @@ class ConversionSentinels(Enum):
 
 
 def _coerce(lhs: EvalResult, rhs: EvalResult) -> ComptimeType | ConversionSentinels:
-    if (
-        conv := _implicit_convert(lhs.type, rhs.type)
-    ) is not ast.TypeSentinels.Impossible:
+    if (conv := _implicit_convert(lhs.type, rhs.type)) is not TypeSentinels.Impossible:
         return conv
 
-    if (
-        conv := _implicit_convert(rhs.type, lhs.type)
-    ) is not ast.TypeSentinels.Impossible:
+    if (conv := _implicit_convert(rhs.type, lhs.type)) is not TypeSentinels.Impossible:
         return conv
 
     # TODO: handle fixed point decimals which cannot convert to one or the other but could both convert to a common size
@@ -767,14 +783,14 @@ def _implicit_convert(dest: ComptimeType, src: ComptimeType) -> ComptimeType:
         case FixedArrayType(), FixedArrayType():
             if dest.shape == src.shape and not isinstance(
                 (elem := _implicit_convert(dest.elem, src.elem)),
-                (ast.TypeSentinels, FlexType),
+                (TypeSentinels, FlexType),
             ):
                 return FixedArrayType(
                     elem=elem,
                     shape=dest.shape,
                 )
 
-            return ast.TypeSentinels.Impossible
+            return TypeSentinels.Impossible
 
         case ((PointerType() | OptionalType()), FlexType(FlexAffinity.Nil)):
             return dest
@@ -910,7 +926,7 @@ def _implicit_convert(dest: ComptimeType, src: ComptimeType) -> ComptimeType:
             if prec_dest >= prec_src and dig_dest - prec_dest >= dig_src - prec_src:
                 return dest
             else:
-                return ast.TypeSentinels.Impossible
+                return TypeSentinels.Impossible
 
         case FixedDecimal(), (
             FlexType(FlexAffinity.Integer | FlexAffinity.UInt | FlexAffinity.Decimal)
@@ -942,7 +958,7 @@ def _implicit_convert(dest: ComptimeType, src: ComptimeType) -> ComptimeType:
             return dest
 
         case _:
-            return ast.TypeSentinels.Impossible
+            return TypeSentinels.Impossible
 
 
 def _cast_allowed(dest: ComptimeType, src: ComptimeType) -> bool:
