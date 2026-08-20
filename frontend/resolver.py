@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from fractions import Fraction
+import math
 from pathlib import Path
+from typing import ClassVar
 
 from frontend import ast, diagnostics, hir, parser
 from frontend.hir import SymbolID
@@ -30,6 +32,7 @@ class PartialSymbol:
     """
 
     id: SymbolID = field(default_factory=_NEXT_SYM.__next__)
+    name: Identifier
 
 
 @dataclass(kw_only=True)
@@ -67,6 +70,7 @@ class Constant:
     therefore this is NOT a partial symbol
     """
 
+    name: Identifier
     ast_node: ast.LocalConstant | ast.GlobalConstant
 
 
@@ -83,77 +87,31 @@ class UnitType(PartialSymbol):
 
 
 @dataclass(kw_only=True)
-class Unit(PartialSymbol):
-    ast: ast.UnitDecl
+class BaseUnit(PartialSymbol):
+    ast: ast.UnitDecl | ast.UnitConversionDef
     hir: hir.BaseUnit | None = None
+
+
+@dataclass(kw_only=True)
+class UnitTypeAlias:
+    name: Identifier
+    ast: ast.UnitTypeAliasDecl
+    canonical: CanonicalUnit
+
+
+@dataclass(kw_only=True)
+class UnitAlias:
+    name: Identifier
+    ast: ast.UnitAlias
+    canonical: CanonicalUnit
+    # NOTE: these *might* still exist in the HIR for reflection purposes
+    # e.g. printing a kg m / s^2 as newtons
 
 
 @dataclass(kw_only=True)
 class Capability(PartialSymbol):
     ast: ast.CapabilityDecl
     hir: hir.Capability | None = None
-
-
-@dataclass(kw_only=True)
-class Module:
-    file: ast.File
-    name: Identifier
-    imports: dict[Identifier, Module] = field(default_factory=dict)
-    types: dict[Identifier, TypeDefinition] = field(default_factory=dict)
-    funcs: dict[Identifier, Function] = field(default_factory=dict)
-    constants: dict[Identifier, Constant] = field(default_factory=dict)
-    variables: dict[Identifier, Variable] = field(default_factory=dict)
-    unit_types: dict[Identifier, UnitType] = field(default_factory=dict)
-    units: dict[Identifier, Unit] = field(default_factory=dict)
-    capabilities: dict[Identifier, Capability] = field(default_factory=dict)
-
-    def __contains__(self, name: Identifier):
-        return (
-            name in self.imports
-            or name in self.types
-            or name in self.funcs
-            or name in self.constants
-            or name in self.variables
-            or name in self.unit_types
-            or name in self.units
-            or name in self.capabilities
-        )
-
-    def lookup(self, name: Identifier):
-        if thing := self.imports.get(name):
-            return thing
-
-        if thing := self.types.get(name):
-            return thing
-
-        if thing := self.funcs.get(name):
-            return thing
-
-        if thing := self.constants.get(name):
-            return thing
-
-        if thing := self.variables.get(name):
-            return thing
-
-        if thing := self.unit_types.get(name):
-            return thing
-
-        if thing := self.units.get(name):
-            return thing
-
-        if thing := self.capabilities.get(name):
-            return thing
-
-        return None
-
-    def __iter__(self):
-        yield from self.types.values()
-        yield from self.funcs.values()
-        yield from self.constants.values()
-        yield from self.variables.values()
-        yield from self.unit_types.values()
-        yield from self.units.values()
-        yield from self.capabilities.values()
 
 
 @dataclass
@@ -175,6 +133,7 @@ BUILTINS = {
         # - FUNCTIONS -
         "len",
         "cap",
+        "append",
         "owned_shallow_clone",
         "owned_deep_clone",
         "shared_shallow_clone",
@@ -182,21 +141,43 @@ BUILTINS = {
     ]
 }
 
+SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
+SUPERSCRIPT_NEGATIVE = "⁻"
+
+
+def superscript_number(n: int) -> str:
+    digits = []
+
+    if n < 0:
+        digits.append(SUPERSCRIPT_NEGATIVE)
+
+    x = int(abs(n))
+    while x > 0:
+        digits.append(SUPERSCRIPT_DIGITS[x % 10])
+        x //= 10
+
+    return "".join(digits)
+
 
 class CanonicalUnit(Counter[SymbolID]):
+    _base_unit_names: ClassVar[dict[SymbolID, str]] = {}
+
+    @classmethod
+    def register_unit_name(cls, base_unit: BaseUnit):
+        cls._base_unit_names[base_unit.id] = base_unit.ast.name
+
     def __str__(self):
         components = []
         for comp_id, exp in self.most_common():
             if exp == 0:
                 continue
 
-            unit = SYMBOLS_BY_ID[comp_id]
-            unit_name = unit.name if isinstance(unit, (Unit, UnitType)) else "???"
+            unit_name = self._base_unit_names.get(comp_id, f"unit{comp_id}")
 
             if exp == 1:
                 components.append(str(unit_name))
             else:
-                components.append(f"{unit_name}^{exp}")
+                components.append(f"{unit_name}{superscript_number(exp)}")
 
         if components:
             return " ".join(components)
@@ -209,8 +190,7 @@ class CanonicalUnit(Counter[SymbolID]):
             if exp == 0:
                 continue
 
-            unit = SYMBOLS_BY_ID[comp_id]
-            unit_name = unit.name if isinstance(unit, (Unit, UnitType)) else "???"
+            unit_name = self._base_unit_names.get(comp_id, "<MISSING>")
 
             if exp == 1:
                 components.append(str(unit_name))
@@ -254,11 +234,87 @@ class CanonicalUnit(Counter[SymbolID]):
         return result
 
 
+type Named = PartialSymbol | Constant | UnitAlias | UnitTypeAlias | Module | Builtin
+
+
+@dataclass(kw_only=True)
+class Module:
+    file: ast.File
+    name: Identifier
+    imports: dict[Identifier, Module] = field(default_factory=dict)
+    types: dict[Identifier, TypeDefinition] = field(default_factory=dict)
+    funcs: dict[Identifier, Function] = field(default_factory=dict)
+    constants: dict[Identifier, Constant] = field(default_factory=dict)
+    variables: dict[Identifier, Variable] = field(default_factory=dict)
+    unit_types: dict[Identifier, UnitType] = field(default_factory=dict)
+    base_units: dict[Identifier, BaseUnit] = field(default_factory=dict)
+    unit_aliases: dict[Identifier, UnitAlias] = field(default_factory=dict)
+    unit_type_aliases: dict[Identifier, UnitTypeAlias] = field(default_factory=dict)
+    capabilities: dict[Identifier, Capability] = field(default_factory=dict)
+
+    def __contains__(self, name: Identifier) -> bool:
+        return (
+            name in self.imports
+            or name in self.types
+            or name in self.funcs
+            or name in self.constants
+            or name in self.variables
+            or name in self.unit_types
+            or name in self.base_units
+            or name in self.unit_type_aliases
+            or name in self.unit_aliases
+            or name in self.capabilities
+        )
+
+    def lookup(self, name: Identifier) -> Named | None:
+        if thing := self.imports.get(name):
+            return thing
+
+        if thing := self.types.get(name):
+            return thing
+
+        if thing := self.funcs.get(name):
+            return thing
+
+        if thing := self.constants.get(name):
+            return thing
+
+        if thing := self.variables.get(name):
+            return thing
+
+        if thing := self.unit_types.get(name):
+            return thing
+
+        if thing := self.base_units.get(name):
+            return thing
+
+        if thing := self.unit_type_aliases.get(name):
+            return thing
+
+        if thing := self.unit_aliases.get(name):
+            return thing
+
+        if thing := self.capabilities.get(name):
+            return thing
+
+        return None
+
+    def __iter__(self):
+        yield from self.types.values()
+        yield from self.funcs.values()
+        yield from self.constants.values()
+        yield from self.variables.values()
+        yield from self.unit_types.values()
+        yield from self.base_units.values()
+        yield from self.capabilities.values()
+
+
 class Resolver:
     def __init__(self, project_root: Path | None = None):
         self.project_root = project_root or Path.cwd()
         self.modules: dict[Path, Module] = {}
         self._deferred_unit_convs: list[ast.UnitConversionDef] = []
+        self._deferred_aliases: list[ast.TopLevelDeclaration] = []
 
     def require(self, path: Path) -> Module:
         """loads the file found at the given path and all of its imports, recursively"""
@@ -272,6 +328,9 @@ class Resolver:
             name=Identifier(path.stem),
         )
         self.modules[path] = module
+
+        for decl in module.file.declarations:
+            self._add_symbol(module, decl)
 
         for imp in module.file.imports:
             if shadowed := module.imports.get(imp.namespace):
@@ -287,24 +346,11 @@ class Resolver:
 
         return module
 
-    def resolve_names(self):
-        """Resolves qualified names to point to their definitions"""
-
-        for module in self.modules.values():
-            for decl in module.file.declarations:
-                self._add_symbol(module, decl)
-
-        for module in self.modules.values():
-            for decl in module.file.declarations:
-                self._resolve_names(module, decl)
-
-        diagnostics.report()
-
     def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
         def check_shadowing(node: ast.Node, kind: type, name: Identifier):
             if shadowed := module.lookup(name):
-                diagnostics.warning(
-                    f"{kind.__name__.lower()} '{name}' shadows {type(shadowed).__name__} '{shadowed.name}'",
+                diagnostics.error(
+                    f"{kind.__name__.lower()} '{name}' conflicts with {type(shadowed).__name__} '{shadowed.name}'",
                     node,
                 )
             elif shadowed := BUILTINS.get(name):
@@ -316,64 +362,122 @@ class Resolver:
             case ast.FuncDefinition():
                 check_shadowing(decl, Function, decl.name)
 
-                module.funcs[decl.name] = Function(
-                    name=decl.name,
-                    definition=decl,
-                    params=[],  # filled in later
-                    generics=[],  # filled in later
-                    returns=[],  # filled in later
-                    error=None,  # filled in later
-                    fallible=decl.error_type is not None,
-                )
+                module.funcs[decl.name] = Function(name=decl.name, ast=decl)
 
-            case ast.UnitTypeDecl() | ast.UnitTypeAliasDecl():
+            case ast.UnitTypeAliasDecl():
+                check_shadowing(decl, UnitType, decl.name)
+                self._deferred_aliases.append(decl)
+
+            case ast.UnitAlias():
+                check_shadowing(decl, BaseUnit, decl.name)
+                self._deferred_aliases.append(decl)
+
+            case ast.UnitTypeDecl():
                 check_shadowing(decl, UnitType, decl.name)
 
-                module.unit_types[decl.name] = UnitType(name=decl.name, definition=decl)
+                module.unit_types[decl.name] = UnitType(name=decl.name, ast=decl)
 
-            case ast.UnitDecl() | ast.UnitAlias():
-                check_shadowing(decl, Unit, decl.name)
+            case ast.UnitDecl():
+                check_shadowing(decl, BaseUnit, decl.name)
 
-                module.units[decl.name] = Unit(name=decl.name, definition=decl)
+                module.base_units[decl.name] = BaseUnit(name=decl.name, ast=decl)
 
             case ast.UnitConversionDef():
                 self._deferred_unit_convs.append(decl)
 
-                if decl.dest in module.units:
+                if decl.dest in module.base_units:
                     return  # you can duplicate unit names for conversions
 
-                check_shadowing(decl, Unit, decl.dest)
+                check_shadowing(decl, BaseUnit, decl.dest)
 
-                module.units[decl.dest] = Unit(name=decl.dest, definition=decl)
+                module.base_units[decl.dest] = BaseUnit(name=decl.dest, ast=decl)
 
-    def _resolve_names(
+    def resolve(
         self,
         module: Module,
         node: ast.Node,
         *scopes: dict[Identifier, Named],
-    ):
+    ) -> tuple[Named | None, tuple[Identifier, ...]]:
         """Resolves qualified names to point to their definitions"""
         match node:
             case ast.QualifiedName():
-                self._resolve_qualname(module, node, *scopes)
+                return self._resolve_qualname(module, node, *scopes), ()
 
             case ast.NameExpr():
-                resolved = self._lookup_scoped(module, node.name, *scopes)
-
-                if resolved:
-                    node.resolves_to = resolved
-                else:
-                    diagnostics.error(f"cannot resolve name '{node.name}'", node)
+                return self.lookup(module, node.name, *scopes), ()
 
             case ast.FieldAccessExpr():
-                self._resolve_names(module, node.base, *scopes)
+                base, rest = self.resolve(module, node.base, *scopes)
 
-                match node.base:  # TODO
-                    case ast.NameExpr():
-                        pass
-                    case ast.FieldAccessExpr() if node.static_resolves_to is not None:
-                        pass
+                if base and (more := self._static_resolve_field(base, node.field)):
+                    return more, ()
+                else:
+                    return more, (node.field, *rest)
 
+            case _:
+                return None, ()
+
+    def lookup(
+        self,
+        module: Module,
+        base_name: Identifier,
+        *scopes: dict[Identifier, Named],
+    ) -> Named | None:
+        for scope in scopes:
+            if base_name in scope:
+                return scope[base_name]
+
+        return module.lookup(base_name) or BUILTINS.get(base_name)
+
+    def _static_resolve_field(
+        self,
+        base: Named,
+        field: Identifier,
+    ):
+        match base:
+            case Module():
+                return base.lookup(field)
+
+            case BaseUnit() | UnitType() | Function() | Capability():
+                # NOTE: this might be a redundant error
+                diagnostics.error(
+                    f"cannot get field {field} of {base.name}"
+                    + f" because it is a {type(base).__name__},"
+                    + " which never has a namespace",
+                    base.ast,
+                )
+
+            case _:
+                return None
+
+    def _resolve_qualname(
+        self,
+        module: Module,
+        qualname: ast.QualifiedName,
+        *scopes: dict[Identifier, Named],
+    ) -> Named | None:
+        base_name, *rest = qualname.path
+
+        base = self.lookup(module, base_name, *scopes)
+
+        if not base:
+            diagnostics.error(f"cannot resolve '{base_name}'", qualname)
+            return None
+
+        resolved = base
+
+        for i, field in enumerate(rest, 1):
+            resolved = self._static_resolve_field(resolved, field)
+            if not resolved:
+                diagnostics.error(
+                    f"cannot resolve '{'.'.join(qualname.path[:i])}'", qualname
+                )
+                return None
+
+        return resolved
+
+    def build_hir(self, node: ast.Node):
+        match node:
             case ast.FuncDefinition():
                 func_sym = module.funcs[node.name]  # Local functions?
 
@@ -469,39 +573,6 @@ class Resolver:
             case _:
                 for sub in node:
                     self._resolve_names(module, sub, *scopes)
-
-    def _lookup_scoped(
-        self,
-        module: Module,
-        base_name: Identifier,
-        *scopes: dict[Identifier, Named],
-    ) -> Named | None:
-        for scope in scopes:
-            if base_name in scope:
-                return scope[base_name]
-
-        return module.lookup(base_name) or BUILTINS.get(base_name)
-
-    def _resolve_qualname(
-        self,
-        module: Module,
-        qualname: ast.QualifiedName,
-        *scopes: dict[Identifier, Named],
-    ):
-        base_name, *rest = qualname.path
-
-        base = self._lookup_scoped(module, base_name, *scopes)
-
-        if not base:
-            diagnostics.error(f"cannot resolve '{'.'.join(qualname.path)}'", qualname)
-            return
-
-        resolved = base
-
-        if rest:
-            raise NotImplementedError("qualified name traversal not yet supported")
-
-        qualname.resolves_to = resolved
 
     def canonicalize_types(self):
         for module in self.modules.values():
@@ -607,7 +678,7 @@ class Resolver:
         for component in unit.components:
             resolved = component.base.resolves_to
             assert resolved is not None, "this should have been resolved by now"
-            if isinstance(resolved, (Unit, UnitType)):
+            if isinstance(resolved, (BaseUnit, UnitType)):
                 if isinstance(resolved.definition, ast.UnitAlias):
                     self._ensure_canonical_unit(resolved.definition.base)
                     assert resolved.definition.base.canonical is not None
