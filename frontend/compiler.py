@@ -1,15 +1,14 @@
 from pathlib import Path
 from typing import Protocol
 
-from frontend import analysis, diagnostics, lowering, resolver
+from frontend import analysis, diagnostics, lowering, mir, resolver
 
 
 class Backend(Protocol):
     def generate(
         self,
         outfile: Path,
-        modules: list[resolver.Module],
-        entry_point: resolver.Function,
+        translation_unit: mir.TranslationUnit,
     ): ...
 
 

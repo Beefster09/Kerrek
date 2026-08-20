@@ -2,209 +2,104 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
-from enum import Enum, auto
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Literal, NewType
 
-from frontend import ast, diagnostics, parser
+from frontend import ast, diagnostics, hir, parser
+from frontend.hir import SymbolID
 from frontend.lexer import Identifier
-
-SymbolID = NewType("SymbolID", int)
+from frontend.types import FixedDecimal, PrimitiveType
 
 
 def _symbol_gen():
-    sym_id = 1
+    sym_id = 10000  # 1-9999 reserved for builtins
     while True:
         yield SymbolID(sym_id)
         sym_id += 1
 
 
 _NEXT_SYM = _symbol_gen()
-SYMBOLS_BY_ID: dict[SymbolID, _Symbol] = {}
-
-
-class PrimitiveType(Enum):
-    Integer = "Integer"
-    Int64 = "Int64"
-    Int32 = "Int32"
-    Int16 = "Int16"
-    Int8 = "Int8"
-    UInt64 = "UInt64"
-    UInt32 = "UInt32"
-    UInt16 = "UInt16"
-    UInt8 = "UInt8"
-
-    Decimal = "Decimal"
-    Dec64 = "Dec64"
-    Dec32 = "Dec32"
-
-    Float64 = "Float64"
-    Float32 = "Float32"
-
-    Boolean = "Boolean"
-    String = "String"
-    Rune = "Rune"
-    Byte = "Byte"
-
-    Opaque = "Opaque"
-    Opaque8 = "Opaque8"
-    Opaque16 = "Opaque16"
-    Opaque32 = "Opaque32"
-    Opaque64 = "Opaque64"
-
-
-@dataclass
-class FixedDecimal:
-    digits: int
-    precision: int
 
 
 @dataclass(kw_only=True)
-class _Symbol:
+class PartialSymbol:
+    """A partially translated symbol with an id
+
+    It references the AST node associated with the symbol id
+    Its associated HIR isn't initially filled in
+    """
+
     id: SymbolID = field(default_factory=_NEXT_SYM.__next__)
 
-    def __post_init__(self):
-        SYMBOLS_BY_ID[self.id] = self
+
+@dataclass(kw_only=True)
+class Function(PartialSymbol):
+    ast: ast.FuncDefinition
+    hir: hir.FuncDefinition | None = None
 
 
 @dataclass(kw_only=True)
-class StructType(_Symbol):
-    name: Identifier
-    definition: ast.StructDefinition
+class DistinctType(PartialSymbol):
+    ast: ast.DistinctTypeDecl
+    hir: hir.DistinctType | None = None
 
 
 @dataclass(kw_only=True)
-class EnumType(_Symbol):
-    name: Identifier
-    definition: ast.EnumDefinition
+class StructType(PartialSymbol):
+    ast: ast.StructDefinition
+    hir: hir.StructType | None = None
 
 
 @dataclass(kw_only=True)
-class InterfaceType(_Symbol):
-    name: Identifier
-    definition: ast.InterfaceDefinition
+class EnumType(PartialSymbol):
+    ast: ast.EnumDefinition
+    hir: hir.EnumType | None = None
+
+
+type TypeDefinition = DistinctType | StructType | EnumType
 
 
 @dataclass(kw_only=True)
-class DistinctType(_Symbol):
-    name: Identifier
-    definition: ast.DistinctTypeDecl
+class Constant:
+    """A compile-time evaluated constant
+
+    constants get evaluated down to typed constants in the HIR,
+    therefore this is NOT a partial symbol
+    """
+
+    ast_node: ast.LocalConstant | ast.GlobalConstant
 
 
 @dataclass(kw_only=True)
-class TypeAlias(_Symbol):
-    name: Identifier
-    canonical: AnyType | ast.TypeSentinels = ast.TypeSentinels.NotDetermined
-    definition: ast.TypeAliasDecl
-
-
-BaseType = (
-    PrimitiveType | FixedDecimal | EnumType | StructType | DistinctType | InterfaceType
-)
+class Variable(PartialSymbol):
+    ast: ast.LocalVariable | ast.GlobalVariable | ast.FormalParameter
+    hir: hir.Variable | None = None
 
 
 @dataclass(kw_only=True)
-class PointerType:
-    to: AnyType
-    ownership: ast.PointerOwnership
+class UnitType(PartialSymbol):
+    ast: ast.UnitTypeDecl
+    hir: hir.UnitType | None = None
 
 
 @dataclass(kw_only=True)
-class OptionalType:
-    of: AnyType
+class Unit(PartialSymbol):
+    ast: ast.UnitDecl
+    hir: hir.BaseUnit | None = None
 
 
 @dataclass(kw_only=True)
-class FixedArrayType:
-    elem: AnyType
-    shape: tuple[int, ...]
+class Capability(PartialSymbol):
+    ast: ast.CapabilityDecl
+    hir: hir.Capability | None = None
 
 
 @dataclass(kw_only=True)
-class DynamicArrayType:
-    elem: AnyType
-    ownership: ast.PointerOwnership
-
-
-@dataclass(kw_only=True)
-class DimensionedArrayType:
-    elem: AnyType
-    dimensions: int = 1
-    ownership: ast.PointerOwnership
-
-
-@dataclass(kw_only=True)
-class MapType:
-    key: AnyType
-    value: AnyType
-    ownership: ast.PointerOwnership
-
-
-type CompoundType = (
-    PointerType
-    | OptionalType
-    | FixedArrayType
-    | DynamicArrayType
-    | DimensionedArrayType
-    | MapType
-)
-
-type AnyType = CompoundType | BaseType | GenericType
-
-
-@dataclass(kw_only=True)
-class Function(_Symbol):
-    name: Identifier
-    definition: ast.FuncDefinition
-    params: list[Variable]
-    generics: list[GenericType]
-    returns: list[StoredType]
-    error: StoredType | None
-    fallible: bool
-
-
-@dataclass(kw_only=True)
-class Constant(_Symbol):
-    name: Identifier
-    definition: ast.GlobalConstant | ast.LocalConstant
-
-
-@dataclass(kw_only=True)
-class Variable(_Symbol):
-    name: Identifier
-    definition: ast.GlobalVariable | ast.LocalVariable | ast.FormalParameter
-
-
-@dataclass(kw_only=True)
-class UnitType(_Symbol):
-    name: Identifier
-    definition: ast.Node
-
-
-@dataclass(kw_only=True)
-class Unit(_Symbol):
-    name: Identifier
-    unit_type: UnitType | None = None
-    definition: ast.UnitDecl | ast.UnitAlias | ast.UnitConversionDef
-    conversions: dict[SymbolID, Fraction] = field(default_factory=dict)
-
-
-@dataclass(kw_only=True)
-class Capability(_Symbol):
-    name: Identifier
-    definition: ast.Node
-
-
-StoredType = EnumType | StructType | DistinctType | TypeAlias
-
-
-@dataclass(kw_only=True)
-class Module(_Symbol):
+class Module:
     file: ast.File
     name: Identifier
     imports: dict[Identifier, Module] = field(default_factory=dict)
-    types: dict[Identifier, StoredType] = field(default_factory=dict)
+    types: dict[Identifier, TypeDefinition] = field(default_factory=dict)
     funcs: dict[Identifier, Function] = field(default_factory=dict)
     constants: dict[Identifier, Constant] = field(default_factory=dict)
     variables: dict[Identifier, Variable] = field(default_factory=dict)
@@ -287,17 +182,6 @@ BUILTINS = {
     ]
 }
 
-WRITE_ONLY = Builtin(Identifier("_"))
-
-
-@dataclass
-class GenericType:
-    name: Identifier
-    bound: AnyType | None = None
-
-
-Named = _Symbol | Builtin | GenericType | AnyType
-
 
 class CanonicalUnit(Counter[SymbolID]):
     def __str__(self):
@@ -371,13 +255,13 @@ class CanonicalUnit(Counter[SymbolID]):
 
 
 class Resolver:
-    def __init__(self, project_root: Path = Path.cwd()):
-        self.project_root = project_root
+    def __init__(self, project_root: Path | None = None):
+        self.project_root = project_root or Path.cwd()
         self.modules: dict[Path, Module] = {}
         self._deferred_unit_convs: list[ast.UnitConversionDef] = []
 
     def require(self, path: Path) -> Module:
-        """Resolves imported modules and parses them if missing"""
+        """loads the file found at the given path and all of its imports, recursively"""
         path = path.absolute()
 
         if path in self.modules:
@@ -392,7 +276,7 @@ class Resolver:
         for imp in module.file.imports:
             if shadowed := module.imports.get(imp.namespace):
                 diagnostics.error(
-                    f"import of {'/'.join(imp.module_path)}"
+                    f"import of {imp.collection or '<relative>'}:{'/'.join(imp.module_path)}"
                     + f" conflicts with existing import of {shadowed.file.source}",
                     imp,
                 )

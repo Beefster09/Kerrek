@@ -11,22 +11,6 @@ from typing import Any, Never
 from frontend import ast, diagnostics
 from frontend.common import ByteValue, RuneValue
 from frontend.lexer import NumberLiteralForm
-from frontend.resolver import (
-    AnyType,
-    CanonicalUnit,
-    Constant,
-    DistinctType,
-    EnumType,
-    FixedArrayType,
-    FixedDecimal,
-    InterfaceType,
-    OptionalType,
-    PointerType,
-    PrimitiveType,
-    StructType,
-    Unit,
-    Variable,
-)
 from frontend.types import FlexAffinity, FlexType, conversion_class
 
 # === SENTINEL VALUES ===

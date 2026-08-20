@@ -4,13 +4,6 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
-from frontend import ast
-from frontend.resolver import (
-    DistinctType,
-    FixedArrayType,
-    PointerType,
-)
-
 if TYPE_CHECKING:
     from frontend.exprs import ComptimeType
 
