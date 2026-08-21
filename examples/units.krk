@@ -4,47 +4,69 @@ unit type time;
 unit type angle;
 unit type temperature;
 
-unit type area is length^2;
-unit type volume is length^3;
-unit type speed is length per time;
+unit type area = length^2;
+unit type volume = length^3;
+unit type speed = length per time;
 
 
-unit meter: length;
-unit m is meter;
+unit meter: length {
+	to kilometer: / 1000;
+	to millimeter: * 1000;
+	to centimeter: * 100;
+}
+unit m = meter;
 
-unit foot: length;
-unit ft is foot;
+unit kilometer: length;
+unit km = kilometer;
 
-unit cm = m / 100;
-unit mm = m / 1000;
-unit km = 1000 * m;
+unit centimeter: length;
+unit cm = centimeter;
 
-unit inch = foot / 12;
-unit yard = 3 * foot;
-unit mile = 5280 * foot;
-unit football_field = 120 * yard;
+unit millimeter: length;
+unit mm = millimeter;
 
-unit m = 3.28084 * ft;
+unit foot: length {
+	from meter: * 3.28084;
+	to inch: * 12;
+	to yard: / 3;
+	to mile: / 5280;
+	from football_field: * 120;
+}
+unit ft = foot;
 
 
 unit kilogram: mass;
-unit kg is kilogram;
+unit kg = kilogram;
 
-unit gram = kg / 1000;
-unit mg = gram / 1000;
+unit gram: mass {
+	to kg: / 1000;
+}
+
+unit milligram: mass;
+unit mg = milligram;
 
 
 unit second: time;
-unit s is second;
+unit s = second;
 
-unit minute = 60 * second;
-unit hour = 60 * minute;
-unit day = 24 * hour;
+unit minute: time {
+	to second: * 60;
+}
+unit hour: time {
+	to minute: * 60;
+}
+unit day: time {
+	to hour: * 24;
+}
 
 
 unit degrees: angle;
-unit radians = 3.14159265358979 * degrees / 180;
-unit turn = 360 * degrees;
+unit radians: angle {
+	from degrees: * 3.14159265358979 / 180;
+}
+unit turn: angle{
+	to degrees: * 360;
+}
 
 
 unit kelvin: temperature;
@@ -68,17 +90,17 @@ func fahrenheit_to_celsius(degrees: Decimal | #fahrenheit) -> Decimal | #celsius
 }
 
 
-unit newton is kg m per s^2;
-unit joule is newton m;
-unit watt is joule per s;
-unit calorie = 4.184 * joule;
-unit btu = 1055 * joule;
+unit newton = kg m per s^2;
+unit joule = newton m;
+unit watt = joule per s;
+\\ unit calorie = 4.184 * joule;
+\\ unit btu = 1055 * joule;
 
 
 unit man;
 unit count;
 
-unit ratio is 1;
+unit ratio = 1;
 
 
 func how_long_to_complete(num_workers: Integer | man, blocks: Decimal | ratio)

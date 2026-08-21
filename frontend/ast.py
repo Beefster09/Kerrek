@@ -59,6 +59,9 @@ class Node:
 class QualifiedName(Node):
     path: list[Identifier]
 
+    def __str__(self):
+        return ".".join(self.path)
+
 
 @dataclass(kw_only=True)
 class Annotation(Node):
@@ -132,11 +135,11 @@ class UnitTypeDecl(TopLevelDeclaration):
 class UnitTypeAliasDecl(TopLevelDeclaration):
     """
     e.g.
-    unit type volume is length^3;
+    unit type volume = length^3;
     """
 
     name: Identifier
-    base: CompoundUnit
+    orig: CompoundUnit
 
 
 @dataclass(kw_only=True)
@@ -148,30 +151,46 @@ class UnitDecl(TopLevelDeclaration):
 
     name: Identifier
     unit_type: QualifiedName | None = None
+    conversions: list[UnitConversionDef]
 
 
 @dataclass(kw_only=True)
 class UnitAlias(TopLevelDeclaration):
     """
     e.g.
-    unit newton is kg m / s^2;
+    unit newton = kg m / s^2;
     """
 
     name: Identifier
-    base: CompoundUnit
+    orig: CompoundUnit
+
+
+class ConversionDirection(Enum):
+    To = auto()
+    From = auto()
 
 
 @dataclass(kw_only=True)
-class UnitConversionDef(TopLevelDeclaration):
+class UnitConversionDef(Node):
     """
     e.g.
-    unit radians = 3.14159265358979 * degrees / 180;
+    unit radians: angle {
+        from degrees: * math.PI / 180;
+    }
+
+    or
+
+    unit feet: length {
+        to meters: / 3.28084;
+        to yards: / 3;
+        to inches: * 12;
+    }
     """
 
-    dest: Identifier
-    src: QualifiedName
-    mult: Decimal = Decimal(1)
-    div: Decimal = Decimal(1)
+    direction: ConversionDirection
+    other: QualifiedName
+    multiplier: int | float | Decimal | QualifiedName = 1
+    divisor: int | float | Decimal | QualifiedName = 1
 
 
 @dataclass(kw_only=True)

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
-from fractions import Fraction
-import math
 from pathlib import Path
 from typing import ClassVar
 
@@ -93,17 +91,15 @@ class BaseUnit(PartialSymbol):
 
 
 @dataclass(kw_only=True)
-class UnitTypeAlias:
-    name: Identifier
+class UnitTypeAlias(PartialSymbol):
     ast: ast.UnitTypeAliasDecl
-    canonical: CanonicalUnit
+    canonical: CanonicalUnit | None = None
 
 
 @dataclass(kw_only=True)
-class UnitAlias:
-    name: Identifier
+class UnitAlias(PartialSymbol):
     ast: ast.UnitAlias
-    canonical: CanonicalUnit
+    canonical: CanonicalUnit | None = None  # This is filled in later
     # NOTE: these *might* still exist in the HIR for reflection purposes
     # e.g. printing a kg m / s^2 as newtons
 
@@ -234,7 +230,7 @@ class CanonicalUnit(Counter[SymbolID]):
         return result
 
 
-type Named = PartialSymbol | Constant | UnitAlias | UnitTypeAlias | Module | Builtin
+type Named = PartialSymbol | Constant | Module | Builtin
 
 
 @dataclass(kw_only=True)
@@ -314,7 +310,6 @@ class Resolver:
         self.project_root = project_root or Path.cwd()
         self.modules: dict[Path, Module] = {}
         self._deferred_unit_convs: list[ast.UnitConversionDef] = []
-        self._deferred_aliases: list[ast.TopLevelDeclaration] = []
 
     def require(self, path: Path) -> Module:
         """loads the file found at the given path and all of its imports, recursively"""
@@ -346,51 +341,11 @@ class Resolver:
 
         return module
 
-    def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
-        def check_shadowing(node: ast.Node, kind: type, name: Identifier):
-            if shadowed := module.lookup(name):
-                diagnostics.error(
-                    f"{kind.__name__.lower()} '{name}' conflicts with {type(shadowed).__name__} '{shadowed.name}'",
-                    node,
-                )
-            elif shadowed := BUILTINS.get(name):
-                diagnostics.notice(
-                    f"{kind.__name__.lower()} '{name}' shadows a builtin", node
-                )
+    def finish_imports(self):
+        for conv in self._deferred_unit_convs:
+            pass  # TODO
 
-        match decl:
-            case ast.FuncDefinition():
-                check_shadowing(decl, Function, decl.name)
-
-                module.funcs[decl.name] = Function(name=decl.name, ast=decl)
-
-            case ast.UnitTypeAliasDecl():
-                check_shadowing(decl, UnitType, decl.name)
-                self._deferred_aliases.append(decl)
-
-            case ast.UnitAlias():
-                check_shadowing(decl, BaseUnit, decl.name)
-                self._deferred_aliases.append(decl)
-
-            case ast.UnitTypeDecl():
-                check_shadowing(decl, UnitType, decl.name)
-
-                module.unit_types[decl.name] = UnitType(name=decl.name, ast=decl)
-
-            case ast.UnitDecl():
-                check_shadowing(decl, BaseUnit, decl.name)
-
-                module.base_units[decl.name] = BaseUnit(name=decl.name, ast=decl)
-
-            case ast.UnitConversionDef():
-                self._deferred_unit_convs.append(decl)
-
-                if decl.dest in module.base_units:
-                    return  # you can duplicate unit names for conversions
-
-                check_shadowing(decl, BaseUnit, decl.dest)
-
-                module.base_units[decl.dest] = BaseUnit(name=decl.dest, ast=decl)
+        diagnostics.report()
 
     def resolve(
         self,
@@ -412,7 +367,7 @@ class Resolver:
                 if base and (more := self._static_resolve_field(base, node.field)):
                     return more, ()
                 else:
-                    return more, (node.field, *rest)
+                    return base, (node.field, *rest)
 
             case _:
                 return None, ()
@@ -428,6 +383,115 @@ class Resolver:
                 return scope[base_name]
 
         return module.lookup(base_name) or BUILTINS.get(base_name)
+
+    def get_canonical_unit(
+        self,
+        module: Module,
+        unit: ast.CompoundUnit,
+        *,
+        _orig_definition: ast.CompoundUnit | None = None,
+        _seen_aliases: tuple[UnitAlias, ...] = (),
+        _seen_alias_refs: tuple[ast.QualifiedName, ...] = (),
+    ) -> CanonicalUnit | None:
+        canonical = CanonicalUnit()
+
+        for component in unit.components:
+            resolved, _ = self.resolve(module, component)
+            match resolved:
+                case None:
+                    return None
+
+                case BaseUnit():
+                    canonical[resolved.id] += component.exponent
+
+                case UnitAlias():
+                    if resolved in _seen_aliases:
+                        assert _orig_definition is not None
+                        err = diagnostics.error(
+                            "circular dependency of unit definitions detected ...",
+                            _orig_definition,
+                        )
+                        for ref in _seen_alias_refs:
+                            err.reference(f"... '{ref}' references an alias ...", ref)
+
+                        err.reference(
+                            "... and ultimately loops back to this definition",
+                            _seen_aliases[-1].ast,
+                        )
+
+                        return None
+
+                    if resolved.canonical is None:
+                        resolved.canonical = self.get_canonical_unit(
+                            module,
+                            resolved.ast.orig,
+                            _orig_definition=_orig_definition or unit,
+                            _seen_aliases=(*_seen_aliases, resolved),
+                            _seen_alias_refs=(*_seen_alias_refs, component.base),
+                        )
+
+                    assert resolved.canonical
+                    canonical.inplace_combine(
+                        resolved.canonical,
+                        component.exponent,
+                    )
+
+                case _:
+                    diagnostics.error(
+                        f"'{'.'.join(component.base.path)}' does not name a unit or unit type",
+                        component.base,
+                    )
+
+        return canonical
+
+    def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
+        def check_shadowing(node: ast.Node, kind: type[Named], name: Identifier):
+            if shadowed := module.lookup(name):
+                diagnostics.error(
+                    f"{kind.__name__} '{name}' conflicts with {type(shadowed).__name__} '{shadowed.name}'",
+                    node,
+                )
+            elif shadowed := BUILTINS.get(name):
+                diagnostics.notice(f"{kind.__name__} '{name}' shadows a builtin", node)
+
+        match decl:
+            case ast.FuncDefinition():
+                check_shadowing(decl, Function, decl.name)
+
+                module.funcs[decl.name] = Function(name=decl.name, ast=decl)
+
+            case ast.UnitTypeDecl():
+                check_shadowing(decl, UnitType, decl.name)
+
+                module.unit_types[decl.name] = UnitType(name=decl.name, ast=decl)
+
+            case ast.UnitTypeAliasDecl():
+                check_shadowing(decl, UnitType, decl.name)
+                module.unit_type_aliases[decl.name] = UnitTypeAlias(
+                    name=decl.name, ast=decl
+                )
+
+            case ast.UnitDecl():
+                check_shadowing(decl, BaseUnit, decl.name)
+
+                module.base_units[decl.name] = BaseUnit(name=decl.name, ast=decl)
+
+            case ast.UnitAlias():
+                check_shadowing(decl, BaseUnit, decl.name)
+                module.unit_aliases[decl.name] = UnitAlias(name=decl.name, ast=decl)
+
+            case ast.UnitConversionDef():
+                self._deferred_unit_convs.append(decl)
+
+                if decl.name in module.base_units:
+                    return  # you can duplicate unit names for conversions
+
+                check_shadowing(decl, BaseUnit, decl.name)
+
+                module.base_units[decl.name] = BaseUnit(name=decl.name, ast=decl)
+
+            case _:
+                raise NotImplementedError(f"cannot handle {type(decl).__name__} nodes")
 
     def _static_resolve_field(
         self,
@@ -574,56 +638,6 @@ class Resolver:
                 for sub in node:
                     self._resolve_names(module, sub, *scopes)
 
-    def canonicalize_types(self):
-        for module in self.modules.values():
-            for typ in module.types.values():
-                self._eval_type_decl(typ.definition)
-
-            for named in module.variables.values():
-                for node in named.definition.walk():
-                    if isinstance(node, ast.TypeExpression):
-                        self._ensure_type_built(node)
-
-            for named in module.constants.values():
-                for node in named.definition.walk():
-                    if isinstance(node, ast.TypeExpression):
-                        self._ensure_type_built(node)
-
-            for named in module.funcs.values():
-                for node in named.definition.walk():
-                    if isinstance(node, ast.TypeExpression):
-                        self._ensure_type_built(node)
-
-        diagnostics.report()
-
-    def _eval_type_decl(self, decl: ast.TypeDeclaration) -> AnyType | ast.TypeSentinels:
-        match decl:
-            case ast.TypeAliasDecl():
-                return self._ensure_type_built(decl.orig_type)
-
-            case ast.DistinctTypeDecl():
-                return self._ensure_type_built(decl.underlying)
-
-            case ast.StructDefinition():
-                diagnostics.error("unable to evaluate struct declaration", decl)
-                raise NotImplementedError("TODO")
-
-            case ast.EnumDefinition():
-                diagnostics.error("unable to evaluate enum declaration", decl)
-                raise NotImplementedError("TODO")
-
-            case _:
-                diagnostics.error("unable to evaluate type declaration", decl)
-                raise NotImplementedError("TODO")
-
-    def _ensure_type_built(
-        self, type_expr: ast.TypeExpression
-    ) -> AnyType | ast.TypeSentinels:
-        if type_expr.canonical is None:
-            type_expr.canonical = self._build_type(type_expr)
-
-        return type_expr.canonical
-
     def _build_type(self, type_expr: ast.TypeExpression) -> AnyType | ast.TypeSentinels:
         match type_expr:
             case ast.SimpleType():
@@ -659,43 +673,3 @@ class Resolver:
                 raise NotImplementedError(
                     f"no support for {type(type_expr).__qualname__}"
                 )
-
-    def canonicalize_units(self):
-        for module in self.modules.values():
-            for decl in module.file.declarations:
-                for node in decl.walk():
-                    if isinstance(node, ast.CompoundUnit):
-                        self._ensure_canonical_unit(node)
-
-        diagnostics.report()
-
-    def _ensure_canonical_unit(self, unit: ast.CompoundUnit):
-        if unit.canonical is not None:
-            return
-
-        unit.canonical = CanonicalUnit()
-
-        for component in unit.components:
-            resolved = component.base.resolves_to
-            assert resolved is not None, "this should have been resolved by now"
-            if isinstance(resolved, (BaseUnit, UnitType)):
-                if isinstance(resolved.definition, ast.UnitAlias):
-                    self._ensure_canonical_unit(resolved.definition.base)
-                    assert resolved.definition.base.canonical is not None
-                    unit.canonical.inplace_combine(
-                        resolved.definition.base.canonical,
-                        component.exponent,
-                    )
-                else:
-                    unit.canonical[resolved.id] += component.exponent
-            else:
-                diagnostics.error(
-                    f"'{'.'.join(component.base.path)}' does not name a unit or unit type",
-                    component.base,
-                )
-
-    def build_unit_conversions(self):
-        for conv in self._deferred_unit_convs:
-            pass  # TODO
-
-        diagnostics.report()

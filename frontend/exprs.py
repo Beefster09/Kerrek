@@ -254,11 +254,11 @@ def _evaluate(node: ast.Expression) -> EvalResult:
                 )
             elif isinstance(resolved, Unit):
                 if isinstance(resolved.definition, ast.UnitAlias):
-                    assert resolved.definition.base.canonical is not None
+                    assert resolved.definition.orig.canonical is not None
                     return EvalResult(
                         Fraction(1),
                         FlexType(FlexAffinity.Integer),
-                        resolved.definition.base.canonical,
+                        resolved.definition.orig.canonical,
                     )
                 else:
                     return EvalResult(

@@ -47,6 +47,7 @@ class DiagnosticLevel(Enum):
             return self.name.lower()
 
 
+@dataclass(kw_only=True)
 class DiagnosticReference:
     message: str
     file: Path | None
@@ -71,8 +72,53 @@ class Diagnostic:
         self.suggestions.append(message)
         return self
 
-    def reference(self, message: str, file, start, end) -> Self:
-        # STUB / TODO
+    @overload
+    def reference(
+        self,
+        message: str,
+        file: Path | None,
+        start: Location | None,
+        end: Location | None = None,
+        /,
+    ) -> Self: ...
+
+    @overload
+    def reference(
+        self,
+        message: str,
+        node: ast.Node,
+        /,
+    ) -> Self: ...
+
+    def reference(
+        self,
+        message: str,
+        file_or_node: Path | ast.Node | None,
+        start_maybe: Location | None = None,
+        end_maybe: Location | None = None,
+    ) -> Self:
+        if isinstance(file_or_node, ast.Node):
+            file = file_or_node.file
+            start = file_or_node.start
+            end = file_or_node.end
+        elif start_maybe:
+            file = file_or_node
+            start = start_maybe
+            end = end_maybe or start_maybe
+        else:
+            file = file_or_node
+            start = start_maybe
+            end = end_maybe
+
+        self.references.append(
+            DiagnosticReference(
+                message=message,
+                file=file,
+                start=start,
+                end=end,
+            )
+        )
+
         return self
 
 
@@ -348,7 +394,7 @@ def report(warnings_as_errors=False):
         _show_diagnostic_source(diag)
 
         for ref in diag.references:
-            print(f"    {ANSI_BR_BLUE}note{ANSI_CLEAR}: {ref.message}")
+            print(f"    {ANSI_BR_BLUE}context{ANSI_CLEAR}: {ref.message}")
             _show_diagnostic_source(ref)
 
         for message in diag.suggestions:

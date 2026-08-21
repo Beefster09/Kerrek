@@ -106,6 +106,8 @@ class Keyword(Enum):
 
     Unit = "unit"
     Per = "per"
+    To = "to"
+    From = "from"
 
     Capability = "capability"
     Requires = "requires"

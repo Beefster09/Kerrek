@@ -231,21 +231,21 @@ class Parser:
     ):
         if isinstance(token_or_start, Location):
             if end_maybe:
-                diagnostics.error(
+                return diagnostics.error(
                     message, self.src, token_or_start, end_maybe, category="syntax"
                 )
             else:
-                diagnostics.error(
+                return diagnostics.error(
                     message, self.src, token_or_start, token_or_start, category="syntax"
                 )
         else:
             bad_tok = token_or_start or self.tokens.peek()
             if bad_tok:
-                diagnostics.error(
+                return diagnostics.error(
                     message, self.src, bad_tok.start, bad_tok.end, category="syntax"
                 )
             else:
-                diagnostics.error(
+                return diagnostics.error(
                     message,
                     self.src,
                     self.tokens[-1].end if self.tokens._size else None,
@@ -330,7 +330,7 @@ class Parser:
             Keyword.Unit,
             Keyword.Type,
             Identifier,
-            Keyword.Is,
+            Punctuation.Assign,
         ):
             base = self._compound_unit(required=True)
             if not base:
@@ -342,7 +342,7 @@ class Parser:
                     start=m[0].start,
                     end=base.end,
                     name=m[2].what,
-                    base=base,
+                    orig=base,
                 )
         elif m := self.tokens.match(
             Keyword.Unit,
@@ -360,23 +360,7 @@ class Parser:
         elif m := self.tokens.match(
             Keyword.Unit,
             Identifier,
-            Punctuation.Colon,
-        ):
-            unit_type = self._qualname(required=True)  # plain unit declaration
-
-            if unit_type and self._end_of_statement():
-                return ast.UnitDecl(
-                    file=m[0].file,
-                    start=m[0].start,
-                    end=unit_type.end,
-                    name=m[1].what,
-                    unit_type=unit_type,
-                )
-
-        elif m := self.tokens.match(
-            Keyword.Unit,
-            Identifier,
-            Keyword.Is,
+            Punctuation.Assign,
         ):
             name = m[1]
             base = self._compound_unit(required=True)
@@ -386,101 +370,120 @@ class Parser:
                     start=m[0].start,
                     end=base.end,
                     name=name.what,
-                    base=base,
-                )
-
-        elif m := self.tokens.match(
-            Keyword.Unit,
-            Identifier,
-            Punctuation.Assign,
-        ):
-            if m2 := self.tokens.match(Numeric, Punctuation.Star):
-                mul = m2[0]
-                if mul.what.form not in (
-                    NumberLiteralForm.DecimalInteger,
-                    NumberLiteralForm.Decimal,
-                ):
-                    self._emit_error(
-                        "decimal number required as multiplier for unit conversion", mul
-                    )
-
-                multiplier = Decimal(mul.what.value)
-
-                src_unit = self._qualname(required=True)
-                if src_unit is None:
-                    return
-
-                end = src_unit.end
-
-            else:
-                src_unit = self._qualname(required=True)
-                if src_unit is None:
-                    return
-
-                end = src_unit.end
-
-                if m2 := self.tokens.match(Punctuation.Star, Numeric):
-                    mul = m2[1]
-                    if mul.what.form not in (
-                        NumberLiteralForm.DecimalInteger,
-                        NumberLiteralForm.Decimal,
-                    ):
-                        self._emit_error(
-                            "decimal number required as multiplier for unit conversion",
-                            mul,
-                        )
-
-                    multiplier = Decimal(mul.what.value)
-                    end = mul.end
-                else:
-                    multiplier = Decimal(1)
-
-            if m2 := self.tokens.match(Punctuation.Slash, Numeric):
-                div = m2[1]
-                if div.what.form not in (
-                    NumberLiteralForm.DecimalInteger,
-                    NumberLiteralForm.Decimal,
-                ):
-                    self._emit_error(
-                        "decimal number required as divisor for unit conversion", div
-                    )
-
-                divisor = Decimal(div.what.value)
-                end = div.end
-            else:
-                divisor = Decimal(1)
-
-            if multiplier == Decimal(0):
-                self._emit_error("unit conversions cannot multiply by zero")
-            if divisor == Decimal(0):
-                self._emit_error("unit conversions cannot divide by zero")
-
-            if self._end_of_statement():
-                return ast.UnitConversionDef(
-                    file=m[0].file,
-                    start=m[0].start,
-                    end=end,
-                    dest=m[1].what,
-                    src=src_unit,
-                    mult=multiplier,
-                    div=divisor,
+                    orig=base,
                 )
 
         elif m := self.tokens.match(
             Keyword.Unit,
             Identifier,
         ):
-            # untyped unit declaration
-            if self._end_of_statement():
+            if self.tokens.match(Punctuation.Colon):
+                unit_type = self._qualname(required=True)  # plain unit declaration
+            else:
+                unit_type = None
+
+            if self.tokens.match(Punctuation.LCurly):
+                conversions: list[ast.UnitConversionDef] = []
+
+                while not (rcurly := self.tokens.match_one(Punctuation.RCurly)):
+                    conversion = self._unit_conversion()
+                    if conversion is None:
+                        self.tokens.attempt_recovery()
+                        return None
+
+                    conversions.append(conversion)
+
                 return ast.UnitDecl(
                     file=m[0].file,
                     start=m[0].start,
-                    end=m[1].end,
+                    end=rcurly.end,
                     name=m[1].what,
+                    unit_type=unit_type,
+                    conversions=conversions,
                 )
+
+            elif self._end_of_statement():
+                return ast.UnitDecl(
+                    file=m[0].file,
+                    start=m[0].start,
+                    end=unit_type.end if unit_type else m[1].end,
+                    name=m[1].what,
+                    unit_type=unit_type,
+                    conversions=[],
+                )
+            else:
+                self._emit_error("expected '{' or ';' here")
+                self.tokens.attempt_recovery()
+                return None
 
         self._emit_error("invalid form of unit declaration")
         self.tokens.attempt_recovery()
+
+    def _unit_conversion(self) -> ast.UnitConversionDef | None:
+        if dir_tok := self.tokens.match_one(Keyword.To):
+            direction = ast.ConversionDirection.To
+        elif dir_tok := self.tokens.match_one(Keyword.From):
+            direction = ast.ConversionDirection.From
+        else:
+            self._emit_error("expected a unit conversion here")
+            return None
+
+        other_unit = self._qualname(required=True)
+        if other_unit is None:
+            self._emit_error("expected another unit here")
+            return None
+
+        end = other_unit.end
+
+        if not self.tokens.match_one(Punctuation.Colon):
+            self._emit_error("expected a colon here")
+            return None
+
+        if self.tokens.match_one(Punctuation.Star):
+            if num := self.tokens.match_one(Numeric):
+                multiplier = num.what.value
+                end = num.end
+            elif qualname := self._qualname():
+                multiplier = qualname
+                end = qualname.end
+            else:
+                self._emit_error(
+                    "expected a number or named constant as the multiplier"
+                )
+                return None
+        else:
+            multiplier = None
+
+        if self.tokens.match_one(Punctuation.Slash):
+            if num := self.tokens.match_one(Numeric):
+                divisor = num.what.value
+                end = num.end
+            elif qualname := self._qualname():
+                divisor = qualname
+                end = qualname.end
+            else:
+                self._emit_error("expected a number or named constant as the divisor")
+                return None
+        else:
+            divisor = None
+
+        if multiplier is None and divisor is None:
+            self._emit_error(
+                "a multiplier and/or divisor is required for unit conversions"
+            )
+
+        if self._end_of_statement():
+            return ast.UnitConversionDef(
+                file=dir_tok.file,
+                start=dir_tok.start,
+                end=end,
+                direction=direction,
+                other=other_unit,
+                multiplier=multiplier if multiplier is not None else 1,
+                divisor=divisor if divisor is not None else 1,
+            )
+        else:
+            self._emit_error("expected ; here")
 
     def _compound_unit(self, *, required=False):
         leading_hash = self.tokens.match_one(Punctuation.Hash)
