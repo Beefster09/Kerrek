@@ -33,6 +33,10 @@ unit foot: length {
 	from football_field: * 120;
 }
 unit ft = foot;
+unit inch: length;
+unit yard: length;
+unit mile: length;
+unit football_field: length;
 
 
 unit kilogram: mass;

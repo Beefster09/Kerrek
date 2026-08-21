@@ -403,11 +403,23 @@ def report(warnings_as_errors=False):
             )
 
     if err_count:
-        print(f"encountered {err_count} errors. aborting.")
+        print(
+            ANSI_BR_MAGENTA,
+            f"encountered {err_count} error{'s' * (err_count != 1)}",
+            ANSI_CLEAR,
+            sep="",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     if warnings_as_errors and warn_count:
-        print(f"encountered {err_count} warnings. aborting.")
+        print(
+            ANSI_BR_MAGENTA,
+            f"encountered {warn_count} warning{'s' * (warn_count != 1)}",
+            ANSI_CLEAR,
+            sep="",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     _diagnostics = []

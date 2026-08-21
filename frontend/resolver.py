@@ -22,7 +22,7 @@ _NEXT_SYM = _symbol_gen()
 
 
 @dataclass(kw_only=True)
-class PartialSymbol:
+class PartialSymbol[T: ast.Node]:
     """A partially translated symbol with an id
 
     It references the AST node associated with the symbol id
@@ -31,6 +31,7 @@ class PartialSymbol:
 
     id: SymbolID = field(default_factory=_NEXT_SYM.__next__)
     name: Identifier
+    ast: T
 
 
 @dataclass(kw_only=True)
@@ -69,7 +70,7 @@ class Constant:
     """
 
     name: Identifier
-    ast_node: ast.LocalConstant | ast.GlobalConstant
+    ast: ast.LocalConstant | ast.GlobalConstant
 
 
 @dataclass(kw_only=True)
@@ -446,13 +447,17 @@ class Resolver:
 
     def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
         def check_shadowing(node: ast.Node, kind: type[Named], name: Identifier):
-            if shadowed := module.lookup(name):
-                diagnostics.error(
-                    f"{kind.__name__} '{name}' conflicts with {type(shadowed).__name__} '{shadowed.name}'",
+            if shadowed := BUILTINS.get(name):
+                diagnostics.notice(
+                    f"{kind.__name__} '{name}' shadows a builtin name", node
+                )
+            elif shadowed := module.lookup(name):
+                err = diagnostics.error(
+                    f"'{name}' conflicts with previously defined name in the module",
                     node,
                 )
-            elif shadowed := BUILTINS.get(name):
-                diagnostics.notice(f"{kind.__name__} '{name}' shadows a builtin", node)
+                if not isinstance(shadowed, (Module, Builtin)):
+                    err.reference(f"'{name}' was previously defined here", shadowed.ast)
 
         match decl:
             case ast.FuncDefinition():
@@ -479,16 +484,6 @@ class Resolver:
             case ast.UnitAlias():
                 check_shadowing(decl, BaseUnit, decl.name)
                 module.unit_aliases[decl.name] = UnitAlias(name=decl.name, ast=decl)
-
-            case ast.UnitConversionDef():
-                self._deferred_unit_convs.append(decl)
-
-                if decl.name in module.base_units:
-                    return  # you can duplicate unit names for conversions
-
-                check_shadowing(decl, BaseUnit, decl.name)
-
-                module.base_units[decl.name] = BaseUnit(name=decl.name, ast=decl)
 
             case _:
                 raise NotImplementedError(f"cannot handle {type(decl).__name__} nodes")
