@@ -63,10 +63,11 @@ unit day: time {
 	to hour: * 24;
 }
 
+const PI = 3.14159265358979;
 
 unit degrees: angle;
 unit radians: angle {
-	from degrees: * 3.14159265358979 / 180;
+	from degrees: * PI / 180;
 }
 unit turn: angle{
 	to degrees: * 360;

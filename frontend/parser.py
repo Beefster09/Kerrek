@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum, auto
 from pathlib import Path
 from types import EllipsisType
-from typing import cast, overload
+from typing import Literal, cast, overload
 
 from frontend import ast, diagnostics
 from frontend.common import Location
@@ -294,11 +294,14 @@ class Parser:
             case Keyword.Type:
                 raise NotImplementedError()
 
-            # case Keyword.Let:
-            #     raise NotImplementedError()
-
-            # case Keyword.Const:
-            #     raise NotImplementedError()
+            case Keyword.Let | Keyword.Const:
+                decl = self._const_or_var(local=False)
+                if self._end_of_statement():
+                    return decl
+                else:
+                    self._emit_error("expected a ; here")
+                    self.tokens.attempt_recovery()
+                    return None
 
             case Keyword.Unit:
                 return self._unit_decl()
@@ -886,79 +889,7 @@ class Parser:
                 )
 
             case Keyword.Let | Keyword.Const:
-                is_const = tok.what is Keyword.Const
-                self.tokens.advance()
-                name = self.tokens.match_one(Identifier)
-                if name is None:
-                    self._emit_error("expected variable name here")
-                    self.tokens.attempt_recovery()
-                    return None
-
-                if self.tokens.match_one(Punctuation.Colon):
-                    typ = self._type_expr()
-                else:
-                    typ = None
-
-                if self.tokens.match_one(Punctuation.Bar):
-                    if self.tokens.match_one(Keyword.Nil):
-                        unit = ast.IndeterminateUnit.NoUnit
-                    elif self.tokens.match_one(Keyword.Placeholder):
-                        unit = ast.IndeterminateUnit.Flexible
-                    else:
-                        unit = self._compound_unit()
-
-                        if unit is None:
-                            self._emit_error("expected a unit here")
-                            self.tokens.attempt_recovery()
-                            return None
-
-                else:
-                    unit = ast.IndeterminateUnit.Inferred
-
-                if self.tokens.match_one(Punctuation.Assign):
-                    if ell := self.tokens.match_one(Punctuation.Ellipsis_):
-                        value = ast.UnboundVar(
-                            file=ell.file,
-                            start=ell.start,
-                            end=ell.end,
-                        )
-                    else:
-                        value = self._expr()
-
-                        if value is None:
-                            self._emit_error("expected an expression here")
-                            self.tokens.attempt_recovery()
-                            return None
-
-                else:
-                    value = None
-
-                if is_const:
-                    if value is None or isinstance(value, ast.UnboundVar):
-                        self._emit_error(
-                            "const declarations must be given a value", tok
-                        )
-                        return None
-
-                    stmt = ast.LocalConstant(
-                        file=tok.file,
-                        start=tok.start,
-                        end=value.end if value else tok.end,
-                        name=name.what,
-                        type=typ,
-                        unit=unit,
-                        expr=value,
-                    )
-                else:
-                    stmt = ast.LocalVariable(
-                        file=tok.file,
-                        start=tok.start,
-                        end=value.end if value else tok.end,
-                        name=name.what,
-                        type=typ,
-                        unit=unit,
-                        expr=value,
-                    )
+                stmt = self._const_or_var(local=True)
 
             case _:
                 if expr := self._expr():
@@ -1018,6 +949,118 @@ class Parser:
         else:
             self._emit_error("expected end of statement here")
             self.tokens.attempt_recovery()
+
+    @overload
+    def _const_or_var(
+        self, *, local: Literal[False]
+    ) -> ast.TopLevelDeclaration | None: ...
+
+    @overload
+    def _const_or_var(self, *, local: Literal[True]) -> ast.Statement | None: ...
+
+    def _const_or_var(
+        self, *, local: bool
+    ) -> ast.TopLevelDeclaration | ast.Statement | None:
+        tok = self.tokens.pop()
+        assert tok and tok.what in (Keyword.Let, Keyword.Const)
+
+        is_const = tok.what is Keyword.Const
+        name = self.tokens.match_one(Identifier)
+
+        if name is None:
+            self._emit_error("expected variable name here")
+            self.tokens.attempt_recovery()
+            return None
+
+        if self.tokens.match_one(Punctuation.Colon):
+            typ = self._type_expr()
+        else:
+            typ = None
+
+        if self.tokens.match_one(Punctuation.Bar):
+            if self.tokens.match_one(Keyword.Nil):
+                unit = ast.IndeterminateUnit.NoUnit
+            elif self.tokens.match_one(Keyword.Placeholder):
+                unit = ast.IndeterminateUnit.Flexible
+            else:
+                unit = self._compound_unit()
+
+                if unit is None:
+                    self._emit_error("expected a unit here")
+                    self.tokens.attempt_recovery()
+                    return None
+
+        else:
+            unit = ast.IndeterminateUnit.Inferred
+
+        if self.tokens.match_one(Punctuation.Assign):
+            if ell := self.tokens.match_one(Punctuation.Ellipsis_):
+                value = ast.UnboundVar(
+                    file=ell.file,
+                    start=ell.start,
+                    end=ell.end,
+                )
+            else:
+                value = self._expr()
+
+                if value is None:
+                    self._emit_error("expected an expression here")
+                    self.tokens.attempt_recovery()
+                    return None
+
+        else:
+            value = None
+
+        if is_const:
+            if value is None or isinstance(value, ast.UnboundVar):
+                self._emit_error("const declarations must be given a value", tok)
+                return None
+
+            if local:
+                return ast.LocalConstant(
+                    file=tok.file,
+                    start=tok.start,
+                    end=value.end if value else tok.end,
+                    name=name.what,
+                    type=typ,
+                    unit=unit,
+                    expr=value,
+                )
+            else:
+                return ast.GlobalConstant(
+                    file=tok.file,
+                    start=tok.start,
+                    end=value.end if value else tok.end,
+                    name=name.what,
+                    type=typ,
+                    unit=unit,
+                    expr=value,
+                )
+        else:
+            if local:
+                return ast.LocalVariable(
+                    file=tok.file,
+                    start=tok.start,
+                    end=value.end if value else tok.end,
+                    name=name.what,
+                    type=typ,
+                    unit=unit,
+                    expr=value,
+                )
+            else:
+                if isinstance(value, ast.UnboundVar):
+                    self._emit_error("global variables cannot be unbound")
+                    return None
+
+                return ast.GlobalVariable(
+                    file=tok.file,
+                    start=tok.start,
+                    end=value.end if value else tok.end,
+                    name=name.what,
+                    type=typ,
+                    unit=unit,
+                    expr=value,
+                )
 
     def _expr(self) -> ast.Expression | None:
         expr = self._expr_atom()

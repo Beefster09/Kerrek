@@ -446,11 +446,9 @@ class Resolver:
         return canonical
 
     def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
-        def check_shadowing(node: ast.Node, kind: type[Named], name: Identifier):
+        def check_shadowing(node: ast.Node, name: Identifier):
             if shadowed := BUILTINS.get(name):
-                diagnostics.notice(
-                    f"{kind.__name__} '{name}' shadows a builtin name", node
-                )
+                diagnostics.notice(f"'{name}' shadows a builtin name", node)
             elif shadowed := module.lookup(name):
                 err = diagnostics.error(
                     f"'{name}' conflicts with previously defined name in the module",
@@ -461,28 +459,34 @@ class Resolver:
 
         match decl:
             case ast.FuncDefinition():
-                check_shadowing(decl, Function, decl.name)
-
+                check_shadowing(decl, decl.name)
                 module.funcs[decl.name] = Function(name=decl.name, ast=decl)
 
+            case ast.GlobalConstant():
+                check_shadowing(decl, decl.name)
+                module.constants[decl.name] = Constant(name=decl.name, ast=decl)
+
+            case ast.GlobalVariable():
+                check_shadowing(decl, decl.name)
+                module.variables[decl.name] = Variable(name=decl.name, ast=decl)
+
             case ast.UnitTypeDecl():
-                check_shadowing(decl, UnitType, decl.name)
+                check_shadowing(decl, decl.name)
 
                 module.unit_types[decl.name] = UnitType(name=decl.name, ast=decl)
 
             case ast.UnitTypeAliasDecl():
-                check_shadowing(decl, UnitType, decl.name)
+                check_shadowing(decl, decl.name)
                 module.unit_type_aliases[decl.name] = UnitTypeAlias(
                     name=decl.name, ast=decl
                 )
 
             case ast.UnitDecl():
-                check_shadowing(decl, BaseUnit, decl.name)
-
+                check_shadowing(decl, decl.name)
                 module.base_units[decl.name] = BaseUnit(name=decl.name, ast=decl)
 
             case ast.UnitAlias():
-                check_shadowing(decl, BaseUnit, decl.name)
+                check_shadowing(decl, decl.name)
                 module.unit_aliases[decl.name] = UnitAlias(name=decl.name, ast=decl)
 
             case _:

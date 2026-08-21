@@ -15,18 +15,16 @@ class Backend(Protocol):
 
 
 def build(entry_point: Path, backend: Backend) -> bool:
-    r = resolver.Resolver()
-    main = r.require(entry_point)
-    r.finish_imports()
-    rich.print(main.file)
+    res = resolver.Resolver()
+    main = res.require(entry_point)
+    res.finish_imports()
 
-    for module in r.modules.values():
-        for decl in module.file.declarations:
-            analysis.validate(decl)
+    hb = analysis.HIRBuilder(res, main)
+    hir = hb.build()
 
-    diagnostics.report()
+    analysis.validate_hir(hir)
 
-    tu = lowering.translate_to_mir(r, main)
+    tu = lowering.hir_to_mir(hir)
 
     rich.print(tu)
 

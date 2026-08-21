@@ -17,6 +17,7 @@ from frontend.common import (
     UnaryOp,
 )
 from frontend.lexer import Identifier
+from frontend.types import PrimitiveType
 
 # === NODES ===
 
@@ -25,9 +26,8 @@ SymbolID = NewType("SymbolID", int)
 
 
 @dataclass(kw_only=True)
-class Module:
-    file: Path
-    name: Identifier
+class TranslationUnit:
+    entry_point: FuncDefinition | None = None
     types: dict[SymbolID, Type] = field(default_factory=dict)
     funcs: dict[SymbolID, FuncDefinition] = field(default_factory=dict)
     variables: dict[SymbolID, Variable] = field(default_factory=dict)
@@ -51,27 +51,6 @@ class Node:
             end=base.end,
             **other,
         )
-
-    def __iter__(self):
-        for f in fields(self):
-            value = getattr(self, f.name)
-            if not value:
-                continue
-            elif isinstance(value, (list, tuple)) and isinstance(value[0], Node):
-                yield from value
-            elif isinstance(value, Node):
-                yield value
-
-    def walk(self):
-        yield self
-        for f in fields(self):
-            value = getattr(self, f.name)
-            if isinstance(value, (list, tuple)):
-                for sub in value:
-                    if isinstance(sub, Node):
-                        yield from sub.walk()
-            elif isinstance(value, Node):
-                yield from value.walk()
 
 
 @dataclass(kw_only=True)
@@ -265,12 +244,18 @@ class GenericType(Type):
 @dataclass(kw_only=True)
 class FixedArrayType(Type):
     elem: Type
-    size: int
+    shape: tuple[int, ...]
 
 
 @dataclass(kw_only=True)
 class DynamicArrayType(Type):
     elem: Type
+
+
+@dataclass(kw_only=True)
+class DimensionedArrayType(Type):
+    elem: Type
+    dimensions: int
 
 
 @dataclass(kw_only=True)

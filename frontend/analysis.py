@@ -1,7 +1,33 @@
 from dataclasses import dataclass
 
-from frontend import ast, diagnostics, exprs
+from frontend import ast, diagnostics, exprs, hir, resolver
 from frontend.lexer import Identifier
+
+
+class HIRBuilder:
+    def __init__(self, res: resolver.Resolver, main: resolver.Module):
+        self.resolver = res
+        self.main_module = main
+
+    def build(self) -> hir.TranslationUnit:
+        """builds up a typed HIR from the ast+resolver
+        - named references are replaced with links to other parts of the HIR
+        - dependency cycles are detected
+        - constant evaluation
+        - type checking and inference
+        - unit analysis
+        """
+        tu = hir.TranslationUnit()
+
+        if tu.entry_point is None:
+            diagnostics.error(
+                f"no entry point function was found in {self.main_module.file.source}",
+                None,
+                None,
+            )
+
+        diagnostics.report()
+        return tu
 
 
 @dataclass(kw_only=True)
@@ -18,25 +44,23 @@ class ParamVar:
 type Scope = dict[Identifier, VarState | ParamVar]
 
 
-def validate(node: ast.TopLevelDeclaration):
+def validate_hir(node: hir.TranslationUnit):
     """does all of the core validation of the code:
-    - simple constant evaluation
-    - dependency cycle detection
-    - type checking & inference
-    - unit analysis
     - value label provenance checking
     - capability tracking
     - unused variables (just a warning)
     """
-    match node:
-        case ast.GlobalConstant():
-            exprs.evaluate(node.expr)
 
-        case ast.GlobalVariable():
+    diagnostics.report()
+
+
+def validate(node: hir.Node):
+    match node:
+        case hir.Variable():
             if node.expr and not isinstance(node.expr, ast.UnboundVar):
                 exprs.evaluate(node.expr)
 
-        case ast.FuncDefinition():
+        case hir.FuncDefinition():
             params_scope: Scope = {}
             for param in node.params:
                 if param.default:

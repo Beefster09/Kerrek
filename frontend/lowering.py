@@ -7,13 +7,12 @@ from decimal import Context as DecCtx
 from fractions import Fraction
 from typing import Never, overload
 
-from frontend import ast, mir, resolver, types
+from frontend import ast, hir, mir, resolver, types
 from frontend.exprs import ByteValue, ComptimeType, NilOf, RealizedType
 
 
-def translate_to_mir(
-    res: resolver.Resolver,
-    main_module: resolver.Module,
+def hir_to_mir(
+    hir: hir.TranslationUnit,
 ) -> mir.TranslationUnit:
     tu = mir.TranslationUnit()
 
