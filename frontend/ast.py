@@ -483,7 +483,7 @@ class Argument(Node):
 
 
 @dataclass(kw_only=True)
-class FuncOverload(TopLevelDeclaration):
+class FuncOverloadGroup(TopLevelDeclaration):
     name: Identifier
     overloads: list[QualifiedName]
 

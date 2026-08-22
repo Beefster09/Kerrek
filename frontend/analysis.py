@@ -5,17 +5,21 @@ from dataclasses import dataclass
 from frontend import ast, diagnostics, exprs, hir
 from frontend.lexer import Identifier
 from frontend.resolver import (
+    Annotation,
     Builtin,
     Constant,
     Function,
+    GlobalVariable,
+    LocalVariable,
     Module,
     Named,
     PartialSymbol,
     Resolver,
     Scope,
-    Variable,
-    next_symbol,
+    next_symbol_id,
 )
+
+from typing import Never
 
 
 @dataclass(kw_only=True)
@@ -47,7 +51,7 @@ class HIRBuilder:
 
         for module in self.resolver.modules.values():
             for symbol in module:
-                self._process_symbol(module, symbol)
+                self._build_symbol(symbol, module)
 
         if self.hir.entry_point is None:
             diagnostics.error(
@@ -59,195 +63,336 @@ class HIRBuilder:
         diagnostics.report()
         return self.hir
 
-    def _process_symbol(
+    def _symbol_getter(self, module: Module, *scopes: Scope):
+        def _get_symbol(node: ast.Node):
+            symbol = self.resolver.resolve(node, module, *scopes)
+
+            if symbol:
+                self._build_symbol(symbol, module, *scopes)
+
+            return symbol
+
+        return _get_symbol
+
+    def _build_symbol(
         self,
-        module: Module,
         symbol: Named,
+        module: Module,
         *scopes: Scope,
-    ):
+    ) -> hir.Symbol | None:
         match symbol:
-            case Function(ast=node):
-                annotations: list[hir.Annotation] = []
-
-                for annotation in node.annotations:
-                    anno = self.resolver.resolve(module, annotation, *scopes)
-                    # TODO: process certain builtin annotations and attach the rest
-                    match anno:
-                        case Builtin():
-                            pass  # TODO: check validity and do something with this
-                        case Annotation():
-                            anno_hir = hir.Annotation(
-                                file=annotation.file,
-                                start=annotation.start,
-                                end=annotation.end,
-                                of=symbol.hir,
-                                args=[],
-                            )
-                            annotations.append(anno_hir)
-
-                params_scope: Scope = {}
-                params: list[hir.FormalParameter] = []
-                generics: Scope = {}
-
-                for ast_param in node.params:
-                    if ast_param.name in params_scope:
-                        diagnostics.error(
-                            f"duplicate parameter name '{ast_param.name}'", ast_param
-                        )
-
-                    ptype = self._build_type(module, ast_param.type, *scopes)
-
-                    if ast_param.unit:
-                        punit = self._build_unit(module, ast_param.unit, *scopes)
-                    else:
-                        punit = None
-
-                    if ast_param.default:
-                        pdefault = self._build_value(module, ast_param.default, *scopes)
-                    else:
-                        pdefault = None
-
-                    hir_param = hir.FormalParameter(
-                        file=ast_param.file,
-                        start=ast_param.start,
-                        end=ast_param.end,
-                        id=next_symbol(),
-                        name=ast_param.name,
-                        type=ptype,
-                        unit=punit,
-                        default=pdefault,
-                    )
-                    param = FormalParameter(
-                        id=hir_param.id,
-                        name=ast_param.name,
-                        ast=ast_param,
-                        hir=hir_param,
-                    )
-
-                    params_scope[ast_param.name] = param
-                    params.append(param.hir)
-
-                returns: list[hir.FuncReturn] = []
-                named_returns: Scope = {}
-
-                for ret in node.returns:
-                    rtype = self._build_type(module, ret.type, *scopes)
-
-                    if ret.unit:
-                        runit = self._build_unit(module, ret.unit, *scopes)
-                    else:
-                        runit = None
-
-                    hir_ret = hir.FuncReturn(
-                        file=ret.file,
-                        start=ret.start,
-                        end=ret.end,
-                        type=rtype,
-                        unit=runit,
-                    )
-                    returns.append(hir_ret)
-
-                    if ret.name is not None:
-                        named_returns[ret.name] = NamedReturn(
-                            name=ret.name,
-                            ast=ret,
-                            hir=hir_ret,
-                        )
-
-                if node.error_type is not None:
-                    err_type = self._build_type(
+            case Function():
+                if not symbol.hir:
+                    self.hir.funcs[symbol.id] = symbol.hir = self._build_func(
+                        symbol.ast,
                         module,
-                        node.error_type,
-                        generics,
                         *scopes,
+                        id=symbol.id,
                     )
-                else:
-                    err_type = None
+                    if scopes:
+                        scopes[0][symbol.name] = symbol
 
-                requires = None
-                if node.requires:
-                    pass  # TODO
+                return symbol.hir
 
-                func = hir.FuncDefinition(
-                    file=node.file,
-                    start=node.start,
-                    end=node.end,
-                    id=symbol.id,
-                    name=node.name,
-                    params=params,
-                    returns=returns,
-                    error_type=err_type,
-                    fallible=node.fallible,
-                    requires=requires,
-                    body=self._build_block(module, node.body, *scopes, params_scope),
-                    annotations=annotations,
-                )
-                symbol.hir = func
-                self.hir.funcs[symbol.id] = func
-
-            case Variable(ast=node):
-                if isinstance(node.type, ast.TypeExpression):
-                    self._resolve_names(module, node.type, *scopes)
-
-                if node.expr:
-                    self._resolve_names(module, node.expr, *scopes)
-
-                local_scope = scopes[0]
-                if node.name in local_scope:
-                    diagnostics.error(
-                        f"local with name '{node.name}' is already defined", node
+            case Constant():
+                if not symbol.value:
+                    symbol.value = exprs.evaluate(
+                        symbol.ast.expr,
+                        self._symbol_getter(module, *scopes),
                     )
-                    return
-                elif any(node.name in scope for scope in scopes[1:]):
-                    diagnostics.notice(
-                        f"local '{node.name}' shadows previously defined local", node
-                    )
-                elif node.name in module:
-                    diagnostics.notice(
-                        f"local '{node.name}' shadows module global", node
-                    )
-                elif node.name in BUILTINS:
-                    diagnostics.warning(f"local '{node.name}' shadows builtin", node)
 
-                if isinstance(node, ast.LocalConstant):
-                    local_scope[node.name] = Constant(name=node.name, definition=node)
-                else:
-                    var = Variable(name=node.name, definition=node)
-                    local_scope[node.name] = var
-                    node.shadow_id = var.id
+                return None
+
+            case GlobalVariable():
+                if not symbol.hir:
+                    self.hir.variables[symbol.id] = symbol.hir = self._build_var(
+                        symbol.ast,
+                        module,
+                        *scopes,
+                        id=symbol.id,
+                    )
+
+                return symbol.hir
+
+            case LocalVariable():
+                # local vars have already been fully resolved and are built up by the block builder
+                return symbol.hir
 
             case _:
                 raise NotImplementedError(
                     f"cannot translate {type(symbol).__name__} symbols yet"
                 )
 
+    def _build_func(
+        self,
+        func: ast.FuncDefinition,
+        module: Module,
+        *scopes: Scope,
+        id: hir.SymbolID | None = None,
+    ) -> hir.FuncDefinition:
+        annotations: list[hir.Annotation] = []
+
+        for annotation in func.annotations:
+            anno = self.resolver.resolve(annotation, module, *scopes)
+            # TODO: process certain builtin annotations and attach the rest
+            match anno:
+                case Builtin():
+                    # TODO: special logic for certain annotations
+                    diagnostics.error(
+                        f"builtin '{anno.name}' is not a valid function annotation",
+                        annotation.base,
+                    )
+
+                case Annotation():
+                    if anno.hir is None:
+                        anno.hir = self._build_annotation_def(
+                            anno.ast,
+                            module,
+                            *scopes,
+                        )
+
+                    anno_hir = hir.Annotation(
+                        file=annotation.file,
+                        start=annotation.start,
+                        end=annotation.end,
+                        of=anno.hir,
+                        args=[],
+                    )
+                    annotations.append(anno_hir)
+
+                case _:
+                    diagnostics.error(
+                        f"'{annotation.base}' is not an annotation",
+                        annotation.base,
+                    )
+
+        params_scope: Scope = {}
+        params: list[hir.FormalParameter] = []
+        generics: Scope = {}
+
+        for ast_param in func.params:
+            if ast_param.name in params_scope:
+                diagnostics.error(
+                    f"duplicate parameter name '{ast_param.name}'", ast_param
+                )
+
+            ptype = self._build_type(ast_param.type, module, *scopes)
+
+            if ast_param.unit:
+                punit = self._build_unit(ast_param.unit, module, *scopes)
+            else:
+                punit = None
+
+            if ast_param.default:
+                pdefault = self._build_value(ast_param.default, module, *scopes)
+            else:
+                pdefault = None
+
+            hir_param = hir.FormalParameter(
+                file=ast_param.file,
+                start=ast_param.start,
+                end=ast_param.end,
+                id=next_symbol_id(),
+                name=ast_param.name,
+                type=ptype,
+                unit=punit,
+                default=pdefault,
+            )
+            param = FormalParameter(
+                id=hir_param.id,
+                name=ast_param.name,
+                ast=ast_param,
+                hir=hir_param,
+            )
+
+            params_scope[ast_param.name] = param
+            params.append(param.hir)
+
+        returns: list[hir.FuncReturn] = []
+        named_returns: Scope = {}
+
+        for ret in func.returns:
+            rtype = self._build_type(ret.type, module, *scopes)
+
+            if ret.unit:
+                runit = self._build_unit(ret.unit, module, *scopes)
+            else:
+                runit = None
+
+            hir_ret = hir.FuncReturn(
+                file=ret.file,
+                start=ret.start,
+                end=ret.end,
+                type=rtype,
+                unit=runit,
+            )
+            returns.append(hir_ret)
+
+            if ret.name is not None:
+                named_returns[ret.name] = NamedReturn(
+                    name=ret.name,
+                    ast=ret,
+                    hir=hir_ret,
+                )
+
+        if func.error_type is not None:
+            err_type = self._build_type(
+                func.error_type,
+                module,
+                generics,
+                *scopes,
+            )
+        else:
+            err_type = None
+
+        requires = None
+        if func.requires:
+            pass  # TODO
+
+        return hir.FuncDefinition(
+            file=func.file,
+            start=func.start,
+            end=func.end,
+            id=id or next_symbol_id(),
+            name=func.name,
+            params=params,
+            returns=returns,
+            error_type=err_type,
+            fallible=func.fallible,
+            requires=requires,
+            body=self._build_block(
+                func.body,
+                module,
+                params_scope,
+                generics,
+                *scopes,
+            ),
+            annotations=annotations,
+        )
+
+    def _build_var(
+        self,
+        var: ast.GlobalVariable | ast.LocalVariable,
+        module: Module,
+        *scopes: Scope,
+        id: hir.SymbolID | None = None,
+    ) -> hir.Variable:
+        if var.type:
+            var_type = self._build_type(var.type, module, *scopes)
+        else:
+            var_type = None
+
+        match var.expr:
+            case ast.UnboundVar():
+                value = None
+                if var_type is None:
+                    diagnostics.error("unbound variables must have a type", var)
+
+            case ast.Expression():
+                value = exprs.evaluate(
+                    var.expr,
+                    self._symbol_getter(module, *scopes),
+                )
+                if var_type is None:
+                    var_type = exprs.infer_type(value.type, var)
+
+            case None:
+                if var_type is None:
+                    diagnostics.error(
+                        "variables must specify a type or an initial value"
+                        + " that implies a type",
+                        var,
+                    )
+                elif exprs.is_zeroable(var_type):
+                    value = hir.ZeroOf(
+                        file=var.file,
+                        start=var.end,
+                        end=var.end,
+                        type=var_type,
+                    )
+                else:
+                    diagnostics.error(
+                        f"variable '{var.name}' has a non-zeroable type and"
+                        + " therefore must be given an initial value or be"
+                        + " explicitly unbound",
+                        var,
+                    )
+
+            case Never():
+                raise AssertionError("unreachable")
+
+        return hir.Variable(
+            file=var.file,
+            start=var.start,
+            end=var.end,
+            id=id or next_symbol_id(),
+            name=var.name,
+            type=var_type,
+            unit=unit,
+            expr=value,
+            annotations=[],  # TODO
+        )
+
     def _build_type(
         self,
-        module: Module,
         type: ast.TypeExpression,
+        module: Module,
         *scopes: Scope,
     ) -> hir.Type: ...
 
     def _build_unit(
         self,
+        unit: ast.CompoundUnit,
         module: Module,
-        type: ast.CompoundUnit,
         *scopes: Scope,
     ) -> hir.CompoundUnit: ...
 
     def _build_value(
         self,
+        expr: ast.Expression,
         module: Module,
-        type: ast.Expression,
         *scopes: Scope,
     ) -> hir.Value: ...
 
     def _build_block(
         self,
+        block: ast.Block,
         module: Module,
-        type: ast.Block,
         *scopes: Scope,
-    ) -> hir.Block: ...
+    ) -> hir.Block:
+        return None
+        if isinstance(node.type, ast.TypeExpression):
+            self._resolve_names(module, node.type, *scopes)
+
+        if node.expr:
+            self._resolve_names(module, node.expr, *scopes)
+
+        local_scope = scopes[0]
+        if node.name in local_scope:
+            diagnostics.error(f"local with name '{node.name}' is already defined", node)
+            return
+        elif any(node.name in scope for scope in scopes[1:]):
+            diagnostics.notice(
+                f"local '{node.name}' shadows previously defined local", node
+            )
+        elif node.name in module:
+            diagnostics.notice(f"local '{node.name}' shadows module global", node)
+        elif node.name in BUILTINS:
+            diagnostics.warning(f"local '{node.name}' shadows builtin", node)
+
+        if isinstance(node, ast.LocalConstant):
+            local_scope[node.name] = Constant(name=node.name, definition=node)
+        else:
+            var = Variable(name=node.name, definition=node)
+            local_scope[node.name] = var
+            node.shadow_id = var.id
+
+    def _build_annotation_def(
+        self,
+        anno_def: ast.AnnotationDef,
+        module: Module,
+        *scopes: Scope,
+    ) -> hir.AnnotationDef: ...
 
 
 @dataclass(kw_only=True)

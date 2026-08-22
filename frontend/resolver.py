@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, Callable
 
 from frontend import ast, diagnostics, hir, parser
 from frontend.hir import SymbolID
 from frontend.lexer import Identifier
 from frontend.types import FixedDecimal, PrimitiveType
+from frontend.units import CanonicalUnit
+
+if TYPE_CHECKING:
+    from frontend.exprs import EvalResult
 
 
 def _symbol_gen():
@@ -18,7 +21,7 @@ def _symbol_gen():
         sym_id += 1
 
 
-next_symbol = _symbol_gen().__next__
+next_symbol_id = _symbol_gen().__next__
 
 
 @dataclass(kw_only=True)
@@ -29,7 +32,7 @@ class PartialSymbol[T: ast.Node]:
     Its associated HIR isn't initially filled in
     """
 
-    id: SymbolID = field(default_factory=next_symbol)
+    id: SymbolID = field(default_factory=next_symbol_id)
     name: Identifier
     ast: T  # generics used to shut up pyright on derived classes
 
@@ -62,21 +65,28 @@ type TypeDefinition = DistinctType | StructType | EnumType
 
 
 @dataclass(kw_only=True)
-class Constant:
+class Constant(PartialSymbol):
     """A compile-time evaluated constant
 
     constants get evaluated down to typed constants in the HIR,
     therefore this is NOT a partial symbol
     """
 
-    name: Identifier
     ast: ast.LocalConstant | ast.GlobalConstant
+
+    value: EvalResult | None = None
 
 
 @dataclass(kw_only=True)
-class Variable(PartialSymbol):
-    ast: ast.LocalVariable | ast.GlobalVariable
+class GlobalVariable(PartialSymbol):
+    ast: ast.GlobalVariable
     hir: hir.Variable | None = None
+
+
+@dataclass(kw_only=True)
+class LocalVariable(PartialSymbol):
+    ast: ast.LocalVariable
+    hir: hir.Variable
 
 
 @dataclass(kw_only=True)
@@ -87,7 +97,7 @@ class UnitType(PartialSymbol):
 
 @dataclass(kw_only=True)
 class BaseUnit(PartialSymbol):
-    ast: ast.UnitDecl | ast.UnitConversionDef
+    ast: ast.UnitDecl
     hir: hir.BaseUnit | None = None
 
 
@@ -109,6 +119,12 @@ class UnitAlias(PartialSymbol):
 class Capability(PartialSymbol):
     ast: ast.CapabilityDecl
     hir: hir.Capability | None = None
+
+
+@dataclass(kw_only=True)
+class Annotation(PartialSymbol):
+    ast: ast.AnnotationDef
+    hir: hir.AnnotationDef | None = None
 
 
 @dataclass
@@ -138,100 +154,8 @@ BUILTINS = {
     ]
 }
 
-SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
-SUPERSCRIPT_NEGATIVE = "⁻"
 
-
-def superscript_number(n: int) -> str:
-    digits = []
-
-    if n < 0:
-        digits.append(SUPERSCRIPT_NEGATIVE)
-
-    x = int(abs(n))
-    while x > 0:
-        digits.append(SUPERSCRIPT_DIGITS[x % 10])
-        x //= 10
-
-    return "".join(digits)
-
-
-class CanonicalUnit(Counter[SymbolID]):
-    _base_unit_names: ClassVar[dict[SymbolID, str]] = {}
-
-    @classmethod
-    def register_unit_name(cls, base_unit: BaseUnit):
-        cls._base_unit_names[base_unit.id] = base_unit.ast.name
-
-    def __str__(self):
-        components = []
-        for comp_id, exp in self.most_common():
-            if exp == 0:
-                continue
-
-            unit_name = self._base_unit_names.get(comp_id, f"unit{comp_id}")
-
-            if exp == 1:
-                components.append(str(unit_name))
-            else:
-                components.append(f"{unit_name}{superscript_number(exp)}")
-
-        if components:
-            return " ".join(components)
-        else:
-            return "<ratio>"
-
-    def __repr__(self):
-        components = []
-        for comp_id, exp in self.most_common():
-            if exp == 0:
-                continue
-
-            unit_name = self._base_unit_names.get(comp_id, "<MISSING>")
-
-            if exp == 1:
-                components.append(str(unit_name))
-            else:
-                components.append(f"{unit_name}^{exp}")
-
-        if components:
-            return f"unit({' '.join(components)})"
-        else:
-            return "unit()"
-
-    def __mul__(self, exponent: int):
-        result = CanonicalUnit()
-
-        for comp, exp in self.items():
-            result[comp] += exp * exponent
-
-        return result
-
-    __rmul__ = __mul__
-
-    def inplace_combine(self, other: CanonicalUnit, exponent: int):
-        for comp, exp in other.items():
-            self[comp] += exp * exponent
-
-    @staticmethod
-    def combine(
-        a: CanonicalUnit,
-        a_exp: int,
-        b: CanonicalUnit,
-        b_exp: int,
-    ) -> CanonicalUnit:
-        result = CanonicalUnit()
-
-        for comp, exp in a.items():
-            result[comp] += exp * a_exp
-
-        for comp, exp in b.items():
-            result[comp] += exp * b_exp
-
-        return result
-
-
-type Named = PartialSymbol | Constant | Module | Builtin
+type Named = PartialSymbol | Module | Builtin
 
 
 @dataclass(kw_only=True)
@@ -242,7 +166,7 @@ class Module:
     types: dict[Identifier, TypeDefinition] = field(default_factory=dict)
     funcs: dict[Identifier, Function] = field(default_factory=dict)
     constants: dict[Identifier, Constant] = field(default_factory=dict)
-    variables: dict[Identifier, Variable] = field(default_factory=dict)
+    variables: dict[Identifier, GlobalVariable] = field(default_factory=dict)
     unit_types: dict[Identifier, UnitType] = field(default_factory=dict)
     base_units: dict[Identifier, BaseUnit] = field(default_factory=dict)
     unit_aliases: dict[Identifier, UnitAlias] = field(default_factory=dict)
@@ -321,7 +245,6 @@ class Resolver:
     def __init__(self, project_root: Path | None = None):
         self.project_root = project_root or Path.cwd()
         self.modules: dict[Path, Module] = {}
-        self._deferred_unit_convs: list[ast.UnitConversionDef] = []
 
     def require(self, path: Path) -> Module:
         """loads the file found at the given path and all of its imports, recursively"""
@@ -356,27 +279,24 @@ class Resolver:
         return module
 
     def finish_imports(self):
-        for conv in self._deferred_unit_convs:
-            pass  # TODO
-
         diagnostics.report()
 
     def partial_resolve(
         self,
-        module: Module,
         node: ast.Node,
+        module: Module,
         *scopes: Scope,
     ) -> tuple[Named | None, tuple[Identifier, ...]]:
         """Resolves qualified names to point to their definitions"""
         match node:
             case ast.QualifiedName():
-                return self._resolve_qualname(module, node, *scopes), ()
+                return self._resolve_qualname(node, module, *scopes), ()
 
             case ast.NameExpr():
-                return self.lookup(module, node.name, *scopes), ()
+                return self.lookup(node.name, module, *scopes), ()
 
             case ast.FieldAccessExpr():
-                base, rest = self.partial_resolve(module, node.base, *scopes)
+                base, rest = self.partial_resolve(node.base, module, *scopes)
 
                 if base and (more := self._static_resolve_field(base, node.field)):
                     return more, ()
@@ -388,11 +308,11 @@ class Resolver:
 
     def resolve(
         self,
-        module: Module,
         node: ast.Node,
+        module: Module,
         *scopes: Scope,
     ) -> Named | None:
-        named, unresolved = self.partial_resolve(module, node, *scopes)
+        named, unresolved = self.partial_resolve(node, module, *scopes)
 
         if named and unresolved:
             diagnostics.error("cannot fully resolve this", node)
@@ -402,8 +322,8 @@ class Resolver:
 
     def lookup(
         self,
-        module: Module,
         base_name: Identifier,
+        module: Module,
         *scopes: Scope,
     ) -> Named | None:
         for scope in scopes:
@@ -424,7 +344,7 @@ class Resolver:
         canonical = CanonicalUnit()
 
         for component in unit.components:
-            resolved, _ = self.resolve(module, component)
+            resolved = self.resolve(component, module)
             match resolved:
                 case None:
                     return None
@@ -495,7 +415,7 @@ class Resolver:
 
             case ast.GlobalVariable():
                 check_shadowing(decl, decl.name)
-                module.variables[decl.name] = Variable(name=decl.name, ast=decl)
+                module.variables[decl.name] = GlobalVariable(name=decl.name, ast=decl)
 
             case ast.UnitTypeDecl():
                 check_shadowing(decl, decl.name)
@@ -510,7 +430,9 @@ class Resolver:
 
             case ast.UnitDecl():
                 check_shadowing(decl, decl.name)
-                module.base_units[decl.name] = BaseUnit(name=decl.name, ast=decl)
+                base_unit = BaseUnit(name=decl.name, ast=decl)
+                module.base_units[decl.name] = base_unit
+                CanonicalUnit.register_unit_name(base_unit)
 
             case ast.UnitAlias():
                 check_shadowing(decl, decl.name)
@@ -542,13 +464,13 @@ class Resolver:
 
     def _resolve_qualname(
         self,
-        module: Module,
         qualname: ast.QualifiedName,
+        module: Module,
         *scopes: Scope,
     ) -> Named | None:
         base_name, *rest = qualname.path
 
-        base = self.lookup(module, base_name, *scopes)
+        base = self.lookup(base_name, module, *scopes)
 
         if not base:
             diagnostics.error(f"cannot resolve '{base_name}'", qualname)

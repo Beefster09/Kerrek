@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields
-from enum import Enum, auto
+from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
 from typing import NewType

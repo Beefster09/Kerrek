@@ -8,10 +8,12 @@ from enum import Enum, auto
 from fractions import Fraction
 from typing import Any, Never
 
-from frontend import ast, diagnostics
+from frontend import ast, diagnostics, hir
 from frontend.common import ByteValue, RuneValue
-from frontend.lexer import NumberLiteralForm
-from frontend.types import FlexAffinity, FlexType, conversion_class
+from frontend.lexer import Identifier, NumberLiteralForm
+from frontend.resolver import Named
+from frontend.types import FlexAffinity, FlexType, PrimitiveType, conversion_class
+from frontend.units import CanonicalUnit
 
 # === SENTINEL VALUES ===
 
@@ -50,8 +52,7 @@ class NilOf:
 type ComptimeValue = (
     Fraction | ByteValue | str | bool | NilOf | RuneValue | ValueSentinels
 )
-type RealizedType = AnyType | TypeSentinels
-type ComptimeType = RealizedType | FlexType
+type ComptimeType = hir.Type | TypeSentinels | FlexType
 type ComptimeUnit = CanonicalUnit | UnitSentinels
 
 
@@ -60,6 +61,9 @@ class EvalResult:
     value: ComptimeValue
     type: ComptimeType
     unit: ComptimeUnit
+
+
+type GetSymbolFunc = Callable[[ast.Node], Named | None]
 
 
 def _ensure_const_evaluated(const_sym: Constant) -> EvalResult:
@@ -151,7 +155,7 @@ def _ensure_unit_known(var: Variable) -> ComptimeUnit:
     return var.definition.realized_unit
 
 
-def evaluate(node: ast.Expression) -> EvalResult:
+def evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
     if node.evaluated_value is not ValueSentinels.NotEvaluated:
         assert node.evaluated_type is not TypeSentinels.NotDetermined
         return EvalResult(
@@ -187,7 +191,7 @@ def evaluate(node: ast.Expression) -> EvalResult:
     return result
 
 
-def _evaluate(node: ast.Expression) -> EvalResult:
+def _evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
     match node:
         case ast.SimpleLiteralExpr():
             match node.value:
@@ -315,27 +319,36 @@ def _evaluate(node: ast.Expression) -> EvalResult:
 def infer_type(
     evaluated_type: ComptimeType,
     context: ast.Node,
-) -> RealizedType:
+) -> hir.Type:
     match evaluated_type:
         case FlexType(FlexAffinity.Integer):
             return PrimitiveType.Integer
+
         case FlexType(FlexAffinity.UInt):
             return PrimitiveType.UInt64
+
         case FlexType(FlexAffinity.Decimal):
             return PrimitiveType.Decimal
+
         case FlexType(FlexAffinity.Float):
             return PrimitiveType.Float64
+
         case FlexType(FlexAffinity.Boolean):
             return PrimitiveType.Boolean
+
         case FlexType(FlexAffinity.String):
             return PrimitiveType.String
+
         case FlexType(FlexAffinity.Rune):
             return PrimitiveType.Rune
+
         case FlexType(FlexAffinity.Nil):
             diagnostics.error("cannot infer type of nil", context)
             return TypeSentinels.Impossible
+
         case FlexType(affinity):
             raise NotImplementedError(f"missing a case for {affinity}")
+
         case _:
             return evaluated_type
 
@@ -396,9 +409,9 @@ BINOP_FUNCS: dict[ast.BinaryOp, Callable[[Any, Any], Any]] = {
 }
 
 
-def _eval_binop(binop: ast.BinopExpr) -> EvalResult:
-    lhs = evaluate(binop.lhs)
-    rhs = evaluate(binop.rhs)
+def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
+    lhs = evaluate(binop.lhs, get_symbol)
+    rhs = evaluate(binop.rhs, get_symbol)
 
     # Well-defined non-coercing special cases
     match binop.op, lhs.type, rhs.type:
