@@ -470,7 +470,6 @@ class FuncDefinition(TopLevelDeclaration, Statement):
     name: Identifier
     params: list[FormalParameter]
     returns: list[FuncReturn]
-    # Ellipsis as the error type indicates the function can fail but the error type is void
     error_type: TypeExpression | None
     fallible: bool
     requires: CapabilityExpression | None

@@ -131,6 +131,9 @@ class MultiValueExpression(Node):
 # - concrete nodes and supporting types -
 
 
+type Value = Fraction | RuneValue | ByteValue | str | bool | NilOf | ZeroOf
+
+
 @dataclass(kw_only=True)
 class VarExpr(SingleValueExpression):
     references: Symbol
@@ -138,7 +141,12 @@ class VarExpr(SingleValueExpression):
 
 @dataclass(kw_only=True)
 class ConstExpr(SingleValueExpression):
-    value: Fraction | RuneValue | ByteValue | str | bool | NilOf
+    value: Value
+
+
+@dataclass(kw_only=True)
+class ZeroOf(SingleValueExpression):
+    type: Type
 
 
 @dataclass(kw_only=True)
@@ -331,18 +339,17 @@ class FormalParameter(Symbol):
     name: Identifier
     type: Type
     unit: CompoundUnit | None
-    default: Expression | None
+    default: Value | None
 
 
 @dataclass(kw_only=True)
 class FuncReturn(Node):
-    name: Identifier | None
     type: Type
     unit: CompoundUnit | None
 
 
 @dataclass(kw_only=True)
-class FuncDefinition(Symbol):
+class FuncDefinition(Annotatable):
     name: Identifier
     params: list[FormalParameter]
     returns: list[FuncReturn]

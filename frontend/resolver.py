@@ -18,7 +18,7 @@ def _symbol_gen():
         sym_id += 1
 
 
-_NEXT_SYM = _symbol_gen()
+next_symbol = _symbol_gen().__next__
 
 
 @dataclass(kw_only=True)
@@ -29,9 +29,9 @@ class PartialSymbol[T: ast.Node]:
     Its associated HIR isn't initially filled in
     """
 
-    id: SymbolID = field(default_factory=_NEXT_SYM.__next__)
+    id: SymbolID = field(default_factory=next_symbol)
     name: Identifier
-    ast: T
+    ast: T  # generics used to shut up pyright on derived classes
 
 
 @dataclass(kw_only=True)
@@ -75,7 +75,7 @@ class Constant:
 
 @dataclass(kw_only=True)
 class Variable(PartialSymbol):
-    ast: ast.LocalVariable | ast.GlobalVariable | ast.FormalParameter
+    ast: ast.LocalVariable | ast.GlobalVariable
     hir: hir.Variable | None = None
 
 
@@ -296,14 +296,25 @@ class Module:
 
         return None
 
+    def lookup_using_imports(self, name: Identifier) -> Named | None:
+        pass
+
     def __iter__(self):
+        """iterate through all of the symbols *defined* by the module
+        (does not include imports)
+        """
         yield from self.types.values()
         yield from self.funcs.values()
         yield from self.constants.values()
         yield from self.variables.values()
         yield from self.unit_types.values()
+        yield from self.unit_type_aliases.values()
         yield from self.base_units.values()
+        yield from self.unit_aliases.values()
         yield from self.capabilities.values()
+
+
+type Scope = dict[Identifier, Named]
 
 
 class Resolver:
@@ -340,6 +351,8 @@ class Resolver:
                 imp.get_filepath(self.project_root, path)
             )
 
+            # TODO: usings on imports
+
         return module
 
     def finish_imports(self):
@@ -348,11 +361,11 @@ class Resolver:
 
         diagnostics.report()
 
-    def resolve(
+    def partial_resolve(
         self,
         module: Module,
         node: ast.Node,
-        *scopes: dict[Identifier, Named],
+        *scopes: Scope,
     ) -> tuple[Named | None, tuple[Identifier, ...]]:
         """Resolves qualified names to point to their definitions"""
         match node:
@@ -363,7 +376,7 @@ class Resolver:
                 return self.lookup(module, node.name, *scopes), ()
 
             case ast.FieldAccessExpr():
-                base, rest = self.resolve(module, node.base, *scopes)
+                base, rest = self.partial_resolve(module, node.base, *scopes)
 
                 if base and (more := self._static_resolve_field(base, node.field)):
                     return more, ()
@@ -373,11 +386,25 @@ class Resolver:
             case _:
                 return None, ()
 
+    def resolve(
+        self,
+        module: Module,
+        node: ast.Node,
+        *scopes: Scope,
+    ) -> Named | None:
+        named, unresolved = self.partial_resolve(module, node, *scopes)
+
+        if named and unresolved:
+            diagnostics.error("cannot fully resolve this", node)
+            return None
+
+        return named
+
     def lookup(
         self,
         module: Module,
         base_name: Identifier,
-        *scopes: dict[Identifier, Named],
+        *scopes: Scope,
     ) -> Named | None:
         for scope in scopes:
             if base_name in scope:
@@ -504,7 +531,7 @@ class Resolver:
             case BaseUnit() | UnitType() | Function() | Capability():
                 # NOTE: this might be a redundant error
                 diagnostics.error(
-                    f"cannot get field {field} of {base.name}"
+                    f"cannot get field '{field}' of '{base.name}'"
                     + f" because it is a {type(base).__name__},"
                     + " which never has a namespace",
                     base.ast,
@@ -517,7 +544,7 @@ class Resolver:
         self,
         module: Module,
         qualname: ast.QualifiedName,
-        *scopes: dict[Identifier, Named],
+        *scopes: Scope,
     ) -> Named | None:
         base_name, *rest = qualname.path
 
@@ -538,104 +565,6 @@ class Resolver:
                 return None
 
         return resolved
-
-    def build_hir(self, node: ast.Node):
-        match node:
-            case ast.FuncDefinition():
-                func_sym = module.funcs[node.name]  # Local functions?
-
-                for annotation in node.annotations:
-                    self._resolve_names(module, annotation, *scopes)
-
-                params: dict[Identifier, Named] = {}
-                generics: dict[Identifier, Named] = {}
-
-                for param in node.params:
-                    if param.name == "_":
-                        diagnostics.error(
-                            "placeholder ('_') is not a valid parameter name", node
-                        )
-                        return
-
-                    if param.name in params:
-                        diagnostics.error(
-                            f"duplicate parameter name '{param.name}'", param
-                        )
-
-                    var = Variable(name=param.name, definition=param)
-                    params[param.name] = var
-                    func_sym.params.append(var)
-
-                    for sub in param.type.walk():
-                        if isinstance(sub, ast.GenericType):
-                            gentype = GenericType(sub.name)
-                            generics[sub.name] = gentype
-                            func_sym.generics.append(gentype)
-
-                    self._resolve_names(module, param.type, generics, *scopes)
-                    if param.unit:
-                        self._resolve_names(
-                            module,
-                            param.unit,
-                            generics,
-                            *scopes,
-                        )
-
-                for ret in node.returns:
-                    self._resolve_names(module, ret, generics, *scopes)
-
-                if node.error_type is not ... and node.error_type is not None:
-                    self._resolve_names(
-                        module,
-                        node.error_type,
-                        generics,
-                        *scopes,
-                    )
-
-                if node.requires:
-                    self._resolve_names(module, node.requires, *scopes)
-
-                self._resolve_names(module, node.body, params, generics, *scopes)
-
-            case ast.Block():
-                local_scope = {}
-                for stmt in node.body:
-                    self._resolve_names(module, stmt, local_scope, *scopes)
-
-            case ast.LocalVariable() | ast.LocalConstant():
-                if isinstance(node.type, ast.TypeExpression):
-                    self._resolve_names(module, node.type, *scopes)
-
-                if node.expr:
-                    self._resolve_names(module, node.expr, *scopes)
-
-                local_scope = scopes[0]
-                if node.name in local_scope:
-                    diagnostics.error(
-                        f"local with name '{node.name}' is already defined", node
-                    )
-                    return
-                elif any(node.name in scope for scope in scopes[1:]):
-                    diagnostics.notice(
-                        f"local '{node.name}' shadows previously defined local", node
-                    )
-                elif node.name in module:
-                    diagnostics.notice(
-                        f"local '{node.name}' shadows module global", node
-                    )
-                elif node.name in BUILTINS:
-                    diagnostics.warning(f"local '{node.name}' shadows builtin", node)
-
-                if isinstance(node, ast.LocalConstant):
-                    local_scope[node.name] = Constant(name=node.name, definition=node)
-                else:
-                    var = Variable(name=node.name, definition=node)
-                    local_scope[node.name] = var
-                    node.shadow_id = var.id
-
-            case _:
-                for sub in node:
-                    self._resolve_names(module, sub, *scopes)
 
     def _build_type(self, type_expr: ast.TypeExpression) -> AnyType | ast.TypeSentinels:
         match type_expr:
