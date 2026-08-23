@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import traceback
+from typing import Never
 
 from frontend import ast, diagnostics, exprs, hir
-from frontend.lexer import Identifier
 from frontend.resolver import (
     Annotation,
     Builtin,
@@ -18,8 +19,6 @@ from frontend.resolver import (
     Scope,
     next_symbol_id,
 )
-
-from typing import Never
 
 
 @dataclass(kw_only=True)
@@ -47,11 +46,21 @@ class HIRBuilder:
         - constant evaluation
         - type checking and inference
         - unit analysis
+        - overload selection
         """
 
         for module in self.resolver.modules.values():
             for symbol in module:
-                self._build_symbol(symbol, module)
+                try:
+                    self._build_symbol(symbol, module)
+                except NotImplementedError as err:
+                    print(
+                        f"in file '{module.file.source}',",
+                        f"{type(symbol).__name__} '{symbol.name}':",
+                        err,
+                    )
+                except Exception:  # noqa: BLE001
+                    traceback.print_exc()
 
         if self.hir.entry_point is None:
             diagnostics.error(
@@ -96,10 +105,17 @@ class HIRBuilder:
 
             case Constant():
                 if not symbol.value:
-                    symbol.value = exprs.evaluate(
+                    evaluated = exprs.evaluate(
                         symbol.ast.expr,
                         self._symbol_getter(module, *scopes),
                     )
+                    if isinstance(evaluated, exprs.FlexibleValue):
+                        symbol.value = evaluated
+                    else:
+                        diagnostics.error(
+                            "this expression is not constant at compile-time",
+                            symbol.ast.expr,
+                        )
 
                 return None
 
@@ -115,7 +131,7 @@ class HIRBuilder:
                 return symbol.hir
 
             case LocalVariable():
-                # local vars have already been fully resolved and are built up by the block builder
+                # local vars should have already been fully resolved because they are built up by the block builder
                 return symbol.hir
 
             case _:
@@ -184,7 +200,12 @@ class HIRBuilder:
                 punit = None
 
             if ast_param.default:
-                pdefault = self._build_value(ast_param.default, module, *scopes)
+                pdefault = self._build_expr(ast_param.default, module, *scopes)
+                if not isinstance(pdefault, hir.ConstExpr):
+                    diagnostics.error(
+                        f"default value for '{ast_param.name}' is not known at compile-time",
+                        ast_param.default,
+                    )
             else:
                 pdefault = None
 
@@ -289,11 +310,12 @@ class HIRBuilder:
                     diagnostics.error("unbound variables must have a type", var)
 
             case ast.Expression():
-                value = exprs.evaluate(
+                value = self._build_expr(
                     var.expr,
-                    self._symbol_getter(module, *scopes),
+                    module,
+                    *scopes,
                 )
-                if var_type is None:
+                if value.is_single_value() and var_type is None:
                     var_type = exprs.infer_type(value.type, var)
 
             case None:
@@ -347,12 +369,12 @@ class HIRBuilder:
         *scopes: Scope,
     ) -> hir.CompoundUnit: ...
 
-    def _build_value(
+    def _build_expr(
         self,
         expr: ast.Expression,
         module: Module,
         *scopes: Scope,
-    ) -> hir.Value: ...
+    ) -> hir.Expression: ...
 
     def _build_block(
         self,

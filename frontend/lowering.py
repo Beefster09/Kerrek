@@ -8,7 +8,7 @@ from fractions import Fraction
 from typing import Never, overload
 
 from frontend import ast, hir, mir, resolver, types
-from frontend.exprs import ByteValue, ComptimeType, NilOf
+from frontend.exprs import ByteValue, ComptimeType
 
 
 def hir_to_mir(

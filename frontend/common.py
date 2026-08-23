@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import NamedTuple
+from pathlib import Path
+from typing import NamedTuple, TypedDict
 
 
 class Location(NamedTuple):
@@ -9,6 +10,12 @@ class Location(NamedTuple):
 
     def __str__(self):
         return f"<line {self.line}, col {self.col}>"
+
+
+class Where(TypedDict):
+    file: Path
+    start: Location
+    end: Location
 
 
 @dataclass

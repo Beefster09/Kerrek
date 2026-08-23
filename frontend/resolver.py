@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from frontend import ast, diagnostics, hir, parser
 from frontend.hir import SymbolID
 from frontend.lexer import Identifier
-from frontend.types import FixedDecimal, PrimitiveType
+from frontend.types import PrimitiveType
 from frontend.units import CanonicalUnit
 
 if TYPE_CHECKING:
-    from frontend.exprs import EvalResult
+    from frontend.exprs import FlexibleValue
 
 
 def _symbol_gen():
@@ -66,15 +66,8 @@ type TypeDefinition = DistinctType | StructType | EnumType
 
 @dataclass(kw_only=True)
 class Constant(PartialSymbol):
-    """A compile-time evaluated constant
-
-    constants get evaluated down to typed constants in the HIR,
-    therefore this is NOT a partial symbol
-    """
-
     ast: ast.LocalConstant | ast.GlobalConstant
-
-    value: EvalResult | None = None
+    value: FlexibleValue | None = None
 
 
 @dataclass(kw_only=True)
@@ -228,14 +221,14 @@ class Module:
         (does not include imports)
         """
         yield from self.types.values()
-        yield from self.funcs.values()
-        yield from self.constants.values()
-        yield from self.variables.values()
         yield from self.unit_types.values()
         yield from self.unit_type_aliases.values()
         yield from self.base_units.values()
         yield from self.unit_aliases.values()
+        yield from self.constants.values()
+        yield from self.variables.values()
         yield from self.capabilities.values()
+        yield from self.funcs.values()
 
 
 type Scope = dict[Identifier, Named]
@@ -332,66 +325,6 @@ class Resolver:
 
         return module.lookup(base_name) or BUILTINS.get(base_name)
 
-    def get_canonical_unit(
-        self,
-        module: Module,
-        unit: ast.CompoundUnit,
-        *,
-        _orig_definition: ast.CompoundUnit | None = None,
-        _seen_aliases: tuple[UnitAlias, ...] = (),
-        _seen_alias_refs: tuple[ast.QualifiedName, ...] = (),
-    ) -> CanonicalUnit | None:
-        canonical = CanonicalUnit()
-
-        for component in unit.components:
-            resolved = self.resolve(component, module)
-            match resolved:
-                case None:
-                    return None
-
-                case BaseUnit():
-                    canonical[resolved.id] += component.exponent
-
-                case UnitAlias():
-                    if resolved in _seen_aliases:
-                        assert _orig_definition is not None
-                        err = diagnostics.error(
-                            "circular dependency of unit definitions detected ...",
-                            _orig_definition,
-                        )
-                        for ref in _seen_alias_refs:
-                            err.reference(f"... '{ref}' references an alias ...", ref)
-
-                        err.reference(
-                            "... and ultimately loops back to this definition",
-                            _seen_aliases[-1].ast,
-                        )
-
-                        return None
-
-                    if resolved.canonical is None:
-                        resolved.canonical = self.get_canonical_unit(
-                            module,
-                            resolved.ast.orig,
-                            _orig_definition=_orig_definition or unit,
-                            _seen_aliases=(*_seen_aliases, resolved),
-                            _seen_alias_refs=(*_seen_alias_refs, component.base),
-                        )
-
-                    assert resolved.canonical
-                    canonical.inplace_combine(
-                        resolved.canonical,
-                        component.exponent,
-                    )
-
-                case _:
-                    diagnostics.error(
-                        f"'{'.'.join(component.base.path)}' does not name a unit or unit type",
-                        component.base,
-                    )
-
-        return canonical
-
     def _add_symbol(self, module: Module, decl: ast.TopLevelDeclaration):
         def check_shadowing(node: ast.Node, name: Identifier):
             if shadowed := BUILTINS.get(name):
@@ -478,7 +411,7 @@ class Resolver:
 
         resolved = base
 
-        for i, field in enumerate(rest, 1):
+        for i, field in enumerate(rest, 1):  # noqa: F402
             resolved = self._static_resolve_field(resolved, field)
             if not resolved:
                 diagnostics.error(

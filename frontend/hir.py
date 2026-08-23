@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import NewType
+from typing import Literal, NewType
 
 from frontend import ast
 from frontend.common import (
@@ -16,7 +17,8 @@ from frontend.common import (
     UnaryOp,
 )
 from frontend.lexer import Identifier
-from frontend.types import PrimitiveType
+from frontend.types import FixedDecimal, FlexType, PrimitiveType
+from frontend.units import IndeterminateUnit
 
 # === NODES ===
 
@@ -78,7 +80,7 @@ class Annotatable(Symbol):
 class Variable(Annotatable):
     name: Identifier
     type: Type
-    unit: CompoundUnit | None
+    unit: RealizedUnit
     # expr = None means unbound. Default zero is made explicit when building the HIR
     expr: Expression | None
 
@@ -92,13 +94,17 @@ class UnitType(Symbol):
 class BaseUnit(Symbol):
     name: Identifier
     type: UnitType | None
-    conversions: dict[SymbolID, Fraction]
 
 
 @dataclass(kw_only=True)
 class CompoundUnit(Node):
-    components: Mapping[SymbolID, int]
+    components: list[tuple[BaseUnit, int]]
     is_absolute: bool
+
+
+type RealizedUnit = (
+    CompoundUnit | Literal[IndeterminateUnit.Flexible, IndeterminateUnit.NoUnit]
+)
 
 
 # === EXPRESSIONS ===
@@ -106,6 +112,11 @@ class CompoundUnit(Node):
 
 @dataclass
 class NilOf:
+    type: Type
+
+
+@dataclass
+class ZeroOf:
     type: Type
 
 
@@ -118,13 +129,15 @@ class Expression(Node):
 
 
 @dataclass(kw_only=True)
-class SingleValueExpression(Node):
-    pass
+class SingleValueExpression(Expression):
+    type: Type
+    unit: RealizedUnit
 
 
 @dataclass(kw_only=True)
-class MultiValueExpression(Node):
-    pass
+class MultiValueExpression(Expression):
+    types: list[Type]
+    units: list[RealizedUnit]
 
 
 # - concrete nodes and supporting types -
@@ -141,11 +154,6 @@ class VarExpr(SingleValueExpression):
 @dataclass(kw_only=True)
 class ConstExpr(SingleValueExpression):
     value: Value
-
-
-@dataclass(kw_only=True)
-class ZeroOf(SingleValueExpression):
-    type: Type
 
 
 @dataclass(kw_only=True)
@@ -202,13 +210,13 @@ class CastExpr(SingleValueExpression):
 @dataclass(kw_only=True)
 class UnitConversionExpr(SingleValueExpression):
     expr: Expression
-    to: CompoundUnit
+    factor: Fraction
 
 
 @dataclass(kw_only=True)
 class UnitReinterpretExpr(SingleValueExpression):
     expr: Expression
-    new_unit: CompoundUnit
+    # unit is defined by SingleValueExpression
 
 
 @dataclass(kw_only=True)
@@ -233,13 +241,13 @@ class Argument(Node):
 
 
 @dataclass(kw_only=True)
-class Type(Node):
+class Type:
     pass
 
 
 @dataclass(kw_only=True)
 class SimpleType(Type):
-    of: PrimitiveType | StructType | EnumType | DistinctType
+    type: PrimitiveType | FixedDecimal | StructType | EnumType | DistinctType
 
 
 @dataclass(kw_only=True)
@@ -338,7 +346,7 @@ class FormalParameter(Symbol):
     name: Identifier
     type: Type
     unit: CompoundUnit | None
-    default: Value | None
+    default: ConstExpr | None
 
 
 @dataclass(kw_only=True)

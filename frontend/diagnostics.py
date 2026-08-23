@@ -3,9 +3,9 @@ import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Self, TextIO, overload
+from typing import Protocol, Self, TextIO, overload, runtime_checkable
 
-from frontend import ast, lexer
+from frontend import lexer
 from frontend.common import Location
 
 ANSI_CLEAR = "\x1b[0m"
@@ -27,6 +27,13 @@ ANSI_BR_BLUE = "\x1b[94m"
 ANSI_BR_MAGENTA = "\x1b[95m"
 ANSI_BR_CYAN = "\x1b[96m"
 ANSI_WHITE = "\x1b[97m"
+
+
+@runtime_checkable
+class HasSourceLoc(Protocol):
+    file: Path
+    start: Location
+    end: Location
 
 
 class DiagnosticLevel(Enum):
@@ -86,18 +93,18 @@ class Diagnostic:
     def reference(
         self,
         message: str,
-        node: ast.Node,
+        node: HasSourceLoc,
         /,
     ) -> Self: ...
 
     def reference(
         self,
         message: str,
-        file_or_node: Path | ast.Node | None,
+        file_or_node: Path | HasSourceLoc | None,
         start_maybe: Location | None = None,
         end_maybe: Location | None = None,
     ) -> Self:
-        if isinstance(file_or_node, ast.Node):
+        if isinstance(file_or_node, HasSourceLoc):
             file = file_or_node.file
             start = file_or_node.start
             end = file_or_node.end
@@ -143,7 +150,7 @@ def _emit_diagnostic(
 def _emit_diagnostic(
     level: DiagnosticLevel,
     message: str,
-    node: ast.Node,
+    node: HasSourceLoc,
     /,
     *,
     code: str = "XXX",
@@ -154,14 +161,14 @@ def _emit_diagnostic(
 def _emit_diagnostic(
     level: DiagnosticLevel,
     message: str,
-    file_or_node: Path | ast.Node | None,
+    file_or_node: Path | HasSourceLoc | None,
     start_maybe: Location | None = None,
     end_maybe: Location | None = None,
     *,
     code: str = "XXX",
     category: str = "general",
 ) -> Diagnostic:
-    if isinstance(file_or_node, ast.Node):
+    if isinstance(file_or_node, HasSourceLoc):
         file = file_or_node.file
         start = file_or_node.start
         end = file_or_node.end
@@ -204,7 +211,7 @@ def error(
 @overload
 def error(
     message: str,
-    node: ast.Node,
+    node: HasSourceLoc,
     /,
     *,
     code: str = "XXX",
@@ -232,7 +239,7 @@ def warning(
 @overload
 def warning(
     message: str,
-    node: ast.Node,
+    node: HasSourceLoc,
     /,
     *,
     code: str = "XXX",
@@ -260,7 +267,7 @@ def notice(
 @overload
 def notice(
     message: str,
-    node: ast.Node,
+    node: HasSourceLoc,
     /,
     *,
     code: str = "XXX",

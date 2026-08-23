@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from collections import Counter
+from enum import Enum, auto
 from typing import TYPE_CHECKING, ClassVar
 
-from frontend.hir import SymbolID
-
 if TYPE_CHECKING:
-    from resolver import BaseUnit
+    from frontend.hir import SymbolID
+    from frontend.resolver import BaseUnit
+
+
+class IndeterminateUnit(Enum):
+    NoUnit = auto()  # explicit `nil` unit
+    Flexible = auto()  # unit is `_`; unitless, but can participate in math with units
+    Inferred = auto()  # inferred from usage
+
 
 SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
 SUPERSCRIPT_NEGATIVE = "⁻"
@@ -26,7 +33,7 @@ def superscript_number(n: int) -> str:
     return "".join(digits)
 
 
-class CanonicalUnit(Counter[SymbolID]):
+class CanonicalUnit(Counter):
     _base_unit_names: ClassVar[dict[SymbolID, str]] = {}
 
     @classmethod

@@ -5,8 +5,16 @@ from decimal import Decimal
 from enum import Enum, auto
 from pathlib import Path
 
-from frontend.common import BinaryOp, Location, PointerOwnership, RuneValue, UnaryOp
+from frontend.common import (
+    BinaryOp,
+    Location,
+    PointerOwnership,
+    RuneValue,
+    UnaryOp,
+    Where,
+)
 from frontend.lexer import Identifier, Numeric
+from frontend.units import IndeterminateUnit
 
 # === NODES ===
 
@@ -33,26 +41,12 @@ class Node:
             **other,
         )
 
-    def __iter__(self):
-        for f in fields(self):
-            value = getattr(self, f.name)
-            if not value:
-                continue
-            elif isinstance(value, (list, tuple)) and isinstance(value[0], Node):
-                yield from value
-            elif isinstance(value, Node):
-                yield value
-
-    def walk(self):
-        yield self
-        for f in fields(self):
-            value = getattr(self, f.name)
-            if isinstance(value, (list, tuple)):
-                for sub in value:
-                    if isinstance(sub, Node):
-                        yield from sub.walk()
-            elif isinstance(value, Node):
-                yield from value.walk()
+    def where(self) -> Where:
+        return {
+            "file": self.file,
+            "start": self.start,
+            "end": self.end,
+        }
 
 
 @dataclass(kw_only=True)
@@ -205,12 +199,6 @@ class CompoundUnit(Node):
     is_absolute: bool
 
 
-class IndeterminateUnit(Enum):
-    NoUnit = auto()  # explicit `nil` unit
-    Flexible = auto()  # unit is `_`; unitless, but can participate in math with units
-    Inferred = auto()  # inferred from usage
-
-
 type DeclaredUnit = CompoundUnit | IndeterminateUnit
 
 
@@ -248,8 +236,6 @@ class FieldAccessExpr(Expression):
 class ScalarLiteralExpr(Expression):
     value: Numeric
     unit: CompoundUnit | None
-
-    # TODO: validation
 
 
 @dataclass(kw_only=True)
@@ -438,13 +424,6 @@ class LocalConstant(Statement):
 @dataclass(kw_only=True)
 class Block(Statement):
     body: list[Statement]
-
-    def walk_statements(self):
-        for stmt in self.body:
-            yield stmt
-            for child in stmt:
-                if isinstance(child, Block):
-                    yield from child.walk_statements()
 
 
 # === FUNCTIONS ===

@@ -6,80 +6,47 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from fractions import Fraction
-from typing import Any, Never
+from typing import Any, Literal, Never
 
 from frontend import ast, diagnostics, hir
 from frontend.common import ByteValue, RuneValue
 from frontend.lexer import Identifier, NumberLiteralForm
-from frontend.resolver import Named
+from frontend.resolver import (
+    BaseUnit,
+    Builtin,
+    Constant,
+    GlobalVariable,
+    LocalVariable,
+    Module,
+    Named,
+    UnitAlias,
+)
 from frontend.types import FlexAffinity, FlexType, PrimitiveType, conversion_class
-from frontend.units import CanonicalUnit
+from frontend.units import CanonicalUnit, IndeterminateUnit
 
 # === SENTINEL VALUES ===
 
 
-class ValueSentinels(Enum):
-    NotEvaluated = auto()  # value has yet to be determined from semantic analysis
-    RuntimeValue = auto()  # value is not known at compile time
-    CannotEvaluate = auto()  # it is not possible to evaluate the expression
+class FlexNil:
+    pass
 
 
-class TypeSentinels(Enum):
-    NotDetermined = (
-        auto()
-    )  # type has yet to be determined from semantic analysis (or needs to be inferred)
-    Impossible = (
-        auto()
-    )  # the type cannot be inferred because the expression cannot be evaluated
-
-
-class UnitSentinels(Enum):
-    NotDetermined = (
-        auto()
-    )  # unit has yet to be determined from semantic analysis (or needs to be inferred)
-    Flexible = (
-        auto()
-    )  # originates from a numeric literal or constant without explicit unit information
-    NoUnit = auto()  # originates from a runtime value which did not declare a unit or a type which cannot have a unit
-    Incoherent = auto()  # dimensional analysis failed to produce a coherent result unit or a unit was applied to a value which cannot have units
-
-
-@dataclass
-class NilOf:
-    type: ComptimeType
-
-
-type ComptimeValue = (
-    Fraction | ByteValue | str | bool | NilOf | RuneValue | ValueSentinels
+type ComptimeValue = hir.Value | FlexNil
+type ComptimeType = hir.Type | FlexType
+type ComptimeUnit = (
+    CanonicalUnit | Literal[IndeterminateUnit.Flexible, IndeterminateUnit.NoUnit]
 )
-type ComptimeType = hir.Type | TypeSentinels | FlexType
-type ComptimeUnit = CanonicalUnit | UnitSentinels
 
 
 @dataclass
-class EvalResult:
+class FlexibleValue:
     value: ComptimeValue
     type: ComptimeType
     unit: ComptimeUnit
 
 
+type EvalResult = FlexibleValue | hir.Node | None
 type GetSymbolFunc = Callable[[ast.Node], Named | None]
-
-
-def _ensure_const_evaluated(const_sym: Constant) -> EvalResult:
-    const_def = const_sym.definition
-    if const_def.expr.evaluated_value is ValueSentinels.NotEvaluated:
-        result = evaluate(const_def.expr)
-        if const_def.type is not None:
-            check_type(const_def.type, result.type, const_def)
-
-        return result
-
-    return EvalResult(
-        const_def.expr.evaluated_value,
-        const_def.expr.evaluated_type,
-        const_def.expr.evaluated_unit,
-    )
 
 
 def _ensure_type_inferred(var: Variable) -> RealizedType:
@@ -110,32 +77,32 @@ def _ensure_type_inferred(var: Variable) -> RealizedType:
 def _ensure_unit_known(var: Variable) -> ComptimeUnit:
     if isinstance(var.definition, ast.FormalParameter):
         if var.definition.unit is None:
-            return UnitSentinels.NoUnit
+            return IndeterminateUnit.NoUnit
 
         assert var.definition.unit.canonical is not None, (
             f"parameter unit should have been evaluated by now: {var.definition}"
         )
         return var.definition.unit.canonical
 
-    if var.definition.realized_unit is UnitSentinels.NotDetermined and isinstance(
+    if var.definition.realized_unit is IndeterminateUnit.NotDetermined and isinstance(
         var.definition.expr, ast.Expression
     ):
         if var.definition.unit in (
-            UnitSentinels.NoUnit,
-            UnitSentinels.Flexible,
+            IndeterminateUnit.NoUnit,
+            IndeterminateUnit.Flexible,
         ):
             var.definition.realized_unit = var.definition.unit
             return var.definition.unit
 
         result = evaluate(var.definition.expr)
 
-        if var.definition.unit is UnitSentinels.NotDetermined:
-            if result.unit is UnitSentinels.Flexible:
-                var.definition.realized_unit = UnitSentinels.NoUnit
+        if var.definition.unit is IndeterminateUnit.NotDetermined:
+            if result.unit is IndeterminateUnit.Flexible:
+                var.definition.realized_unit = IndeterminateUnit.NoUnit
             else:
                 var.definition.realized_unit = result.unit
         else:
-            if isinstance(var.definition.unit, UnitSentinels):
+            if isinstance(var.definition.unit, IndeterminateUnit):
                 var.definition.realized_unit = var.definition.unit
             else:
                 assert var.definition.unit.canonical is not None, (
@@ -149,44 +116,84 @@ def _ensure_unit_known(var: Variable) -> ComptimeUnit:
                     )
                 var.definition.realized_unit = var.definition.unit.canonical
 
-    assert var.definition.realized_unit is not UnitSentinels.NotDetermined, (
+    assert var.definition.realized_unit is not IndeterminateUnit.NotDetermined, (
         f"variable unit should have been evaluated by now: {var.definition}"
     )
     return var.definition.realized_unit
 
 
-def evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
-    if node.evaluated_value is not ValueSentinels.NotEvaluated:
-        assert node.evaluated_type is not TypeSentinels.NotDetermined
-        return EvalResult(
-            node.evaluated_value,
-            node.evaluated_type,
-            node.evaluated_unit,
-        )
+def get_canonical_unit(
+    unit: ast.CompoundUnit | None,
+    get_symbol: GetSymbolFunc,
+    *,
+    _orig_definition: ast.CompoundUnit | None = None,
+    _seen_aliases: tuple[UnitAlias, ...] = (),
+    _seen_alias_refs: tuple[ast.QualifiedName, ...] = (),
+) -> CanonicalUnit | None:
+    if unit is None:
+        return None
 
+    canonical = CanonicalUnit()
+
+    for component in unit.components:
+        resolved = get_symbol(component)
+        match resolved:
+            case None:
+                return None
+
+            case BaseUnit():
+                canonical[resolved.id] += component.exponent
+
+            case UnitAlias():
+                if resolved in _seen_aliases:
+                    assert _orig_definition is not None
+                    err = diagnostics.error(
+                        "circular dependency of unit definitions detected ...",
+                        _orig_definition,
+                    )
+                    for ref in _seen_alias_refs:
+                        err.reference(f"... '{ref}' references an alias ...", ref)
+
+                    err.reference(
+                        "... and ultimately loops back to this definition",
+                        _seen_aliases[-1].ast,
+                    )
+
+                    return None
+
+                if resolved.canonical is None:
+                    resolved.canonical = get_canonical_unit(
+                        resolved.ast.orig,
+                        get_symbol,
+                        _orig_definition=_orig_definition or unit,
+                        _seen_aliases=(*_seen_aliases, resolved),
+                        _seen_alias_refs=(*_seen_alias_refs, component.base),
+                    )
+
+                assert resolved.canonical
+                canonical.inplace_combine(
+                    resolved.canonical,
+                    component.exponent,
+                )
+
+            case _:
+                diagnostics.error(
+                    f"'{'.'.join(component.base.path)}' does not name a unit or unit type",
+                    component.base,
+                )
+
+    return canonical
+
+
+def evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
     try:
-        result = _evaluate(node)
-    except Exception as err:  # noqa: BLE001 - catching all exceptions is intended
+        result = _evaluate(node, get_symbol)
+    except Exception as err:  # noqa: BLE001 - TEMP but intended
         import traceback
 
         traceback.print_exc()
-        diagnostics.error(f"constant evaluation failed: {err}", node)
-        result = EvalResult(
-            ValueSentinels.CannotEvaluate,
-            TypeSentinels.Impossible,
-            UnitSentinels.Incoherent,
-        )
-    else:
-        if result.type is TypeSentinels.Impossible:
-            if result.value is not ValueSentinels.CannotEvaluate:
-                diagnostics.error(
-                    f"type evaluation resolved to .{result.type.name} here", node
-                )
-            result.value = ValueSentinels.CannotEvaluate
-
-    node.evaluated_value = result.value
-    node.evaluated_type = result.type
-    node.evaluated_unit = result.unit
+        diagnostics.error(f"translation to hir failed: {err}", node)
+        return None
 
     return result
 
@@ -196,28 +203,28 @@ def _evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
         case ast.SimpleLiteralExpr():
             match node.value:
                 case str():
-                    return EvalResult(
+                    return FlexibleValue(
                         node.value,
                         FlexType(FlexAffinity.String),
-                        UnitSentinels.NoUnit,
+                        IndeterminateUnit.NoUnit,
                     )
                 case ast.RuneValue():
-                    return EvalResult(
+                    return FlexibleValue(
                         node.value,
                         FlexType(FlexAffinity.Rune),
-                        UnitSentinels.NoUnit,
+                        IndeterminateUnit.NoUnit,
                     )
                 case bool():
-                    return EvalResult(
+                    return FlexibleValue(
                         node.value,
                         FlexType(FlexAffinity.Boolean),
-                        UnitSentinels.NoUnit,
+                        IndeterminateUnit.NoUnit,
                     )
                 case None:
-                    return EvalResult(
-                        NilOf(FlexType(FlexAffinity.Nil)),
+                    return FlexibleValue(
+                        FlexNil(),
                         FlexType(FlexAffinity.Nil),
-                        UnitSentinels.NoUnit,
+                        IndeterminateUnit.NoUnit,
                     )
 
         case ast.ScalarLiteralExpr():
@@ -235,67 +242,87 @@ def _evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
                 ):
                     affinity = FlexAffinity.UInt
 
-            return EvalResult(
+            return FlexibleValue(
                 Fraction(node.value.value),
                 FlexType(affinity),
-                node.unit.canonical
-                if node.unit and node.unit.canonical
-                else UnitSentinels.Flexible,
+                get_canonical_unit(node.unit, get_symbol) or IndeterminateUnit.Flexible,
             )
 
         case ast.BinopExpr():
-            return _eval_binop(node)
+            return _eval_binop(node, get_symbol)
 
         case ast.NameExpr():
-            resolved = node.resolves_to
-            if isinstance(resolved, Constant):
-                return _ensure_const_evaluated(resolved)
-            elif isinstance(resolved, Variable):
-                return EvalResult(
-                    ValueSentinels.RuntimeValue,
-                    _ensure_type_inferred(resolved),
-                    _ensure_unit_known(resolved),
-                )
-            elif isinstance(resolved, Unit):
-                if isinstance(resolved.definition, ast.UnitAlias):
-                    assert resolved.definition.orig.canonical is not None
-                    return EvalResult(
-                        Fraction(1),
-                        FlexType(FlexAffinity.Integer),
-                        resolved.definition.orig.canonical,
+            match resolved := get_symbol(node):
+                case Constant():
+                    return resolved.value
+                case LocalVariable() | GlobalVariable():
+                    assert resolved.hir is not None
+                    return hir.VarExpr(
+                        **node.where(),
+                        references=resolved.hir,
+                        type=resolved.hir.type,
+                        unit=resolved.hir.unit,
                     )
-                else:
-                    return EvalResult(
+                case BaseUnit():
+                    return FlexibleValue(
                         Fraction(1),
                         FlexType(FlexAffinity.Integer),
                         CanonicalUnit([resolved.id]),
                     )
+                case UnitAlias():
+                    unit = get_canonical_unit(resolved.ast.orig, get_symbol)
+                    if unit:
+                        return FlexibleValue(
+                            Fraction(1),
+                            FlexType(FlexAffinity.Integer),
+                            unit,
+                        )
+                    else:
+                        return None  # should already have produced a diagnostic
 
-            diagnostics.error(
-                f"qualified name references unexpected symbol: {resolved}", node
-            )
-            return EvalResult(
-                ValueSentinels.CannotEvaluate,
-                TypeSentinels.Impossible,
-                UnitSentinels.Incoherent,
-            )
+                case None:
+                    return None
+
+                case Module() | Builtin():
+                    diagnostics.error(
+                        f"'{node.name}' references a {type(resolved).__name__}", node
+                    )
+                    return None
+
+                case _:
+                    diagnostics.error(
+                        f"'{node.name}' references a {type(resolved).__name__}", node
+                    ).reference("defined here", resolved.ast)
+                    return None
 
         case ast.UnitReinterpretExpr():
-            result = evaluate(node.expr)
-            return EvalResult(
-                result.value,
-                result.type,
-                node.new_unit.canonical or UnitSentinels.NotDetermined
-                if result.unit is not UnitSentinels.Incoherent
-                else UnitSentinels.Incoherent,
-            )
+            new_unit = get_canonical_unit(node.new_unit, get_symbol)
+
+            if new_unit is None:
+                return None
+
+            match result := evaluate(node.expr, get_symbol):
+                case FlexibleValue():
+                    return FlexibleValue(
+                        result.value,
+                        result.type,
+                        new_unit,
+                    )
+                case None:
+                    return None
+                case hir.SingleValueExpression():
+                    return hir.UnitReinterpretExpr(
+                        **node.where(),
+                        type=result.type,
+                        unit=canonical_unit_to_hir(new_unit),
+                        expr=result,
+                    )
 
         case ast.CastExpr():
-            assert node.to.canonical, "this should have been set by now"
-            result = evaluate(node.expr)
+            result = evaluate(node.expr, get_symbol)
 
-            if _cast_allowed(node.to.canonical, result.type):
-                return EvalResult(
+            if _cast_allowed(node.to, result.type):
+                return FlexibleValue(
                     ValueSentinels.RuntimeValue,  # TODO: This might be comptime-evaluatable
                     node.to.canonical,
                     result.unit,
@@ -304,47 +331,47 @@ def _evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
                 diagnostics.error(
                     f"{result.type} is not convertible to {node.to.canonical}", node
                 )
-                return EvalResult(
+                return FlexibleValue(
                     ValueSentinels.CannotEvaluate,
                     TypeSentinels.Impossible,
-                    UnitSentinels.Incoherent,
+                    IndeterminateUnit.Incoherent,
                 )
 
         case _:
             raise NotImplementedError(
-                f"no evaluation implemented for {type(node).__qualname__}"
+                f"no evaluation implemented for {type(node).__name__} nodes"
             )
 
 
 def infer_type(
     evaluated_type: ComptimeType,
-    context: ast.Node,
-) -> hir.Type:
+    diagnostic_context: ast.Node,
+) -> hir.Type | None:
     match evaluated_type:
         case FlexType(FlexAffinity.Integer):
-            return PrimitiveType.Integer
+            return hir.SimpleType(type=PrimitiveType.Integer)
 
         case FlexType(FlexAffinity.UInt):
-            return PrimitiveType.UInt64
+            return hir.SimpleType(type=PrimitiveType.UInt64)
 
         case FlexType(FlexAffinity.Decimal):
-            return PrimitiveType.Decimal
+            return hir.SimpleType(type=PrimitiveType.Decimal)
 
         case FlexType(FlexAffinity.Float):
-            return PrimitiveType.Float64
+            return hir.SimpleType(type=PrimitiveType.Float64)
 
         case FlexType(FlexAffinity.Boolean):
-            return PrimitiveType.Boolean
+            return hir.SimpleType(type=PrimitiveType.Boolean)
 
         case FlexType(FlexAffinity.String):
-            return PrimitiveType.String
+            return hir.SimpleType(type=PrimitiveType.String)
 
         case FlexType(FlexAffinity.Rune):
-            return PrimitiveType.Rune
+            return hir.SimpleType(type=PrimitiveType.Rune)
 
         case FlexType(FlexAffinity.Nil):
-            diagnostics.error("cannot infer type of nil", context)
-            return TypeSentinels.Impossible
+            diagnostics.error("cannot infer type of nil", diagnostic_context)
+            return None
 
         case FlexType(affinity):
             raise NotImplementedError(f"missing a case for {affinity}")
@@ -409,7 +436,7 @@ BINOP_FUNCS: dict[ast.BinaryOp, Callable[[Any, Any], Any]] = {
 }
 
 
-def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
+def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> FlexibleValue:
     lhs = evaluate(binop.lhs, get_symbol)
     rhs = evaluate(binop.rhs, get_symbol)
 
@@ -438,10 +465,10 @@ def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
             assert not isinstance(typ, ConversionSentinels), (
                 "there is a bug in type coercion logic, probably"
             )
-            return EvalResult(
+            return FlexibleValue(
                 lhs.value + rhs.value,
                 typ,
-                UnitSentinels.NoUnit,
+                IndeterminateUnit.NoUnit,
             )
 
     coerced_type = _coerce(lhs, rhs)
@@ -452,10 +479,10 @@ def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
             + " and no implicit conversion between them exists",
             binop,
         )
-        return EvalResult(
+        return FlexibleValue(
             ValueSentinels.CannotEvaluate,
             TypeSentinels.Impossible,
-            UnitSentinels.Incoherent,
+            IndeterminateUnit.Incoherent,
         )
 
     op_compat = _op_category_of(coerced_type)
@@ -468,10 +495,10 @@ def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
         if binop.op in op_compat.suggestions:
             err.suggest(op_compat.suggestions[binop.op])
         # TODO: suggestions based on the type and its semantics
-        return EvalResult(
+        return FlexibleValue(
             ValueSentinels.CannotEvaluate,
             TypeSentinels.Impossible,
-            UnitSentinels.Incoherent,
+            IndeterminateUnit.Incoherent,
         )
 
     binop.lhs.required_type = coerced_type
@@ -486,7 +513,7 @@ def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
         op_func = BINOP_FUNCS[binop.op]
         val = op_func(lhs.value, rhs.value)
 
-    return EvalResult(
+    return FlexibleValue(
         val,
         coerced_type,
         _eval_binop_unit(binop, lhs, rhs),
@@ -494,31 +521,31 @@ def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
 
 
 def _eval_boolean_multiply(
-    boolval: ComptimeValue, nonbool: EvalResult, binop: ast.BinopExpr
-) -> EvalResult:
+    boolval: ComptimeValue, nonbool: FlexibleValue, binop: ast.BinopExpr
+) -> FlexibleValue:
     if not is_zeroable(nonbool.type):
         diagnostics.error(
             f"cannot multiply Boolean and {nonbool.type} because {nonbool.type} does not have a well-defined zero value",
             binop,
         )
-        return EvalResult(
+        return FlexibleValue(
             ValueSentinels.CannotEvaluate,
             TypeSentinels.Impossible,
-            UnitSentinels.Incoherent,
+            IndeterminateUnit.Incoherent,
         )
 
     if boolval is True:
         return nonbool
 
     elif boolval is False:
-        return EvalResult(
+        return FlexibleValue(
             zero_of(nonbool.type),
             nonbool.type,
             nonbool.unit,
         )
 
     elif boolval is ValueSentinels.RuntimeValue:
-        return EvalResult(
+        return FlexibleValue(
             ValueSentinels.RuntimeValue,
             nonbool.type,
             nonbool.unit,
@@ -597,13 +624,16 @@ def zero_of(typ: ComptimeType) -> ComptimeValue:
 
 
 def _eval_binop_unit(
-    binop: ast.BinopExpr, lhs: EvalResult, rhs: EvalResult
+    binop: ast.BinopExpr, lhs: FlexibleValue, rhs: FlexibleValue
 ) -> ComptimeUnit:
-    if lhs.unit is UnitSentinels.Incoherent or rhs.unit is UnitSentinels.Incoherent:
-        return UnitSentinels.Incoherent
+    if (
+        lhs.unit is IndeterminateUnit.Incoherent
+        or rhs.unit is IndeterminateUnit.Incoherent
+    ):
+        return IndeterminateUnit.Incoherent
 
-    if lhs.unit is UnitSentinels.NoUnit and rhs.unit is UnitSentinels.NoUnit:
-        return UnitSentinels.NoUnit
+    if lhs.unit is IndeterminateUnit.NoUnit and rhs.unit is IndeterminateUnit.NoUnit:
+        return IndeterminateUnit.NoUnit
 
     op = binop.op
 
@@ -611,7 +641,7 @@ def _eval_binop_unit(
         case ast.BinaryOp.And | ast.BinaryOp.Or:
             # booleans are always not applicable to the unit checker
             # so if this is erroneous, the diagnostic would be emitted by the type checking
-            return UnitSentinels.NoUnit
+            return IndeterminateUnit.NoUnit
 
         case (
             ast.BinaryOp.Equal
@@ -626,14 +656,14 @@ def _eval_binop_unit(
             coerced_unit, binop.rhs.unit_conv_multiplier = _coerce_units(
                 lhs.unit, rhs.unit
             )
-            if coerced_unit is UnitSentinels.Incoherent:
+            if coerced_unit is IndeterminateUnit.Incoherent:
                 diagnostics.error(
                     f"units ({lhs.unit}) and ({rhs.unit}) do not match"
                     + " and do not have any known conversions",
                     binop,
                 )
 
-            return UnitSentinels.NoUnit  # booleans don't have units
+            return IndeterminateUnit.NoUnit  # booleans don't have units
 
         case (
             ast.BinaryOp.Add
@@ -644,13 +674,13 @@ def _eval_binop_unit(
             coerced_unit, binop.rhs.unit_conv_multiplier = _coerce_units(
                 lhs.unit, rhs.unit
             )
-            if coerced_unit is UnitSentinels.Incoherent:
+            if coerced_unit is IndeterminateUnit.Incoherent:
                 diagnostics.error(
                     f"units ({lhs.unit}) and ({rhs.unit}) do not match"
                     + " and do not have any known conversions",
                     binop,
                 )
-                return UnitSentinels.Incoherent
+                return IndeterminateUnit.Incoherent
 
             return coerced_unit
 
@@ -659,59 +689,59 @@ def _eval_binop_unit(
             r_has_unit = isinstance(rhs.unit, CanonicalUnit)
             if l_has_unit and r_has_unit:
                 return CanonicalUnit.combine(lhs.unit, 1, rhs.unit, 1)  # pyright: ignore - it doesn't understand the substituted type refinement
-            elif l_has_unit and rhs.unit is UnitSentinels.Flexible:
+            elif l_has_unit and rhs.unit is IndeterminateUnit.Flexible:
                 return lhs.unit
-            elif r_has_unit and lhs.unit is UnitSentinels.Flexible:
+            elif r_has_unit and lhs.unit is IndeterminateUnit.Flexible:
                 return rhs.unit
             elif (
-                lhs.unit is UnitSentinels.Flexible
-                and rhs.unit is UnitSentinels.Flexible
+                lhs.unit is IndeterminateUnit.Flexible
+                and rhs.unit is IndeterminateUnit.Flexible
             ):
-                return UnitSentinels.Flexible
+                return IndeterminateUnit.Flexible
             elif lhs.unit in (
-                UnitSentinels.NoUnit,
-                UnitSentinels.Flexible,
-            ) and rhs.unit in (UnitSentinels.NoUnit, UnitSentinels.Flexible):
-                return UnitSentinels.NoUnit
+                IndeterminateUnit.NoUnit,
+                IndeterminateUnit.Flexible,
+            ) and rhs.unit in (IndeterminateUnit.NoUnit, IndeterminateUnit.Flexible):
+                return IndeterminateUnit.NoUnit
             else:
                 diagnostics.error(
                     "you cannot multiply a unitless value with a value with units"
                     + f" (|{lhs.unit}| {op.value} |{rhs.unit}|)",
                     binop,
                 )
-                return UnitSentinels.Incoherent
+                return IndeterminateUnit.Incoherent
 
         case ast.BinaryOp.TrueDivide | ast.BinaryOp.FloorDivide:
             l_has_unit = isinstance(lhs.unit, CanonicalUnit)
             r_has_unit = isinstance(rhs.unit, CanonicalUnit)
             if l_has_unit and r_has_unit:
                 return CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1)  # pyright: ignore - it doesn't understand the substituted type refinement
-            elif l_has_unit and rhs.unit is UnitSentinels.Flexible:
+            elif l_has_unit and rhs.unit is IndeterminateUnit.Flexible:
                 return lhs.unit
-            elif r_has_unit and lhs.unit is UnitSentinels.Flexible:
+            elif r_has_unit and lhs.unit is IndeterminateUnit.Flexible:
                 return rhs.unit * -1  # pyright: ignore - it doesn't understand the substituted type refinement
             elif (
-                lhs.unit is UnitSentinels.Flexible
-                and rhs.unit is UnitSentinels.Flexible
+                lhs.unit is IndeterminateUnit.Flexible
+                and rhs.unit is IndeterminateUnit.Flexible
             ):
-                return UnitSentinels.Flexible
+                return IndeterminateUnit.Flexible
             elif lhs.unit in (
-                UnitSentinels.NoUnit,
-                UnitSentinels.Flexible,
-            ) and rhs.unit in (UnitSentinels.NoUnit, UnitSentinels.Flexible):
-                return UnitSentinels.NoUnit
+                IndeterminateUnit.NoUnit,
+                IndeterminateUnit.Flexible,
+            ) and rhs.unit in (IndeterminateUnit.NoUnit, IndeterminateUnit.Flexible):
+                return IndeterminateUnit.NoUnit
             else:
                 diagnostics.error(
                     "you cannot divide a unitless value by a value with units or vice-versa"
                     + f" (|{lhs.unit}| {op.value} |{rhs.unit}|)",
                     binop,
                 )
-                return UnitSentinels.Incoherent
+                return IndeterminateUnit.Incoherent
 
         case ast.BinaryOp.Power:
             if isinstance(lhs, CanonicalUnit):
                 if isinstance(rhs.value, Fraction) and (
-                    rhs.unit in (UnitSentinels.NoUnit, UnitSentinels.Flexible)
+                    rhs.unit in (IndeterminateUnit.NoUnit, IndeterminateUnit.Flexible)
                     or (isinstance(rhs.unit, CanonicalUnit) and not rhs.unit)
                 ):
                     if rhs.value.is_integer():
@@ -722,17 +752,17 @@ def _eval_binop_unit(
                             "fractional exponents are not currently supported for values with units",
                             binop.rhs,
                         )
-                        return UnitSentinels.Incoherent
+                        return IndeterminateUnit.Incoherent
                 else:
                     diagnostics.error(
                         "exponents of unit expressions must be statically known unitless integers",
                         binop.rhs,
                     )
-                    return UnitSentinels.Incoherent
-            elif lhs.unit is UnitSentinels.Flexible:
-                return UnitSentinels.Flexible
+                    return IndeterminateUnit.Incoherent
+            elif lhs.unit is IndeterminateUnit.Flexible:
+                return IndeterminateUnit.Flexible
             else:
-                return UnitSentinels.NoUnit
+                return IndeterminateUnit.NoUnit
 
         case Never():
             raise AssertionError(f"missing branch for {op.value}")
@@ -741,9 +771,9 @@ def _eval_binop_unit(
 def _coerce_units(
     lhs: ComptimeUnit, rhs: ComptimeUnit
 ) -> tuple[ComptimeUnit, Fraction]:
-    if lhs is UnitSentinels.Flexible:
+    if lhs is IndeterminateUnit.Flexible:
         return rhs, Fraction(1)
-    elif rhs is UnitSentinels.Flexible:
+    elif rhs is IndeterminateUnit.Flexible:
         return lhs, Fraction(1)
 
     if lhs == rhs:
@@ -751,14 +781,16 @@ def _coerce_units(
 
     # TODO: implicit conversions and resulting fraction
 
-    return UnitSentinels.Incoherent, Fraction(1)
+    return IndeterminateUnit.Incoherent, Fraction(1)
 
 
 class ConversionSentinels(Enum):
     NoImplicitConversion = auto()
 
 
-def _coerce(lhs: EvalResult, rhs: EvalResult) -> ComptimeType | ConversionSentinels:
+def _coerce(
+    lhs: FlexibleValue, rhs: FlexibleValue
+) -> ComptimeType | ConversionSentinels:
     if (conv := _implicit_convert(lhs.type, rhs.type)) is not TypeSentinels.Impossible:
         return conv
 
