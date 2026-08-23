@@ -35,6 +35,7 @@ class PartialSymbol[T: ast.Node]:
     id: SymbolID = field(default_factory=next_symbol_id)
     name: Identifier
     ast: T  # generics used to shut up pyright on derived classes
+    processed: bool = False
 
 
 @dataclass(kw_only=True)

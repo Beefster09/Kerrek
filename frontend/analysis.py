@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import traceback
+from dataclasses import dataclass
 from typing import Never
 
 from frontend import ast, diagnostics, exprs, hir
@@ -19,6 +19,7 @@ from frontend.resolver import (
     Scope,
     next_symbol_id,
 )
+from frontend.units import IndeterminateUnit
 
 
 @dataclass(kw_only=True)
@@ -52,7 +53,7 @@ class HIRBuilder:
         for module in self.resolver.modules.values():
             for symbol in module:
                 try:
-                    self._build_symbol(symbol, module)
+                    self._ensure_symbol_processed(symbol, module)
                 except NotImplementedError as err:
                     print(
                         f"in file '{module.file.source}',",
@@ -74,65 +75,73 @@ class HIRBuilder:
 
     def _symbol_getter(self, module: Module, *scopes: Scope):
         def _get_symbol(node: ast.Node):
-            symbol = self.resolver.resolve(node, module, *scopes)
-
-            if symbol:
-                self._build_symbol(symbol, module, *scopes)
-
-            return symbol
+            return self._resolve_and_process(node, module, *scopes)
 
         return _get_symbol
 
-    def _build_symbol(
+    def _resolve_and_process(self, node: ast.Node, module: Module, *scopes: Scope):
+        symbol = self.resolver.resolve(node, module, *scopes)
+
+        if symbol:
+            self._ensure_symbol_processed(symbol, module, *scopes)
+
+        return symbol
+
+    def _ensure_symbol_processed(
         self,
         symbol: Named,
         module: Module,
         *scopes: Scope,
-    ) -> hir.Symbol | None:
+    ) -> None:
+        if isinstance(symbol, (Module, Builtin)):
+            return
+        elif isinstance(symbol, PartialSymbol):
+            if symbol.processed:
+                return
+            else:
+                symbol.processed = True
+
         match symbol:
             case Function():
-                if not symbol.hir:
-                    self.hir.funcs[symbol.id] = symbol.hir = self._build_func(
-                        symbol.ast,
-                        module,
-                        *scopes,
-                        id=symbol.id,
-                    )
-                    if scopes:
-                        scopes[0][symbol.name] = symbol
+                symbol.hir = self._build_func(
+                    symbol.ast,
+                    module,
+                    *scopes,
+                    id=symbol.id,
+                )
+                if symbol.hir:
+                    self.hir.funcs[symbol.id] = symbol.hir
 
-                return symbol.hir
+                if scopes:
+                    scopes[0][symbol.name] = symbol
 
             case Constant():
-                if not symbol.value:
-                    evaluated = exprs.evaluate(
+                evaluated = exprs.evaluate(
+                    symbol.ast.expr,
+                    self._symbol_getter(module, *scopes),
+                )
+                if isinstance(evaluated, exprs.FlexibleValue):
+                    symbol.value = evaluated
+                else:
+                    diagnostics.error(
+                        "this expression is not constant at compile-time",
                         symbol.ast.expr,
-                        self._symbol_getter(module, *scopes),
                     )
-                    if isinstance(evaluated, exprs.FlexibleValue):
-                        symbol.value = evaluated
-                    else:
-                        diagnostics.error(
-                            "this expression is not constant at compile-time",
-                            symbol.ast.expr,
-                        )
-
-                return None
 
             case GlobalVariable():
-                if not symbol.hir:
-                    self.hir.variables[symbol.id] = symbol.hir = self._build_var(
-                        symbol.ast,
-                        module,
-                        *scopes,
-                        id=symbol.id,
-                    )
-
-                return symbol.hir
+                symbol.hir = self._build_var(
+                    symbol.ast,
+                    module,
+                    *scopes,
+                    id=symbol.id,
+                )
+                if symbol.hir:
+                    self.hir.variables[symbol.id] = symbol.hir
 
             case LocalVariable():
-                # local vars should have already been fully resolved because they are built up by the block builder
-                return symbol.hir
+                # local vars should have already been fully resolved
+                # because they are built up by the block builder
+                pass
 
             case _:
                 raise NotImplementedError(
@@ -145,7 +154,7 @@ class HIRBuilder:
         module: Module,
         *scopes: Scope,
         id: hir.SymbolID | None = None,
-    ) -> hir.FuncDefinition:
+    ) -> hir.FuncDefinition | None:
         annotations: list[hir.Annotation] = []
 
         for annotation in func.annotations:
@@ -206,6 +215,7 @@ class HIRBuilder:
                         f"default value for '{ast_param.name}' is not known at compile-time",
                         ast_param.default,
                     )
+                    return None
             else:
                 pdefault = None
 
@@ -297,26 +307,68 @@ class HIRBuilder:
         module: Module,
         *scopes: Scope,
         id: hir.SymbolID | None = None,
-    ) -> hir.Variable:
+    ) -> hir.Variable | None:
         if var.type:
             var_type = self._build_type(var.type, module, *scopes)
         else:
             var_type = None
 
+        if isinstance(var.unit, ast.CompoundUnit):
+            unit = self._build_unit(var.unit, module, *scopes)
+        else:
+            unit = var.unit
+
         match var.expr:
             case ast.UnboundVar():
                 value = None
+
                 if var_type is None:
                     diagnostics.error("unbound variables must have a type", var)
+                    return None
+
+                if unit is IndeterminateUnit.Inferred:
+                    unit = IndeterminateUnit.NoUnit
 
             case ast.Expression():
-                value = self._build_expr(
+                match value := self._build_expr(
                     var.expr,
                     module,
                     *scopes,
-                )
-                if value.is_single_value() and var_type is None:
-                    var_type = exprs.infer_type(value.type, var)
+                ):
+                    case hir.SingleValueExpression():
+                        var_type = exprs.infer_type(value.type, var)
+
+                        if unit is IndeterminateUnit.Inferred:
+                            unit = value.unit
+                    case hir.MultiValueExpression():
+                        match value_count := len(value.types):
+                            case 0:
+                                diagnostics.error(
+                                    "this expression results in no values and"
+                                    + f" therefore cannot be assigned to '{var.name}'",
+                                    var.expr,
+                                )
+                                return None
+                            case 1:
+                                var_type = exprs.infer_type(value.types[0], var)
+
+                                if unit is IndeterminateUnit.Inferred:
+                                    unit = value.units[0]
+                            case _:
+                                diagnostics.error(
+                                    f"this expression results in {value_count} values and"
+                                    + f" therefore cannot be assigned to '{var.name}'",
+                                    var.expr,
+                                )
+                                return None
+                    case _:
+                        raise NotImplementedError(
+                            f"cannot assign {type(value).__name__} to variables"
+                        )
+
+                if var_type is None:
+                    # type inference or prior evaluation should have reported an error by now
+                    return None
 
             case None:
                 if var_type is None:
@@ -325,12 +377,18 @@ class HIRBuilder:
                         + " that implies a type",
                         var,
                     )
+                    return None
                 elif exprs.is_zeroable(var_type):
-                    value = hir.ZeroOf(
+                    if unit is IndeterminateUnit.Inferred:
+                        unit = IndeterminateUnit.Flexible
+
+                    value = hir.ConstExpr(
                         file=var.file,
                         start=var.end,
                         end=var.end,
+                        value=hir.ZeroOf(var_type),
                         type=var_type,
+                        unit=unit,
                     )
                 else:
                     diagnostics.error(
@@ -339,9 +397,14 @@ class HIRBuilder:
                         + " explicitly unbound",
                         var,
                     )
+                    return None
 
             case Never():
                 raise AssertionError("unreachable")
+
+        assert unit is not IndeterminateUnit.Inferred, (
+            "unit should have been inferred by now"
+        )
 
         return hir.Variable(
             file=var.file,
@@ -374,7 +437,20 @@ class HIRBuilder:
         expr: ast.Expression,
         module: Module,
         *scopes: Scope,
-    ) -> hir.Expression: ...
+    ) -> hir.Expression | None:
+        match result := exprs.evaluate(expr, self._symbol_getter(module, *scopes)):
+            case exprs.FlexibleValue():
+                return hir.ConstExpr(
+                    **expr.where(),
+                    value=result.value,
+                    type=result.type,
+                    unit=result.unit,
+                )
+            case hir.Expression() | None:
+                return result
+
+            case Never():
+                raise AssertionError("unreachable")
 
     def _build_block(
         self,
