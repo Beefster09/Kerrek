@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import NamedTuple, TypedDict
+from typing import Iterable, NamedTuple, TypedDict
 
 
 class Location(NamedTuple):
@@ -70,3 +70,11 @@ class BinaryOp(Enum):
 
     And = "and"
     Or = "or"
+
+
+def get_first[K, V](dicts: Iterable[dict[K, V]], key: K) -> V | None:
+    for d in dicts:
+        if key in d:
+            return d[key]
+
+    return None

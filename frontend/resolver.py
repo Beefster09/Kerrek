@@ -80,7 +80,7 @@ class GlobalVariable(PartialSymbol):
 @dataclass(kw_only=True)
 class LocalVariable(PartialSymbol):
     ast: ast.LocalVariable
-    hir: hir.Variable
+    hir: hir.Variable | None
 
 
 @dataclass(kw_only=True)
@@ -232,7 +232,7 @@ class Module:
         yield from self.funcs.values()
 
 
-type Scope = dict[Identifier, Named]
+type Scope = dict[Identifier, PartialSymbol]
 
 
 class Resolver:

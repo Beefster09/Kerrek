@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from typing import Never
 
 from frontend import ast, diagnostics, exprs, hir
+from frontend.common import get_first
 from frontend.resolver import (
+    BUILTINS,
     Annotation,
     Builtin,
     Constant,
@@ -402,7 +404,7 @@ class HIRBuilder:
             case Never():
                 raise AssertionError("unreachable")
 
-        assert unit is not IndeterminateUnit.Inferred, (
+        assert unit is not IndeterminateUnit.Inferred and unit is not None, (
             "unit should have been inferred by now"
         )
 
@@ -430,7 +432,12 @@ class HIRBuilder:
         unit: ast.CompoundUnit,
         module: Module,
         *scopes: Scope,
-    ) -> hir.CompoundUnit: ...
+    ) -> hir.CompoundUnit | None:
+        canonical = exprs.get_canonical_unit(unit, self._symbol_getter(module, *scopes))
+        if canonical:
+            return exprs.canonical_unit_to_hir(canonical)
+        else:
+            return None
 
     def _build_expr(
         self,
@@ -458,32 +465,114 @@ class HIRBuilder:
         module: Module,
         *scopes: Scope,
     ) -> hir.Block:
-        return None
-        if isinstance(node.type, ast.TypeExpression):
-            self._resolve_names(module, node.type, *scopes)
+        local_scope: Scope = {}
+        body: list[hir.Statement] = []
 
-        if node.expr:
-            self._resolve_names(module, node.expr, *scopes)
+        def _new_local(symbol: PartialSymbol):
+            nonlocal local_scope
 
-        local_scope = scopes[0]
-        if node.name in local_scope:
-            diagnostics.error(f"local with name '{node.name}' is already defined", node)
-            return
-        elif any(node.name in scope for scope in scopes[1:]):
-            diagnostics.notice(
-                f"local '{node.name}' shadows previously defined local", node
-            )
-        elif node.name in module:
-            diagnostics.notice(f"local '{node.name}' shadows module global", node)
-        elif node.name in BUILTINS:
-            diagnostics.warning(f"local '{node.name}' shadows builtin", node)
+            if symbol.name in local_scope:
+                diagnostics.error(
+                    f"local with name '{symbol.name}' is already defined", symbol.ast
+                ).reference(
+                    f"'{symbol.name}' was previously defined here",
+                    local_scope[symbol.name].ast,
+                )
+                return
+            elif shadowed := get_first(scopes, symbol.name):
+                diagnostics.notice(
+                    f"local '{symbol.name}' shadows previously defined local",
+                    symbol.ast,
+                ).reference(
+                    f"'{symbol.name}' was previously defined here",
+                    shadowed.ast,
+                )
+            elif symbol.name in module:
+                notice = diagnostics.notice(
+                    f"local '{symbol.name}' shadows module global", symbol.ast
+                )
+                match referenced := module.lookup(symbol.name):
+                    case PartialSymbol():
+                        notice.reference(
+                            f"'{symbol.name}' was previously defined here",
+                            referenced.ast,
+                        )
+            elif symbol.name in BUILTINS:
+                diagnostics.warning(
+                    f"local '{symbol.name}' shadows builtin", symbol.ast
+                )
 
-        if isinstance(node, ast.LocalConstant):
-            local_scope[node.name] = Constant(name=node.name, definition=node)
-        else:
-            var = Variable(name=node.name, definition=node)
-            local_scope[node.name] = var
-            node.shadow_id = var.id
+            local_scope[symbol.name] = symbol
+
+        for stmt in block.body:
+            match stmt:
+                case ast.Block():
+                    body.append(self._build_block(stmt, module, local_scope, *scopes))
+
+                case ast.LocalConstant():
+                    evaluated = exprs.evaluate(
+                        stmt.expr, self._symbol_getter(module, local_scope, *scopes)
+                    )
+
+                    if isinstance(evaluated, exprs.FlexibleValue):
+                        _new_local(
+                            Constant(
+                                name=stmt.name,
+                                ast=stmt,
+                                value=evaluated,
+                                processed=True,
+                            )
+                        )
+                    else:
+                        diagnostics.error(
+                            "this expression is not constant at compile-time",
+                            stmt.expr,
+                        )
+
+                case ast.LocalVariable():
+                    var = self._build_var(stmt, module, local_scope, *scopes)
+                    _new_local(
+                        LocalVariable(
+                            name=stmt.name,
+                            ast=stmt,
+                            hir=var,
+                            processed=True,
+                        )
+                    )
+
+                case ast.AssignStatement():
+                    lresults = [exprs.evaluate(dest) for dest in stmt.dests]
+                    rresults = [exprs.evaluate(expr) for expr in stmt.exprs]
+
+                case ast.ReturnStatement():
+                    if len(stmt.values) < len(func.returns):
+                        diagnostics.error(
+                            "return statement has too few values"
+                            + f" (expected {len(func.returns)}, got {len(stmt.values)})",
+                            stmt,
+                        )
+                        continue
+
+                    if len(stmt.values) > len(func.returns):
+                        diagnostics.error(
+                            "return statement has too many values"
+                            + f" (expected {len(func.returns)}, got {len(stmt.values)})",
+                            stmt,
+                        )
+                        continue
+
+                    for ret, value in zip(func.returns, stmt.values, strict=True):
+                        result = exprs.evaluate(value)
+                        typ = exprs.check_type(ret.type, result.type, value)
+                        assert not isinstance(typ, exprs.FlexType)
+                        value.required_type = typ
+
+                case _:
+                    raise NotImplementedError(
+                        f"block builder doesn't handle {type(stmt).__name__} yet"
+                    )
+
+        return hir.Block(**block.where(), body=body)
 
     def _build_annotation_def(
         self,
@@ -531,66 +620,8 @@ def validate(node: hir.Node):
             _validate_block(node, node.body, params_scope)
 
 
-def _validate_block(func: ast.FuncDefinition, block: ast.Block, *scopes: Scope):
-    local_scope: Scope = {}
+def _validate_block(func: hir.FuncDefinition, block: ast.Block, *scopes: Scope):
     for stmt in block.body:
         match stmt:
-            case ast.Block():
-                _validate_block(func, stmt, local_scope, *scopes)
-
-            case ast.LocalConstant():
-                result = exprs.evaluate(stmt.expr)
-                if stmt.type:
-                    exprs.check_type(stmt.type, result.type, stmt)
-
-            case ast.LocalVariable():
-                if isinstance(stmt.expr, ast.UnboundVar):
-                    local_scope[stmt.name] = VarState(
-                        declaration=stmt,
-                        possibly_unbound=True,
-                    )
-                elif stmt.expr:
-                    result = exprs.evaluate(stmt.expr)
-
-                    if stmt.type is None:
-                        typ = exprs.infer_type(result.type, stmt)
-                        stmt.realized_type = typ
-                    else:
-                        typ = exprs.check_type(stmt.type, result.type, stmt)
-                        assert not isinstance(typ, exprs.FlexType)
-                        stmt.realized_type = typ
-
-                    local_scope[stmt.name] = VarState(declaration=stmt)
-
-            case ast.AssignStatement():
-                lresults = [exprs.evaluate(dest) for dest in stmt.dests]
-                rresults = [exprs.evaluate(expr) for expr in stmt.exprs]
-
-            case ast.ReturnStatement():
-                if len(stmt.values) < len(func.returns):
-                    diagnostics.error(
-                        "return statement has too few values"
-                        + f" (expected {len(func.returns)}, got {len(stmt.values)})",
-                        stmt,
-                    )
-                    continue
-
-                if len(stmt.values) > len(func.returns):
-                    diagnostics.error(
-                        "return statement has too many values"
-                        + f" (expected {len(func.returns)}, got {len(stmt.values)})",
-                        stmt,
-                    )
-                    continue
-
-                for ret, value in zip(func.returns, stmt.values, strict=True):
-                    result = exprs.evaluate(value)
-                    typ = exprs.check_type(ret.type, result.type, value)
-                    assert not isinstance(typ, exprs.FlexType)
-                    value.required_type = typ
-
             case _:
-                diagnostics.error(
-                    f"cannot analyze {type(stmt).__name__} statements",
-                    stmt,
-                )
+                pass
