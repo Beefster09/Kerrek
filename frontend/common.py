@@ -1,7 +1,10 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import Iterable, NamedTuple, TypedDict
+from typing import NamedTuple, NewType, TypedDict
+
+SymbolID = NewType("SymbolID", int)
 
 
 class Location(NamedTuple):

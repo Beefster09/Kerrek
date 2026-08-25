@@ -74,13 +74,13 @@ class Constant(PartialSymbol):
 @dataclass(kw_only=True)
 class GlobalVariable(PartialSymbol):
     ast: ast.GlobalVariable
-    hir: hir.Variable | None = None
+    hir: hir.GlobalVariable | None = None
 
 
 @dataclass(kw_only=True)
 class LocalVariable(PartialSymbol):
     ast: ast.LocalVariable
-    hir: hir.Variable | None
+    hir: hir.GlobalVariable | None
 
 
 @dataclass(kw_only=True)

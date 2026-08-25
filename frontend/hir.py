@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from abc import abstractmethod
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import Literal, NewType
+from typing import Literal
 
 from frontend import ast
 from frontend.common import (
@@ -14,16 +12,14 @@ from frontend.common import (
     Location,
     PointerOwnership,
     RuneValue,
+    SymbolID,
     UnaryOp,
 )
 from frontend.lexer import Identifier
-from frontend.types import FixedDecimal, FlexType, PrimitiveType
+from frontend.types import FixedDecimal, PrimitiveType
 from frontend.units import IndeterminateUnit
 
 # === NODES ===
-
-
-SymbolID = NewType("SymbolID", int)
 
 
 @dataclass(kw_only=True)
@@ -31,7 +27,7 @@ class TranslationUnit:
     entry_point: FuncDefinition | None = None
     types: dict[SymbolID, Type] = field(default_factory=dict)
     funcs: dict[SymbolID, FuncDefinition] = field(default_factory=dict)
-    variables: dict[SymbolID, Variable] = field(default_factory=dict)
+    variables: dict[SymbolID, GlobalVariable] = field(default_factory=dict)
     unit_types: dict[SymbolID, UnitType] = field(default_factory=dict)
     units: dict[SymbolID, BaseUnit] = field(default_factory=dict)
     capabilities: dict[SymbolID, Capability] = field(default_factory=dict)
@@ -77,12 +73,11 @@ class Annotatable(Symbol):
 
 
 @dataclass(kw_only=True)
-class Variable(Annotatable):
+class GlobalVariable(Annotatable):
     name: Identifier
     type: Type
     unit: RealizedUnit
-    # expr = None means unbound. Default zero is made explicit when building the HIR
-    expr: Expression | None
+    expr: Expression
 
 
 @dataclass(kw_only=True)
@@ -97,7 +92,7 @@ class BaseUnit(Symbol):
 
 
 @dataclass(kw_only=True)
-class CompoundUnit(Node):
+class CompoundUnit:
     components: list[tuple[BaseUnit, int]]
     is_absolute: bool
 
@@ -179,6 +174,13 @@ class MoveExpr(SingleValueExpression):
 
 
 @dataclass(kw_only=True)
+class ConditionExpr(SingleValueExpression):
+    condition: Expression
+    if_true: Expression
+    if_false: Expression
+
+
+@dataclass(kw_only=True)
 class BinopExpr(SingleValueExpression):
     op: BinaryOp
     lhs: Expression
@@ -240,12 +242,12 @@ class Argument(Node):
 # === TYPE EXPRESSIONS ===
 
 
-@dataclass(kw_only=True)
+@dataclass
 class Type:
     pass
 
 
-@dataclass(kw_only=True)
+@dataclass
 class SimpleType(Type):
     type: PrimitiveType | FixedDecimal | StructType | EnumType | DistinctType
 
@@ -253,7 +255,7 @@ class SimpleType(Type):
 @dataclass(kw_only=True)
 class GenericType(Type):
     name: Identifier
-    bound: Type | None
+    bound: Type | None = None
 
 
 @dataclass(kw_only=True)
@@ -262,7 +264,7 @@ class FixedArrayType(Type):
     shape: tuple[int, ...]
 
 
-@dataclass(kw_only=True)
+@dataclass
 class DynamicArrayType(Type):
     elem: Type
 
@@ -270,15 +272,16 @@ class DynamicArrayType(Type):
 @dataclass(kw_only=True)
 class DimensionedArrayType(Type):
     elem: Type
-    dimensions: int
+    dimensions: int = 1
 
 
-@dataclass(kw_only=True)
+@dataclass
 class MapType(Type):
-    elem: Type
+    key: Type
+    value: Type
 
 
-@dataclass(kw_only=True)
+@dataclass
 class OptionalType(Type):
     base: Type
 
@@ -315,6 +318,15 @@ class CapabilityExpression(Node):
 @dataclass(kw_only=True)
 class Statement(Node):
     pass
+
+
+@dataclass(kw_only=True)
+class LocalVariable(Annotatable, Statement):
+    name: Identifier
+    type: Type
+    unit: RealizedUnit
+    # expr = None means unbound. Default zero is made explicit when building the HIR
+    expr: Expression | None
 
 
 @dataclass(kw_only=True)

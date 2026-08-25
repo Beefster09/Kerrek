@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable, Mapping
 from enum import Enum, auto
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, overload
+
+from frontend.common import SymbolID
 
 if TYPE_CHECKING:
-    from frontend.hir import SymbolID
     from frontend.resolver import BaseUnit
 
 
@@ -40,13 +42,50 @@ class CanonicalUnit(Counter):
     def register_unit_name(cls, base_unit: BaseUnit):
         cls._base_unit_names[base_unit.id] = base_unit.ast.name
 
+    @overload
+    def __init__(
+        self,
+        initial: None = None,
+        /,
+        *,
+        is_absolute=False,
+    ): ...
+    @overload
+    def __init__(
+        self,
+        initial: Mapping[SymbolID, int],
+        /,
+        *,
+        is_absolute=False,
+    ): ...
+    @overload
+    def __init__(
+        self,
+        initial: Iterable[SymbolID],
+        /,
+        *,
+        is_absolute=False,
+    ): ...
+    @overload
+    def __init__(
+        self,
+        initial: Iterable[tuple[SymbolID, int]],
+        /,
+        *,
+        is_absolute=False,
+    ): ...
+
+    def __init__(self, initial=None, /, *, is_absolute=False):
+        super().__init__(initial)
+        self.is_absolute = is_absolute
+
     def __str__(self):
         components = []
         for comp_id, exp in self.most_common():
             if exp == 0:
                 continue
 
-            unit_name = self._base_unit_names.get(comp_id, f"unit{comp_id}")
+            unit_name = self._base_unit_names.get(comp_id, f"UNIT#{comp_id}")
 
             if exp == 1:
                 components.append(str(unit_name))
@@ -56,7 +95,7 @@ class CanonicalUnit(Counter):
         if components:
             return " ".join(components)
         else:
-            return "<ratio>"
+            return "1"
 
     def __repr__(self):
         components = []
@@ -74,7 +113,7 @@ class CanonicalUnit(Counter):
         if components:
             return f"unit({' '.join(components)})"
         else:
-            return "unit()"
+            return "unit(1)"
 
     def __mul__(self, exponent: int):
         result = CanonicalUnit()

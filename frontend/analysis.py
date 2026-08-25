@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import traceback
 from dataclasses import dataclass
-from typing import Never
+from typing import Never, overload
 
 from frontend import ast, diagnostics, exprs, hir
 from frontend.common import get_first
@@ -41,6 +41,7 @@ class HIRBuilder:
         self.resolver = res
         self.main_module = main
         self.hir = hir.TranslationUnit()
+        self.symbols_by_id: dict[hir.SymbolID, PartialSymbol] = {}
 
     def build(self) -> hir.TranslationUnit:
         """builds up a typed HIR from the ast+resolver
@@ -76,8 +77,11 @@ class HIRBuilder:
         return self.hir
 
     def _symbol_getter(self, module: Module, *scopes: Scope):
-        def _get_symbol(node: ast.Node):
-            return self._resolve_and_process(node, module, *scopes)
+        def _get_symbol(ref: ast.Node | hir.SymbolID):
+            if isinstance(ref, ast.Node):
+                return self._resolve_and_process(ref, module, *scopes)
+            else:
+                return self.symbols_by_id.get(ref)
 
         return _get_symbol
 
@@ -102,6 +106,7 @@ class HIRBuilder:
                 return
             else:
                 symbol.processed = True
+                self.symbols_by_id[symbol.id] = symbol
 
         match symbol:
             case Function():
@@ -303,13 +308,31 @@ class HIRBuilder:
             annotations=annotations,
         )
 
+    @overload
+    def _build_var(
+        self,
+        var: ast.GlobalVariable,
+        module: Module,
+        *scopes: Scope,
+        id: hir.SymbolID | None = None,
+    ) -> hir.GlobalVariable | None: ...
+
+    @overload
+    def _build_var(
+        self,
+        var: ast.LocalVariable,
+        module: Module,
+        *scopes: Scope,
+        id: hir.SymbolID | None = None,
+    ) -> hir.LocalVariable | None: ...
+
     def _build_var(
         self,
         var: ast.GlobalVariable | ast.LocalVariable,
         module: Module,
         *scopes: Scope,
         id: hir.SymbolID | None = None,
-    ) -> hir.Variable | None:
+    ) -> hir.GlobalVariable | hir.LocalVariable | None:
         if var.type:
             var_type = self._build_type(var.type, module, *scopes)
         else:
@@ -408,17 +431,34 @@ class HIRBuilder:
             "unit should have been inferred by now"
         )
 
-        return hir.Variable(
-            file=var.file,
-            start=var.start,
-            end=var.end,
-            id=id or next_symbol_id(),
-            name=var.name,
-            type=var_type,
-            unit=unit,
-            expr=value,
-            annotations=[],  # TODO
-        )
+        if isinstance(var, ast.GlobalVariable):
+            if value is None:
+                diagnostics.error("global variables may not be unbound", var)
+                return None
+
+            return hir.GlobalVariable(
+                file=var.file,
+                start=var.start,
+                end=var.end,
+                id=id or next_symbol_id(),
+                name=var.name,
+                type=var_type,
+                unit=unit,
+                expr=value,
+                annotations=[],  # TODO
+            )
+        else:
+            return hir.LocalVariable(
+                file=var.file,
+                start=var.start,
+                end=var.end,
+                id=id or next_symbol_id(),
+                name=var.name,
+                type=var_type,
+                unit=unit,
+                expr=value,
+                annotations=[],  # TODO
+            )
 
     def _build_type(
         self,
@@ -435,7 +475,7 @@ class HIRBuilder:
     ) -> hir.CompoundUnit | None:
         canonical = exprs.get_canonical_unit(unit, self._symbol_getter(module, *scopes))
         if canonical:
-            return exprs.canonical_unit_to_hir(canonical)
+            return exprs.materialize_unit(canonical)
         else:
             return None
 
@@ -531,6 +571,8 @@ class HIRBuilder:
 
                 case ast.LocalVariable():
                     var = self._build_var(stmt, module, local_scope, *scopes)
+                    if var:
+                        body.append(var)
                     _new_local(
                         LocalVariable(
                             name=stmt.name,
@@ -605,7 +647,7 @@ def validate_hir(node: hir.TranslationUnit):
 
 def validate(node: hir.Node):
     match node:
-        case hir.Variable():
+        case hir.GlobalVariable():
             if node.expr and not isinstance(node.expr, ast.UnboundVar):
                 exprs.evaluate(node.expr)
 
