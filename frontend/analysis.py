@@ -24,18 +24,6 @@ from frontend.resolver import (
 from frontend.units import IndeterminateUnit
 
 
-@dataclass(kw_only=True)
-class FormalParameter(PartialSymbol):
-    ast: ast.FormalParameter
-    hir: hir.FormalParameter
-
-
-@dataclass(kw_only=True)
-class NamedReturn(PartialSymbol):
-    ast: ast.FuncReturn
-    hir: hir.FuncReturn
-
-
 class HIRBuilder:
     def __init__(self, res: Resolver, main: Module):
         self.resolver = res
@@ -145,9 +133,9 @@ class HIRBuilder:
                 if symbol.hir:
                     self.hir.variables[symbol.id] = symbol.hir
 
-            case LocalVariable():
-                # local vars should have already been fully resolved
-                # because they are built up by the block builder
+            case LocalVariable() | FormalParameter():
+                # local vars and params should have already been fully resolved
+                # because they are built up by the block/func builder
                 pass
 
             case _:
@@ -241,6 +229,7 @@ class HIRBuilder:
                 name=ast_param.name,
                 ast=ast_param,
                 hir=hir_param,
+                processed=True,
             )
 
             params_scope[ast_param.name] = param
@@ -340,6 +329,8 @@ class HIRBuilder:
 
         if isinstance(var.unit, ast.CompoundUnit):
             unit = self._build_unit(var.unit, module, *scopes)
+            if unit is None:
+                return None
         else:
             unit = var.unit
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Protocol, Self, TextIO, overload, runtime_checkable
 
 from frontend import lexer
-from frontend.common import Location
+from frontend.common import Location, Where
 
 ANSI_CLEAR = "\x1b[0m"
 
@@ -34,6 +34,8 @@ class HasSourceLoc(Protocol):
     file: Path
     start: Location
     end: Location
+
+    def where(self) -> Where: ...
 
 
 class DiagnosticLevel(Enum):

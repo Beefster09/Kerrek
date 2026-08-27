@@ -9,12 +9,13 @@ from fractions import Fraction
 from typing import Any, Literal, Never
 
 from frontend import ast, diagnostics, hir
-from frontend.common import ByteValue, RuneValue
+from frontend.common import ByteValue
 from frontend.lexer import Identifier, NumberLiteralForm
 from frontend.resolver import (
     BaseUnit,
     Builtin,
     Constant,
+    FormalParameter,
     GlobalVariable,
     LocalVariable,
     Module,
@@ -27,6 +28,9 @@ from frontend.types import (
     FlexType,
     PrimitiveType,
     conversion_class,
+    is_boolean,
+    is_string,
+    underlying,
 )
 from frontend.units import CanonicalUnit, IndeterminateUnit
 
@@ -49,6 +53,29 @@ class FlexibleValue:
     value: ComptimeValue
     type: ComptimeType
     unit: ComptimeUnit
+
+    def materialize(
+        self,
+        diag_context: diagnostics.HasSourceLoc,
+        get_symbol: GetSymbolFunc,
+    ) -> hir.ConstExpr | None:
+        real_type = infer_type(self.type, diag_context)
+
+        if real_type is None:
+            return None
+
+        return hir.ConstExpr(
+            **diag_context.where(),
+            value=(
+                hir.NilOf(real_type) if isinstance(self.value, FlexNil) else self.value
+            ),
+            type=real_type,
+            unit=(
+                materialize_unit(self.unit, get_symbol)
+                if isinstance(self.unit, CanonicalUnit)
+                else self.unit
+            ),
+        )
 
 
 type EvalResult = FlexibleValue | hir.Expression | None
@@ -220,7 +247,7 @@ def _evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
             match resolved := get_symbol(node):
                 case Constant():
                     return resolved.value
-                case LocalVariable() | GlobalVariable():
+                case LocalVariable() | GlobalVariable() | FormalParameter():
                     assert resolved.hir is not None
                     return hir.VarExpr(
                         **node.where(),
@@ -291,7 +318,7 @@ def _evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
 
 def infer_type(
     evaluated_type: ComptimeType,
-    diagnostic_context: ast.Node,
+    diagnostic_context: diagnostics.HasSourceLoc,
 ) -> hir.Type | None:
     match evaluated_type:
         case FlexType(FlexAffinity.Integer):
@@ -405,24 +432,36 @@ def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
     match binop.op, ltype, rtype:
         case (
             ast.BinaryOp.Multiply,
-            (hir.SimpleType(PrimitiveType.Boolean) | FlexType(FlexAffinity.Boolean)),
             _,
-        ):
-            return _eval_boolean_multiply(lhs, rhs, rtype, binop)
+            _,
+        ) if is_boolean(ltype):
+            return _eval_boolean_multiply(
+                boolval=lhs,
+                nonbool=rhs,
+                nonbool_type=rtype,
+                nonbool_ast=binop.rhs,
+                binop=binop,
+                get_symbol=get_symbol,
+            )
 
         case (
             ast.BinaryOp.Multiply,
             _,
-            (hir.SimpleType(PrimitiveType.Boolean) | FlexType(FlexAffinity.Boolean)),
-        ):
-            return _eval_boolean_multiply(rhs, lhs, ltype, binop)
+            _,
+        ) if is_boolean(rtype):
+            return _eval_boolean_multiply(
+                boolval=rhs,
+                nonbool=lhs,
+                nonbool_type=ltype,
+                nonbool_ast=binop.lhs,
+                binop=binop,
+                get_symbol=get_symbol,
+            )
 
-        case (
-            ast.BinaryOp.Add,
-            (hir.SimpleType(PrimitiveType.String) | FlexType(FlexAffinity.String)),
-            (hir.SimpleType(PrimitiveType.String) | FlexType(FlexAffinity.String)),
-        ) if (
-            isinstance(lhs, FlexibleValue)
+        case (ast.BinaryOp.Add, _, _) if (
+            is_string(ltype)
+            and is_string(rtype)
+            and isinstance(lhs, FlexibleValue)
             and isinstance(rhs, FlexibleValue)
             and isinstance(lhs.value, str)
             and isinstance(rhs.value, str)
@@ -469,10 +508,13 @@ def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
 
 
 def _eval_boolean_multiply(
+    *,
     boolval: EvalResult,
     nonbool: EvalResult,
     nonbool_type: ComptimeType,
     binop: ast.BinopExpr,
+    nonbool_ast: ast.Expression,
+    get_symbol: GetSymbolFunc,
 ) -> EvalResult:
     if not is_zeroable(nonbool_type):
         diagnostics.error(
@@ -510,11 +552,56 @@ def _eval_boolean_multiply(
         else:
             raise AssertionError(f"unreachable: {boolval.value} is not a boolean")
 
-    elif boolval is ValueSentinels.RuntimeValue:
-        return FlexibleValue(
-            ValueSentinels.RuntimeValue,
-            nonbool.type,
-            nonbool.unit,
+    elif isinstance(boolval, hir.Expression):
+        if isinstance(nonbool, FlexibleValue):
+            if_true = nonbool.materialize(nonbool_ast, get_symbol)
+
+            if if_true is None:
+                return None
+
+            return hir.ConditionExpr(
+                **binop.where(),
+                condition=boolval,
+                if_true=if_true,
+                if_false=hir.ConstExpr(
+                    **nonbool_ast.where(),
+                    value=hir.ZeroOf(if_true.type),
+                    type=if_true.type,
+                    unit=if_true.unit,
+                ),
+                type=if_true.type,
+                unit=if_true.unit,
+            )
+
+        if isinstance(nonbool, hir.SingleValueExpression):
+            type = nonbool.type
+            unit = nonbool.unit
+        elif isinstance(nonbool, hir.MultiValueExpression):
+            if len(nonbool.units) == 1:
+                type = infer_type(nonbool.types[0], nonbool_ast)
+                unit = nonbool.units[0]
+
+                if type is None:
+                    return None
+            else:
+                raise AssertionError(
+                    f"unreachable: {len(nonbool.units)} values returned by part of expression"
+                )
+        else:
+            raise AssertionError("unreachable")  # noqa: TRY004
+
+        return hir.ConditionExpr(
+            **binop.where(),
+            condition=boolval,
+            if_true=nonbool,
+            if_false=hir.ConstExpr(
+                **nonbool_ast.where(),
+                value=hir.ZeroOf(type),
+                type=type,
+                unit=unit,
+            ),
+            type=type,
+            unit=unit,
         )
 
     else:
@@ -525,34 +612,33 @@ def _eval_boolean_multiply(
 
 def is_zeroable(typ: ComptimeType) -> bool:
     match typ:
-        case InterfaceType():
+        case hir.SimpleType(hir.Interface()):
             return False
 
-        case EnumType() | StructType():
+        case hir.SimpleType(hir.EnumType() | hir.StructType()):
             # return typ.is_zeroable()
             return False
 
-        case FixedArrayType():
+        case hir.FixedArrayType():
             return is_zeroable(typ.elem)
 
-        case PointerType():
-            return typ.ownership in (
-                ast.PointerOwnership.Weak,
-                ast.PointerOwnership.Unsafe,
-            )
+        case hir.PointerType():
+            return typ.nullable
 
-        case DistinctType():
-            assert typ.definition.underlying.canonical
-            return is_zeroable(typ.definition.underlying.canonical)
+        case hir.SimpleType(hir.DistinctType(underyling=underlying)):
+            return is_zeroable(underlying)
+
+        case hir.TypeWithTags(base=base):
+            return is_zeroable(base)
 
         case _:
             return True
 
 
 def zero_of(typ: ComptimeType) -> ComptimeValue:
-    match typ:
+    match t := underlying(typ):
         case hir.PointerType() | hir.OptionalType():
-            return hir.NilOf(typ)
+            return hir.NilOf(t)
 
         case (
             FlexType(
@@ -562,31 +648,33 @@ def zero_of(typ: ComptimeType) -> ComptimeValue:
                 | FlexAffinity.Float
             )
             | FixedDecimal()
-            | PrimitiveType.Integer
-            | PrimitiveType.Int64
-            | PrimitiveType.Int32
-            | PrimitiveType.Int16
-            | PrimitiveType.Int8
-            | PrimitiveType.UInt64
-            | PrimitiveType.UInt32
-            | PrimitiveType.UInt16
-            | PrimitiveType.UInt8
-            | PrimitiveType.Decimal
-            | PrimitiveType.Dec64
-            | PrimitiveType.Dec32
-            | PrimitiveType.Float64
-            | PrimitiveType.Float32
+            | hir.SimpleType(
+                PrimitiveType.Integer
+                | PrimitiveType.Int64
+                | PrimitiveType.Int32
+                | PrimitiveType.Int16
+                | PrimitiveType.Int8
+                | PrimitiveType.UInt64
+                | PrimitiveType.UInt32
+                | PrimitiveType.UInt16
+                | PrimitiveType.UInt8
+                | PrimitiveType.Decimal
+                | PrimitiveType.Dec64
+                | PrimitiveType.Dec32
+                | PrimitiveType.Float64
+                | PrimitiveType.Float32
+            )
         ):
             return Fraction(0)
 
-        case PrimitiveType.Rune:
+        case hir.SimpleType(PrimitiveType.Rune):
             return ast.RuneValue(0)
 
-        case PrimitiveType.Byte:
+        case hir.SimpleType(PrimitiveType.Byte):
             return ByteValue(0)
 
         case _:
-            return None
+            raise TypeError("zero_of(...) should only be called with zeroable types")
 
 
 def _eval_binop_unit(

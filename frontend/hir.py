@@ -14,6 +14,7 @@ from frontend.common import (
     RuneValue,
     SymbolID,
     UnaryOp,
+    Where,
 )
 from frontend.lexer import Identifier
 from frontend.types import FixedDecimal, PrimitiveType
@@ -48,6 +49,13 @@ class Node:
             end=base.end,
             **other,
         )
+
+    def where(self) -> Where:
+        return {
+            "file": self.file,
+            "start": self.start,
+            "end": self.end,
+        }
 
 
 @dataclass(kw_only=True)
@@ -249,7 +257,9 @@ class Type:
 
 @dataclass
 class SimpleType(Type):
-    type: PrimitiveType | FixedDecimal | StructType | EnumType | DistinctType
+    type: (
+        PrimitiveType | FixedDecimal | StructType | EnumType | DistinctType | Interface
+    )
 
 
 @dataclass(kw_only=True)
@@ -425,6 +435,12 @@ class SubInterface(Node):
 class Interface(Annotatable):
     name: Identifier
     methods: list[InterfaceMethod | SubInterface]
+
+
+@dataclass(kw_only=True)
+class InterfaceImpl(Annotatable):
+    name: Identifier
+    impls: list[FuncDefinition]
 
 
 @dataclass(kw_only=True)

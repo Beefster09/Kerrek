@@ -121,6 +121,18 @@ class Annotation(PartialSymbol):
     hir: hir.AnnotationDef | None = None
 
 
+@dataclass(kw_only=True)
+class FormalParameter(PartialSymbol):
+    ast: ast.FormalParameter
+    hir: hir.FormalParameter
+
+
+@dataclass(kw_only=True)
+class NamedReturn(PartialSymbol):
+    ast: ast.FuncReturn
+    hir: hir.FuncReturn
+
+
 @dataclass
 class Builtin:
     name: Identifier

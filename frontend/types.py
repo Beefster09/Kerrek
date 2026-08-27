@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
+from frontend import hir
+
 if TYPE_CHECKING:
     from frontend.exprs import ComptimeType
 
@@ -88,20 +90,16 @@ type ConversionClass = TypeKind | FixedArrayKind | _Unconv
 
 def conversion_class(typ: ComptimeType) -> ConversionClass:
     match typ:
-        case ast.TypeSentinels():
-            return Unconvertable
+        case hir.SimpleType(hir.DistinctType(underlying=underlying)):
+            return conversion_class(underlying)
 
-        case DistinctType():
-            assert typ.definition.underlying.canonical
-            return conversion_class(typ.definition.underlying.canonical)
-
-        case FixedArrayType():
+        case hir.FixedArrayType():
             return FixedArrayKind(typ.shape, conversion_class(typ.elem))
 
-        case FlexType(FlexAffinity.Boolean) | PrimitiveType.Boolean:
+        case FlexType(FlexAffinity.Boolean) | hir.SimpleType(PrimitiveType.Boolean):
             return TypeKind.Boolean
 
-        case FlexType(FlexAffinity.String) | PrimitiveType.String:
+        case FlexType(FlexAffinity.String) | hir.SimpleType(PrimitiveType.String):
             return TypeKind.String
 
         case (
@@ -112,22 +110,24 @@ def conversion_class(typ: ComptimeType) -> ConversionClass:
                 | FlexAffinity.Float
             )
             | FixedDecimal()
-            | PrimitiveType.Integer
-            | PrimitiveType.Int64
-            | PrimitiveType.Int32
-            | PrimitiveType.Int16
-            | PrimitiveType.Int8
-            | PrimitiveType.UInt64
-            | PrimitiveType.UInt32
-            | PrimitiveType.UInt16
-            | PrimitiveType.UInt8
-            | PrimitiveType.Decimal
-            | PrimitiveType.Dec64
-            | PrimitiveType.Dec32
-            | PrimitiveType.Float64
-            | PrimitiveType.Float32
-            | PrimitiveType.Rune
-            | PrimitiveType.Byte
+            | hir.SimpleType(
+                PrimitiveType.Integer
+                | PrimitiveType.Int64
+                | PrimitiveType.Int32
+                | PrimitiveType.Int16
+                | PrimitiveType.Int8
+                | PrimitiveType.UInt64
+                | PrimitiveType.UInt32
+                | PrimitiveType.UInt16
+                | PrimitiveType.UInt8
+                | PrimitiveType.Decimal
+                | PrimitiveType.Dec64
+                | PrimitiveType.Dec32
+                | PrimitiveType.Float64
+                | PrimitiveType.Float32
+                | PrimitiveType.Rune
+                | PrimitiveType.Byte
+            )
         ):
             return TypeKind.Numeric
 
@@ -137,22 +137,23 @@ def conversion_class(typ: ComptimeType) -> ConversionClass:
 
 def is_integer(typ: ComptimeType) -> bool:
     match typ:
-        case DistinctType():
-            assert typ.definition.underlying.canonical
-            return is_integer(typ.definition.underlying.canonical)
+        case hir.SimpleType(hir.DistinctType(underlying=underlying)):
+            return is_integer(underlying)
 
         case (
             FlexType(FlexAffinity.Integer | FlexAffinity.UInt)
             | FixedDecimal(_, 0)
-            | PrimitiveType.Integer
-            | PrimitiveType.Int64
-            | PrimitiveType.Int32
-            | PrimitiveType.Int16
-            | PrimitiveType.Int8
-            | PrimitiveType.UInt64
-            | PrimitiveType.UInt32
-            | PrimitiveType.UInt16
-            | PrimitiveType.UInt8
+            | hir.SimpleType(
+                PrimitiveType.Integer
+                | PrimitiveType.Int64
+                | PrimitiveType.Int32
+                | PrimitiveType.Int16
+                | PrimitiveType.Int8
+                | PrimitiveType.UInt64
+                | PrimitiveType.UInt32
+                | PrimitiveType.UInt16
+                | PrimitiveType.UInt8
+            )
         ):
             return True
 
@@ -162,16 +163,15 @@ def is_integer(typ: ComptimeType) -> bool:
 
 def is_decimal(typ: ComptimeType) -> bool:
     match typ:
-        case DistinctType():
-            assert typ.definition.underlying.canonical
-            return is_decimal(typ.definition.underlying.canonical)
+        case hir.SimpleType(hir.DistinctType(underlying=underlying)):
+            return is_decimal(underlying)
 
         case (
             FlexType(FlexAffinity.Decimal)
             | FixedDecimal()
-            | PrimitiveType.Decimal
-            | PrimitiveType.Dec64
-            | PrimitiveType.Dec32
+            | hir.SimpleType(
+                PrimitiveType.Decimal | PrimitiveType.Dec64 | PrimitiveType.Dec32
+            )
         ):
             return True
 
@@ -181,12 +181,11 @@ def is_decimal(typ: ComptimeType) -> bool:
 
 def is_binfloat(typ: ComptimeType) -> bool:
     match typ:
-        case DistinctType():
-            assert typ.definition.underlying.canonical
-            return is_binfloat(typ.definition.underlying.canonical)
+        case hir.SimpleType(hir.DistinctType(underlying=underlying)):
+            return is_binfloat(underlying)
 
-        case (
-            FlexType(FlexAffinity.Float) | PrimitiveType.Float64 | PrimitiveType.Float32
+        case FlexType(FlexAffinity.Float) | hir.SimpleType(
+            PrimitiveType.Float64 | PrimitiveType.Float32
         ):
             return True
 
@@ -194,11 +193,10 @@ def is_binfloat(typ: ComptimeType) -> bool:
             return False
 
 
-def is_bool(typ: ComptimeType) -> bool:
+def is_boolean(typ: ComptimeType) -> bool:
     match typ:
-        case DistinctType():
-            assert typ.definition.underlying.canonical
-            return is_bool(typ.definition.underlying.canonical)
+        case hir.SimpleType(hir.DistinctType(underlying=underlying)):
+            return is_boolean(underlying)
 
         case FlexType(FlexAffinity.Boolean) | PrimitiveType.Boolean:
             return True
@@ -209,9 +207,8 @@ def is_bool(typ: ComptimeType) -> bool:
 
 def is_string(typ: ComptimeType) -> bool:
     match typ:
-        case DistinctType():
-            assert typ.definition.underlying.canonical
-            return is_string(typ.definition.underlying.canonical)
+        case hir.SimpleType(hir.DistinctType(underlying=underlying)):
+            return is_string(underlying)
 
         case FlexType(FlexAffinity.String) | PrimitiveType.String:
             return True
@@ -222,9 +219,8 @@ def is_string(typ: ComptimeType) -> bool:
 
 def is_rune(typ: ComptimeType) -> bool:
     match typ:
-        case DistinctType():
-            assert typ.definition.underlying.canonical
-            return is_rune(typ.definition.underlying.canonical)
+        case hir.SimpleType(hir.DistinctType(underlying=underlying)):
+            return is_rune(underlying)
 
         case FlexType(FlexAffinity.Rune) | PrimitiveType.Rune:
             return True
@@ -234,12 +230,15 @@ def is_rune(typ: ComptimeType) -> bool:
 
 
 def is_pointer(typ: ComptimeType) -> bool:
-    return isinstance(underlying(typ), PointerType)
+    return isinstance(underlying(typ), hir.PointerType)
 
 
 def underlying(typ: ComptimeType) -> ComptimeType:
-    while isinstance(typ, DistinctType):
-        assert typ.definition.underlying.canonical
-        typ = typ.definition.underlying.canonical
-
-    return typ
+    while True:
+        match typ:
+            case hir.SimpleType(hir.DistinctType(underlying=underlying)):
+                typ = underlying
+            case hir.TypeWithTags():
+                typ = typ.base
+            case _:
+                return typ
