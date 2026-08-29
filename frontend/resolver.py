@@ -80,7 +80,7 @@ class GlobalVariable(PartialSymbol):
 @dataclass(kw_only=True)
 class LocalVariable(PartialSymbol):
     ast: ast.LocalVariable
-    hir: hir.GlobalVariable | None
+    hir: hir.LocalVariable | None
 
 
 @dataclass(kw_only=True)
@@ -391,7 +391,7 @@ class Resolver:
         self,
         base: Named,
         field: Identifier,
-    ):
+    ) -> Named | None:
         match base:
             case Module():
                 return base.lookup(field)
@@ -433,39 +433,3 @@ class Resolver:
                 return None
 
         return resolved
-
-    def _build_type(self, type_expr: ast.TypeExpression) -> AnyType | ast.TypeSentinels:
-        match type_expr:
-            case ast.SimpleType():
-                resolved = type_expr.type_name.resolves_to
-                assert resolved is not None, "this should have been resolved by now"
-
-                if isinstance(resolved, Builtin):
-                    try:
-                        return PrimitiveType[resolved.name]
-                    except KeyError:
-                        pass
-
-                elif isinstance(resolved, TypeAlias):
-                    if resolved.canonical is ast.TypeSentinels.NotDetermined:
-                        resolved.canonical = self._eval_type_decl(resolved.definition)
-                    return resolved.canonical
-
-                elif isinstance(
-                    resolved, (EnumType, StructType, DistinctType, GenericType)
-                ):
-                    return resolved
-
-                diagnostics.error(
-                    f"'{'.'.join(type_expr.type_name.path)}' does not name a type",
-                    type_expr,
-                )
-                return ast.TypeSentinels.Impossible
-
-            case ast.GenericType():
-                return GenericType(type_expr.name)
-
-            case _:
-                raise NotImplementedError(
-                    f"no support for {type(type_expr).__qualname__}"
-                )

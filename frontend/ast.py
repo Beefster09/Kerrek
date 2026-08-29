@@ -4,6 +4,7 @@ from dataclasses import dataclass, field, fields
 from decimal import Decimal
 from enum import Enum, auto
 from pathlib import Path
+from typing import Literal
 
 from frontend.common import (
     BinaryOp,
@@ -296,7 +297,7 @@ class UnitConversionExpr(Expression):
 @dataclass(kw_only=True)
 class UnitReinterpretExpr(Expression):
     expr: Expression
-    new_unit: CompoundUnit
+    new_unit: CompoundUnit | Literal[IndeterminateUnit.NoUnit]
 
 
 @dataclass(kw_only=True)
@@ -433,7 +434,7 @@ class Block(Statement):
 class FormalParameter(Node):
     name: Identifier
     type: TypeExpression
-    unit: CompoundUnit | None
+    unit: DeclaredUnit
     default: Expression | None
 
 
@@ -441,7 +442,7 @@ class FormalParameter(Node):
 class FuncReturn(Node):
     name: Identifier | None
     type: TypeExpression
-    unit: CompoundUnit | None
+    unit: DeclaredUnit
 
 
 @dataclass(kw_only=True)

@@ -6,11 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from fractions import Fraction
-from typing import Any, Literal, Never
+from typing import Any, Literal, NamedTuple, Never
 
 from frontend import ast, diagnostics, hir
 from frontend.common import ByteValue
-from frontend.lexer import Identifier, NumberLiteralForm
+from frontend.lexer import NumberLiteralForm
 from frontend.resolver import (
     BaseUnit,
     Builtin,
@@ -48,8 +48,7 @@ type ComptimeUnit = (
 )
 
 
-@dataclass
-class FlexibleValue:
+class FlexibleValue(NamedTuple):
     value: ComptimeValue
     type: ComptimeType
     unit: ComptimeUnit
@@ -76,6 +75,12 @@ class FlexibleValue:
                 else self.unit
             ),
         )
+
+
+class UnitAnalysisResult(NamedTuple):
+    unit: ComptimeUnit
+    lhs: EvalResult
+    rhs: EvalResult
 
 
 type EvalResult = FlexibleValue | hir.Expression | None
@@ -159,9 +164,12 @@ def get_canonical_unit(
 
 
 def materialize_unit(
-    unit: CanonicalUnit,
+    unit: ComptimeUnit,
     get_symbol: GetSymbolFunc,
-) -> hir.CompoundUnit:
+) -> hir.RealizedUnit:
+    if isinstance(unit, IndeterminateUnit):
+        return unit
+
     components: list[tuple[hir.BaseUnit, int]] = []
     for comp_id, exp in unit.most_common():
         if exp == 0:
@@ -188,6 +196,48 @@ def dematerialize_unit(unit: hir.RealizedUnit) -> ComptimeUnit:
         ((symbol.id, exp) for symbol, exp in unit.components),
         is_absolute=unit.is_absolute,
     )
+
+
+def singular_type_and_unit(
+    res: EvalResult,
+) -> tuple[ComptimeType, ComptimeUnit] | tuple[None, None]:
+    if isinstance(res, FlexibleValue):
+        return res.type, res.unit
+    elif isinstance(res, hir.MultiValueExpression):
+        if len(res.types) == 1 and len(res.units) == 1:
+            return res.types[0], dematerialize_unit(res.units[0])
+        else:
+            return None, None
+    elif isinstance(res, (hir.SingleValueExpression, FlexibleValue)):
+        return res.type, dematerialize_unit(res.unit)
+    else:
+        raise NotImplementedError(
+            f"unable to determine singular type and unit of {type(res).__name__}"
+        )
+
+
+def singular_realized_type_and_unit(
+    res: EvalResult,
+    diag_context: diagnostics.HasSourceLoc,
+    get_symbol: GetSymbolFunc,
+) -> tuple[hir.Type, hir.RealizedUnit] | tuple[None, None]:
+    if isinstance(res, FlexibleValue):
+        mat = res.materialize(diag_context, get_symbol)
+        if mat is None:
+            return None, None
+        else:
+            return mat.type, mat.unit
+    elif isinstance(res, hir.MultiValueExpression):
+        if len(res.types) == 1 and len(res.units) == 1:
+            return res.types[0], res.units[0]
+        else:
+            return None, None
+    elif isinstance(res, (hir.SingleValueExpression, FlexibleValue)):
+        return res.type, res.unit
+    else:
+        raise NotImplementedError(
+            f"unable to determine singular type and unit of {type(res).__name__}"
+        )
 
 
 def _evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
@@ -399,33 +449,19 @@ def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
     if lhs is None or rhs is None:
         return None
 
-    if isinstance(lhs, hir.MultiValueExpression):
-        if len(lhs.types) == 1:
-            ltype = lhs.types[0]
-        else:
-            diagnostics.error("this expression returns multiple values", binop.lhs)
-            ltype = None
-    elif isinstance(lhs, (hir.SingleValueExpression, FlexibleValue)):
-        ltype = lhs.type
-    else:
-        raise NotImplementedError(
-            f"unable to determine singular type of {type(lhs).__name__}"
-        )
+    ltype, lunit = singular_type_and_unit(lhs)
+    rtype, runit = singular_type_and_unit(rhs)
 
-    if isinstance(rhs, hir.MultiValueExpression):
-        if len(rhs.types) == 1:
-            rtype = rhs.types[0]
-        else:
-            diagnostics.error("this expression returns multiple values", binop.rhs)
-            rtype = None
-    elif isinstance(rhs, (hir.SingleValueExpression, FlexibleValue)):
-        rtype = rhs.type
-    else:
-        raise NotImplementedError(
-            f"unable to determine singular type of {type(rhs).__name__}"
+    if ltype is None or lunit is None:
+        diagnostics.error(
+            "this expression does not return exactly one value", binop.lhs
         )
+        return None
 
-    if ltype is None or rtype is None:
+    if rtype is None or runit is None:
+        diagnostics.error(
+            "this expression does not return exactly one value", binop.rhs
+        )
         return None
 
     # Well-defined non-coercing special cases
@@ -497,14 +533,56 @@ def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
             err.suggest(op_compat.suggestions[binop.op])
         return None
 
-    if isinstance(lhs, FlexibleValue) and isinstance(rhs, FlexibleValue):
+    res = _eval_binop_unit(
+        binop=binop,
+        lhs=lhs,
+        lunit=lunit,
+        rhs=rhs,
+        runit=runit,
+        get_symbol=get_symbol,
+    )
+
+    if res is None:
+        return None
+
+    elif isinstance(res.lhs, FlexibleValue) and isinstance(res.rhs, FlexibleValue):
         return FlexibleValue(
-            BINOP_FUNCS[binop.op](lhs.value, rhs.value),
+            BINOP_FUNCS[binop.op](res.lhs.value, res.rhs.value),
             coerced_type,
-            _eval_binop_unit(binop, lhs, rhs),
+            res.unit,
         )
     else:
-        raise NotImplementedError("TODO")
+        if isinstance(res.lhs, FlexibleValue):
+            l = res.lhs.materialize(binop.lhs, get_symbol)
+        else:
+            l = res.lhs
+
+        if isinstance(res.rhs, FlexibleValue):
+            r = res.rhs.materialize(binop.rhs, get_symbol)
+        else:
+            r = res.rhs
+
+        if l is None or r is None:
+            return None
+
+        inferred_type = infer_type(coerced_type, binop)
+
+        if inferred_type is None:
+            return None
+
+        mat_unit = materialize_unit(res.unit, get_symbol)
+
+        if mat_unit is None:
+            return None
+
+        return hir.BinopExpr(
+            **binop.where(),
+            op=binop.op,
+            lhs=l,
+            rhs=r,
+            type=inferred_type,
+            unit=mat_unit,
+        )
 
 
 def _eval_boolean_multiply(
@@ -678,23 +756,50 @@ def zero_of(typ: ComptimeType) -> ComptimeValue:
 
 
 def _eval_binop_unit(
+    *,
     binop: ast.BinopExpr,
-    lhs: FlexibleValue,
-    rhs: FlexibleValue,
-) -> ComptimeUnit:
-    if lhs.unit is None or rhs.unit is None:
+    lhs: EvalResult,
+    lunit: ComptimeUnit,
+    rhs: EvalResult,
+    runit: ComptimeUnit,
+    get_symbol: GetSymbolFunc,
+) -> UnitAnalysisResult | None:
+
+    if lhs is None or rhs is None:
         return None
 
-    if lhs.unit is IndeterminateUnit.NoUnit and rhs.unit is IndeterminateUnit.NoUnit:
-        return IndeterminateUnit.NoUnit
+    if lunit is IndeterminateUnit.NoUnit and runit is IndeterminateUnit.NoUnit:
+        return UnitAnalysisResult(IndeterminateUnit.NoUnit, lhs, rhs)
 
     op = binop.op
 
+    def _maybe_convert_rhs(rhs: EvalResult, rmult: Fraction):
+        if rmult == Fraction(1) or rhs is None:
+            return rhs
+
+        if isinstance(rhs, FlexibleValue):
+            rhs = rhs.materialize(binop.rhs, get_symbol)
+            if rhs is None:
+                return None
+
+        t, u = singular_realized_type_and_unit(rhs, binop.rhs, get_symbol)
+
+        if t is None or u is None:
+            return None
+
+        return hir.UnitConversionExpr(
+            **binop.rhs.where(),
+            expr=rhs,
+            type=t,
+            unit=u,
+            factor=rmult,
+        )
+
     match op:
         case ast.BinaryOp.And | ast.BinaryOp.Or:
-            # booleans are always not applicable to the unit checker
+            # booleans are never applicable to the unit checker
             # so if this is erroneous, the diagnostic would be emitted by the type checking
-            return IndeterminateUnit.NoUnit
+            return UnitAnalysisResult(IndeterminateUnit.NoUnit, lhs, rhs)
 
         case (
             ast.BinaryOp.Equal
@@ -706,17 +811,19 @@ def _eval_binop_unit(
             | ast.BinaryOp.Is
             | ast.BinaryOp.IsNot
         ):
-            coerced_unit, binop.rhs.unit_conv_multiplier = _coerce_units(
-                lhs.unit, rhs.unit
-            )
+            coerced_unit, rmult = _coerce_units(lunit, runit)
             if coerced_unit is None:
                 diagnostics.error(
-                    f"units ({lhs.unit}) and ({rhs.unit}) do not match"
+                    f"units ({lunit}) and ({runit}) do not match"
                     + " and do not have any known conversions",
                     binop,
                 )
 
-            return IndeterminateUnit.NoUnit  # booleans don't have units
+            return UnitAnalysisResult(
+                IndeterminateUnit.NoUnit,  # booleans don't have units
+                lhs,
+                _maybe_convert_rhs(rhs, rmult),
+            )
 
         case (
             ast.BinaryOp.Add
@@ -724,81 +831,99 @@ def _eval_binop_unit(
             | ast.BinaryOp.Remainder
             | ast.BinaryOp.Modulo
         ):
-            coerced_unit, binop.rhs.unit_conv_multiplier = _coerce_units(
-                lhs.unit, rhs.unit
-            )
+            coerced_unit, rmult = _coerce_units(lunit, runit)
             if coerced_unit is None:
                 diagnostics.error(
-                    f"units ({lhs.unit}) and ({rhs.unit}) do not match"
+                    f"units ({lunit}) and ({runit}) do not match"
                     + " and do not have any known conversions",
                     binop,
                 )
                 return None
 
-            return coerced_unit
+            return UnitAnalysisResult(
+                coerced_unit,
+                lhs,
+                _maybe_convert_rhs(rhs, rmult),
+            )
 
         case ast.BinaryOp.Multiply:
-            l_has_unit = isinstance(lhs.unit, CanonicalUnit)
-            r_has_unit = isinstance(rhs.unit, CanonicalUnit)
+            l_has_unit = isinstance(lunit, CanonicalUnit)
+            r_has_unit = isinstance(runit, CanonicalUnit)
             if l_has_unit and r_has_unit:
-                return CanonicalUnit.combine(lhs.unit, 1, rhs.unit, 1)  # pyright: ignore - it doesn't understand the substituted type refinement
-            elif l_has_unit and rhs.unit is IndeterminateUnit.Flexible:
-                return lhs.unit
-            elif r_has_unit and lhs.unit is IndeterminateUnit.Flexible:
-                return rhs.unit
+                return UnitAnalysisResult(
+                    CanonicalUnit.combine(lunit, 1, runit, 1),  # pyright: ignore - it doesn't understand the substituted type refinement
+                    lhs,
+                    rhs,
+                )
+            elif l_has_unit and runit is IndeterminateUnit.Flexible:
+                return UnitAnalysisResult(lunit, lhs, rhs)
+            elif r_has_unit and lunit is IndeterminateUnit.Flexible:
+                return UnitAnalysisResult(runit, lhs, rhs)
             elif (
-                lhs.unit is IndeterminateUnit.Flexible
-                and rhs.unit is IndeterminateUnit.Flexible
+                lunit is IndeterminateUnit.Flexible
+                and runit is IndeterminateUnit.Flexible
             ):
-                return IndeterminateUnit.Flexible
-            elif lhs.unit in (
+                return UnitAnalysisResult(IndeterminateUnit.Flexible, lhs, rhs)
+            elif lunit in (
                 IndeterminateUnit.NoUnit,
                 IndeterminateUnit.Flexible,
-            ) and rhs.unit in (IndeterminateUnit.NoUnit, IndeterminateUnit.Flexible):
-                return IndeterminateUnit.NoUnit
+            ) and runit in (IndeterminateUnit.NoUnit, IndeterminateUnit.Flexible):
+                return UnitAnalysisResult(IndeterminateUnit.NoUnit, lhs, rhs)
             else:
                 diagnostics.error(
                     "you cannot multiply a unitless value with a value with units"
-                    + f" (|{lhs.unit}| {op.value} |{rhs.unit}|)",
+                    + f" (|{lunit}| {op.value} |{runit}|)",
                     binop,
                 )
                 return None
 
         case ast.BinaryOp.TrueDivide | ast.BinaryOp.FloorDivide:
-            l_has_unit = isinstance(lhs.unit, CanonicalUnit)
-            r_has_unit = isinstance(rhs.unit, CanonicalUnit)
+            l_has_unit = isinstance(lunit, CanonicalUnit)
+            r_has_unit = isinstance(runit, CanonicalUnit)
             if l_has_unit and r_has_unit:
-                return CanonicalUnit.combine(lhs.unit, 1, rhs.unit, -1)  # pyright: ignore - it doesn't understand the substituted type refinement
-            elif l_has_unit and rhs.unit is IndeterminateUnit.Flexible:
-                return lhs.unit
-            elif r_has_unit and lhs.unit is IndeterminateUnit.Flexible:
-                return rhs.unit * -1  # pyright: ignore - it doesn't understand the substituted type refinement
+                return UnitAnalysisResult(
+                    CanonicalUnit.combine(lunit, 1, runit, -1),  # pyright: ignore - it doesn't understand the substituted type refinement
+                    lhs,
+                    rhs,
+                )
+            elif l_has_unit and runit is IndeterminateUnit.Flexible:
+                return UnitAnalysisResult(lunit, lhs, rhs)
+            elif r_has_unit and lunit is IndeterminateUnit.Flexible:
+                return UnitAnalysisResult(
+                    runit * -1,  # pyright: ignore - it doesn't understand the substituted type refinement
+                    lhs,
+                    rhs,
+                )
             elif (
-                lhs.unit is IndeterminateUnit.Flexible
-                and rhs.unit is IndeterminateUnit.Flexible
+                lunit is IndeterminateUnit.Flexible
+                and runit is IndeterminateUnit.Flexible
             ):
-                return IndeterminateUnit.Flexible
-            elif lhs.unit in (
+                return UnitAnalysisResult(IndeterminateUnit.Flexible, lhs, rhs)
+            elif lunit in (
                 IndeterminateUnit.NoUnit,
                 IndeterminateUnit.Flexible,
-            ) and rhs.unit in (IndeterminateUnit.NoUnit, IndeterminateUnit.Flexible):
-                return IndeterminateUnit.NoUnit
+            ) and runit in (IndeterminateUnit.NoUnit, IndeterminateUnit.Flexible):
+                return UnitAnalysisResult(IndeterminateUnit.NoUnit, lhs, rhs)
             else:
                 diagnostics.error(
                     "you cannot divide a unitless value by a value with units or vice-versa"
-                    + f" (|{lhs.unit}| {op.value} |{rhs.unit}|)",
+                    + f" (|{lunit}| {op.value} |{runit}|)",
                     binop,
                 )
                 return None
 
         case ast.BinaryOp.Power:
-            if isinstance(lhs, CanonicalUnit):
-                if isinstance(rhs.value, Fraction) and (
-                    rhs.unit in (IndeterminateUnit.NoUnit, IndeterminateUnit.Flexible)
-                    or (isinstance(rhs.unit, CanonicalUnit) and not rhs.unit)
+            if isinstance(lunit, CanonicalUnit) and lunit:
+                if (
+                    isinstance(rhs, FlexibleValue)
+                    and isinstance(rhs.value, Fraction)
+                    and (
+                        runit in (IndeterminateUnit.NoUnit, IndeterminateUnit.Flexible)
+                        or (isinstance(runit, CanonicalUnit) and not runit)
+                    )
                 ):
                     if rhs.value.is_integer():
-                        return lhs * rhs.value.numerator
+                        return UnitAnalysisResult(lunit * rhs.value.numerator, lhs, rhs)
 
                     else:
                         diagnostics.error(
@@ -812,18 +937,22 @@ def _eval_binop_unit(
                         binop.rhs,
                     )
                     return None
-            elif lhs.unit is IndeterminateUnit.Flexible:
-                return IndeterminateUnit.Flexible
+
             else:
-                return IndeterminateUnit.NoUnit
+                if isinstance(runit, CanonicalUnit) and runit:
+                    diagnostics.error("exponents must be unitless or ratios", binop.rhs)
+                    return None
+
+                return UnitAnalysisResult(lunit, lhs, rhs)
 
         case Never():
             raise AssertionError(f"missing branch for {op.value}")
 
 
 def _coerce_units(
-    lhs: ComptimeUnit, rhs: ComptimeUnit
-) -> tuple[ComptimeUnit, Fraction]:
+    lhs: ComptimeUnit,
+    rhs: ComptimeUnit,
+) -> tuple[ComptimeUnit | None, Fraction]:
     if lhs is IndeterminateUnit.Flexible:
         return rhs, Fraction(1)
     elif rhs is IndeterminateUnit.Flexible:

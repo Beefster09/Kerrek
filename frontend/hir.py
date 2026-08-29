@@ -367,14 +367,14 @@ class Block(Statement):
 class FormalParameter(Symbol):
     name: Identifier
     type: Type
-    unit: CompoundUnit | None
+    unit: RealizedUnit
     default: ConstExpr | None
 
 
 @dataclass(kw_only=True)
 class FuncReturn(Node):
     type: Type
-    unit: CompoundUnit | None
+    unit: RealizedUnit
 
 
 @dataclass(kw_only=True)

@@ -11,11 +11,13 @@ from frontend.resolver import (
     Annotation,
     Builtin,
     Constant,
+    FormalParameter,
     Function,
     GlobalVariable,
     LocalVariable,
     Module,
     Named,
+    NamedReturn,
     PartialSymbol,
     Resolver,
     Scope,
@@ -195,13 +197,16 @@ class HIRBuilder:
                 diagnostics.error(
                     f"duplicate parameter name '{ast_param.name}'", ast_param
                 )
+                continue
 
             ptype = self._build_type(ast_param.type, module, *scopes)
 
             if ast_param.unit:
                 punit = self._build_unit(ast_param.unit, module, *scopes)
+                if punit is None:
+                    continue
             else:
-                punit = None
+                continue
 
             if ast_param.default:
                 pdefault = self._build_expr(ast_param.default, module, *scopes)
@@ -243,8 +248,10 @@ class HIRBuilder:
 
             if ret.unit:
                 runit = self._build_unit(ret.unit, module, *scopes)
+                if runit is None:
+                    continue
             else:
-                runit = None
+                continue
 
             hir_ret = hir.FuncReturn(
                 file=ret.file,
@@ -289,6 +296,7 @@ class HIRBuilder:
             requires=requires,
             body=self._build_block(
                 func.body,
+                func,
                 module,
                 params_scope,
                 generics,
@@ -460,13 +468,19 @@ class HIRBuilder:
 
     def _build_unit(
         self,
-        unit: ast.CompoundUnit,
+        unit: ast.DeclaredUnit,
         module: Module,
         *scopes: Scope,
-    ) -> hir.CompoundUnit | None:
-        canonical = exprs.get_canonical_unit(unit, self._symbol_getter(module, *scopes))
+    ) -> hir.RealizedUnit | None:
+        if unit is IndeterminateUnit.Inferred:
+            return IndeterminateUnit.Flexible  # TODO: this logic is context-dependent
+        elif isinstance(unit, IndeterminateUnit):
+            return unit
+
+        get_symbol = self._symbol_getter(module, *scopes)
+        canonical = exprs.get_canonical_unit(unit, get_symbol)
         if canonical:
-            return exprs.materialize_unit(canonical)
+            return exprs.materialize_unit(canonical, get_symbol)
         else:
             return None
 
@@ -476,14 +490,10 @@ class HIRBuilder:
         module: Module,
         *scopes: Scope,
     ) -> hir.Expression | None:
-        match result := exprs.evaluate(expr, self._symbol_getter(module, *scopes)):
+        get_symbol = self._symbol_getter(module, *scopes)
+        match result := exprs.evaluate(expr, get_symbol):
             case exprs.FlexibleValue():
-                return hir.ConstExpr(
-                    **expr.where(),
-                    value=result.value,
-                    type=result.type,
-                    unit=result.unit,
-                )
+                return result.materialize(expr, get_symbol)
             case hir.Expression() | None:
                 return result
 
@@ -493,11 +503,13 @@ class HIRBuilder:
     def _build_block(
         self,
         block: ast.Block,
+        func: ast.FuncDefinition,
         module: Module,
         *scopes: Scope,
     ) -> hir.Block:
         local_scope: Scope = {}
         body: list[hir.Statement] = []
+        get_symbol = self._symbol_getter(module, local_scope, *scopes)
 
         def _new_local(symbol: PartialSymbol):
             nonlocal local_scope
@@ -538,12 +550,12 @@ class HIRBuilder:
         for stmt in block.body:
             match stmt:
                 case ast.Block():
-                    body.append(self._build_block(stmt, module, local_scope, *scopes))
+                    body.append(
+                        self._build_block(stmt, func, module, local_scope, *scopes)
+                    )
 
                 case ast.LocalConstant():
-                    evaluated = exprs.evaluate(
-                        stmt.expr, self._symbol_getter(module, local_scope, *scopes)
-                    )
+                    evaluated = exprs.evaluate(stmt.expr, get_symbol)
 
                     if isinstance(evaluated, exprs.FlexibleValue):
                         _new_local(
@@ -564,18 +576,18 @@ class HIRBuilder:
                     var = self._build_var(stmt, module, local_scope, *scopes)
                     if var:
                         body.append(var)
-                    _new_local(
-                        LocalVariable(
-                            name=stmt.name,
-                            ast=stmt,
-                            hir=var,
-                            processed=True,
+                        _new_local(
+                            LocalVariable(
+                                name=stmt.name,
+                                ast=stmt,
+                                hir=var,
+                                processed=True,
+                            )
                         )
-                    )
 
                 case ast.AssignStatement():
-                    lresults = [exprs.evaluate(dest) for dest in stmt.dests]
-                    rresults = [exprs.evaluate(expr) for expr in stmt.exprs]
+                    lresults = [exprs.evaluate(dest, get_symbol) for dest in stmt.dests]
+                    rresults = [exprs.evaluate(expr, get_symbol) for expr in stmt.exprs]
 
                 case ast.ReturnStatement():
                     if len(stmt.values) < len(func.returns):
@@ -595,10 +607,7 @@ class HIRBuilder:
                         continue
 
                     for ret, value in zip(func.returns, stmt.values, strict=True):
-                        result = exprs.evaluate(value)
-                        typ = exprs.check_type(ret.type, result.type, value)
-                        assert not isinstance(typ, exprs.FlexType)
-                        value.required_type = typ
+                        result = exprs.evaluate(value, get_symbol)
 
                 case _:
                     raise NotImplementedError(
