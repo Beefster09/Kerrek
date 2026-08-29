@@ -310,7 +310,7 @@ class Resolver:
                     return base, (node.field, *rest)
 
             case _:
-                return None, ()
+                raise TypeError(f"cannot resolve {type(node).__name__} nodes")
 
     def resolve(
         self,

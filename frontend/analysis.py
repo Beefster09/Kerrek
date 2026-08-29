@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import builtins
 import traceback
 from dataclasses import dataclass
 from typing import Never, overload
+
+import rich
 
 from frontend import ast, diagnostics, exprs, hir
 from frontend.common import get_first
 from frontend.resolver import (
     BUILTINS,
     Annotation,
+    BaseUnit,
     Builtin,
     Constant,
     FormalParameter,
@@ -21,9 +25,13 @@ from frontend.resolver import (
     PartialSymbol,
     Resolver,
     Scope,
+    UnitAlias,
+    UnitType,
+    UnitTypeAlias,
     next_symbol_id,
 )
-from frontend.units import IndeterminateUnit
+from frontend.types import PrimitiveType
+from frontend.units import CanonicalUnit, IndeterminateUnit
 
 
 class HIRBuilder:
@@ -47,6 +55,8 @@ class HIRBuilder:
             for symbol in module:
                 try:
                     self._ensure_symbol_processed(symbol, module)
+                    # if hasattr(symbol, "hir"):
+                    #     rich.print(symbol.hir)
                 except NotImplementedError as err:
                     print(
                         f"in file '{module.file.source}',",
@@ -108,6 +118,48 @@ class HIRBuilder:
                 )
                 if symbol.hir:
                     self.hir.funcs[symbol.id] = symbol.hir
+
+                if scopes:
+                    scopes[0][symbol.name] = symbol
+
+            case UnitType():
+                symbol.hir = hir.UnitType(
+                    **symbol.ast.where(),
+                    id=symbol.id,
+                    name=symbol.name,
+                )
+                self.hir.unit_types[symbol.id] = symbol.hir
+
+                if scopes:
+                    scopes[0][symbol.name] = symbol
+
+            case UnitTypeAlias() | UnitAlias():
+                if scopes:
+                    scopes[0][symbol.name] = symbol
+
+            case BaseUnit():
+                if symbol.ast.unit_type:
+                    utype = self._resolve_and_process(
+                        symbol.ast.unit_type, module, *scopes
+                    )
+                    if not isinstance(utype, UnitType):
+                        diagnostics.error(
+                            f"base unit declaration cannot be based on a {type(utype).__name__}",
+                            symbol.ast.unit_type,
+                        )
+                        return
+                    else:
+                        utype = utype.hir
+                else:
+                    utype = None
+
+                symbol.hir = hir.BaseUnit(
+                    **symbol.ast.where(),
+                    id=symbol.id,
+                    name=symbol.name,
+                    type=utype,
+                )
+                self.hir.units[symbol.id] = symbol.hir
 
                 if scopes:
                     scopes[0][symbol.name] = symbol
@@ -200,6 +252,8 @@ class HIRBuilder:
                 continue
 
             ptype = self._build_type(ast_param.type, module, *scopes)
+            if ptype is None:
+                continue
 
             if ast_param.unit:
                 punit = self._build_unit(ast_param.unit, module, *scopes)
@@ -215,7 +269,7 @@ class HIRBuilder:
                         f"default value for '{ast_param.name}' is not known at compile-time",
                         ast_param.default,
                     )
-                    return None
+                    continue
             else:
                 pdefault = None
 
@@ -245,12 +299,13 @@ class HIRBuilder:
 
         for ret in func.returns:
             rtype = self._build_type(ret.type, module, *scopes)
+            runit = self._build_unit(ret.unit, module, *scopes)
 
-            if ret.unit:
-                runit = self._build_unit(ret.unit, module, *scopes)
-                if runit is None:
-                    continue
-            else:
+            if rtype is None:
+                continue
+
+            if runit is None:
+                diagnostics.error("unit missing on func return", ret)
                 continue
 
             hir_ret = hir.FuncReturn(
@@ -283,7 +338,7 @@ class HIRBuilder:
         if func.requires:
             pass  # TODO
 
-        return hir.FuncDefinition(
+        result = hir.FuncDefinition(
             file=func.file,
             start=func.start,
             end=func.end,
@@ -294,16 +349,19 @@ class HIRBuilder:
             error_type=err_type,
             fallible=func.fallible,
             requires=requires,
-            body=self._build_block(
-                func.body,
-                func,
-                module,
-                params_scope,
-                generics,
-                *scopes,
-            ),
+            body=...,  # pyright: ignore[reportArgumentType] - treat as unbound
             annotations=annotations,
         )
+        result.body = self._build_block(
+            func.body,
+            result,
+            module,
+            params_scope,
+            generics,
+            *scopes,
+        )
+
+        return result
 
     @overload
     def _build_var(
@@ -464,7 +522,32 @@ class HIRBuilder:
         type: ast.TypeExpression,
         module: Module,
         *scopes: Scope,
-    ) -> hir.Type: ...
+    ) -> hir.Type | None:
+        match type:
+            case ast.SimpleType():
+                resolved = self._resolve_and_process(type.type_name, module, *scopes)
+
+                match resolved:
+                    case Builtin():
+                        try:
+                            return hir.SimpleType(PrimitiveType[resolved.name])
+                        except KeyError:
+                            diagnostics.error(
+                                f"'{type.type_name}' names a builtin that is not a primitive type",
+                                type.type_name,
+                            )
+                            return None
+                    case _:
+                        diagnostics.error(
+                            f"'{type.type_name}' does not name a valid type",
+                            type.type_name,
+                        )
+                        return None
+
+            case _:
+                raise NotImplementedError(
+                    f"cannot build type from {builtins.type(type).__name__} yet"
+                )
 
     def _build_unit(
         self,
@@ -479,7 +562,7 @@ class HIRBuilder:
 
         get_symbol = self._symbol_getter(module, *scopes)
         canonical = exprs.get_canonical_unit(unit, get_symbol)
-        if canonical:
+        if canonical is not None:
             return exprs.materialize_unit(canonical, get_symbol)
         else:
             return None
@@ -503,7 +586,7 @@ class HIRBuilder:
     def _build_block(
         self,
         block: ast.Block,
-        func: ast.FuncDefinition,
+        func: hir.FuncDefinition,
         module: Module,
         *scopes: Scope,
     ) -> hir.Block:

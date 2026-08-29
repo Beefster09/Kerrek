@@ -8,6 +8,8 @@ from enum import Enum, auto
 from fractions import Fraction
 from typing import Any, Literal, NamedTuple, Never
 
+import rich
+
 from frontend import ast, diagnostics, hir
 from frontend.common import ByteValue
 from frontend.lexer import NumberLiteralForm
@@ -114,9 +116,12 @@ def get_canonical_unit(
     canonical = CanonicalUnit()
 
     for component in unit.components:
-        resolved = get_symbol(component)
+        resolved = get_symbol(component.base)
         match resolved:
             case None:
+                diagnostics.error(
+                    "this component does not resolve to a unit", component
+                )
                 return None
 
             case BaseUnit():
@@ -147,8 +152,9 @@ def get_canonical_unit(
                         _seen_aliases=(*_seen_aliases, resolved),
                         _seen_alias_refs=(*_seen_alias_refs, component.base),
                     )
+                    if resolved.canonical is None:
+                        return None
 
-                assert resolved.canonical
                 canonical.inplace_combine(
                     resolved.canonical,
                     component.exponent,
@@ -207,6 +213,7 @@ def singular_type_and_unit(
         if len(res.types) == 1 and len(res.units) == 1:
             return res.types[0], dematerialize_unit(res.units[0])
         else:
+            rich.print(res)
             return None, None
     elif isinstance(res, (hir.SingleValueExpression, FlexibleValue)):
         return res.type, dematerialize_unit(res.unit)

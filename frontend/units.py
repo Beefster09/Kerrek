@@ -24,18 +24,19 @@ SUPERSCRIPT_NEGATIVE = "⁻"
 def superscript_number(n: int) -> str:
     digits = []
 
-    if n < 0:
-        digits.append(SUPERSCRIPT_NEGATIVE)
-
     x = int(abs(n))
     while x > 0:
         digits.append(SUPERSCRIPT_DIGITS[x % 10])
         x //= 10
 
+    if n < 0:
+        digits.append(SUPERSCRIPT_NEGATIVE)
+
+    digits.reverse()
     return "".join(digits)
 
 
-class CanonicalUnit(Counter):
+class CanonicalUnit(Counter[SymbolID]):
     _base_unit_names: ClassVar[dict[SymbolID, str]] = {}
 
     @classmethod
@@ -75,9 +76,30 @@ class CanonicalUnit(Counter):
         is_absolute=False,
     ): ...
 
-    def __init__(self, initial=None, /, *, is_absolute=False):
-        super().__init__(initial)
+    def __init__(
+        self,
+        initial: Mapping[SymbolID, int]
+        | Iterable[SymbolID]
+        | Iterable[tuple[SymbolID, int]]
+        | None = None,
+        /,
+        *,
+        is_absolute=False,
+    ):
+        super().__init__()
         self.is_absolute = is_absolute
+
+        if isinstance(initial, Mapping):
+            for k, v in initial.items():
+                assert not isinstance(k, tuple)
+                self[k] = v
+
+        elif isinstance(initial, Iterable):
+            for item in initial:
+                if isinstance(item, tuple):
+                    self[item[0]] = item[1]
+                else:
+                    self[item] += 1
 
     def __str__(self):
         components = []

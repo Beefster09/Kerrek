@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from frontend import ast
 from frontend.common import (
@@ -17,8 +17,10 @@ from frontend.common import (
     Where,
 )
 from frontend.lexer import Identifier
-from frontend.types import FixedDecimal, PrimitiveType
 from frontend.units import IndeterminateUnit
+
+if TYPE_CHECKING:
+    from frontend.types import FixedDecimal, PrimitiveType
 
 # === NODES ===
 
