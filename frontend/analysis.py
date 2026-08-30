@@ -55,6 +55,7 @@ class HIRBuilder:
             for symbol in module:
                 try:
                     self._ensure_symbol_processed(symbol, module)
+
                     # if hasattr(symbol, "hir"):
                     #     rich.print(symbol.hir)
                 except NotImplementedError as err:
@@ -205,17 +206,26 @@ class HIRBuilder:
         id: hir.SymbolID | None = None,
     ) -> hir.FuncDefinition | None:
         annotations: list[hir.Annotation] = []
+        should_assert_func_is_pure = False
 
         for annotation in func.annotations:
-            anno = self.resolver.resolve(annotation, module, *scopes)
+            anno = self.resolver.resolve(annotation.base, module, *scopes)
             # TODO: process certain builtin annotations and attach the rest
             match anno:
                 case Builtin():
                     # TODO: special logic for certain annotations
-                    diagnostics.error(
-                        f"builtin '{anno.name}' is not a valid function annotation",
-                        annotation.base,
-                    )
+                    match anno.name:
+                        case "pure":
+                            should_assert_func_is_pure = True
+                            diagnostics.notice(
+                                "note: pure function verification is not yet implemented",
+                                annotation,
+                            )
+                        case _:
+                            diagnostics.error(
+                                f"builtin '{anno.name}' is not a valid function annotation",
+                                annotation.base,
+                            )
 
                 case Annotation():
                     if anno.hir is None:
@@ -360,6 +370,12 @@ class HIRBuilder:
             generics,
             *scopes,
         )
+
+        if func.name == "main" and module is self.main_module and not scopes:
+            self._set_entry_point(result)
+
+        if should_assert_func_is_pure:
+            pass  # TODO
 
         return result
 
@@ -705,6 +721,18 @@ class HIRBuilder:
         module: Module,
         *scopes: Scope,
     ) -> hir.AnnotationDef: ...
+
+    def _set_entry_point(self, func: hir.FuncDefinition):
+        if self.hir.entry_point:
+            diagnostics.error(
+                "an entry point has already been defined", func
+            ).reference("entry point was previously defined here", self.hir.entry_point)
+            # this probably can't be triggered normally, but it's a good check
+            return
+
+        # TODO: check that the func signature is valid as an entry point
+
+        self.hir.entry_point = func
 
 
 @dataclass(kw_only=True)

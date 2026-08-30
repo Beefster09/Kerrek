@@ -8,6 +8,7 @@ from fractions import Fraction
 from typing import Never, overload
 
 from frontend import ast, hir, mir, resolver, types
+from frontend.common import BinaryOp
 from frontend.exprs import ByteValue, ComptimeType
 
 
@@ -16,31 +17,30 @@ def hir_to_mir(
 ) -> mir.TranslationUnit:
     tu = mir.TranslationUnit()
 
-    for module in res.modules.values():
-        for typ in module.types.values():
-            if mir_type := _translate_type(typ):
-                tu.types.append(mir_type)
+    for typ in hir.types.values():
+        if mir_type := _translate_type(typ):
+            tu.types.append(mir_type)
 
-        for var in module.variables.values():
-            tu.globals.append(_translate_globalvar(var))
+    for var in hir.variables.values():
+        tu.globals.append(_translate_globalvar(var))
 
-        for func in module.funcs.values():
-            tu.functions.append(_translate_func(func))
+    for func in hir.funcs.values():
+        tu.functions.append(_translate_func(func))
 
     return tu
 
 
-def _translate_type(typ: resolver.StoredType) -> mir.Type | None:
+def _translate_type(typ: hir.Type) -> mir.Type:
     pass
 
 
-def _translate_globalvar(var: resolver.Variable) -> mir.GlobalVar:
+def _translate_globalvar(var: hir.GlobalVariable) -> mir.GlobalVar:
     pass
 
 
-def _translate_func(src: resolver.Function) -> mir.Function:
+def _translate_func(src: hir.FuncDefinition) -> mir.Function:
     builder = FuncBuilder(src)
-    builder.lower_block(src.definition.body)
+    builder.lower_block(src.body)
     return builder.finish()
 
 
@@ -51,14 +51,13 @@ class FuncBuilder:
         ops: list[mir.Operation] = field(default_factory=list)
         done: bool = False
 
-    def __init__(self, src: resolver.Function):
+    def __init__(self, src: hir.FuncDefinition):
         self._tmp_num = itertools.count(1)
         self._var_num = itertools.count(1)
         self._block_num = itertools.count(1)
         self._vars: dict[int, mir.LocalVar] = {}
         self._params: dict[int, mir.Parameter] = {
-            param.id: mir.Parameter(i, param.definition.type)
-            for i, param in enumerate(src.params)
+            param.id: mir.Parameter(i, param.type) for i, param in enumerate(src.params)
         }
         self._current_block: FuncBuilder.WIPBlock | None = None
 
@@ -78,15 +77,12 @@ class FuncBuilder:
         # TODO: translate the type
         return mir.Temporary(next(self._tmp_num), typ)
 
-    def _newvar(self, decl: ast.LocalVariable) -> mir.LocalVar:
-        assert decl.shadow_id, (
-            f"local variable {decl.name} at {decl.start} should have been resolved by now"
-        )
+    def _newvar(self, decl: hir.LocalVariable) -> mir.LocalVar:
         var = mir.LocalVar(
-            next(self._var_num), decl.name, decl.realized_type
+            next(self._var_num), decl.name, decl.type
         )  # TODO: ensure the realized type is translated
         self.func.locals.append(var)
-        self._vars[decl.shadow_id] = var
+        self._vars[decl.id] = var
         return var
 
     def _newblock(self) -> WIPBlock:
@@ -136,7 +132,7 @@ class FuncBuilder:
         assert not self._current_block.done, "current block already ended"
         self._current_block.ops.append(op)
 
-    def lower_block(self, src: ast.Block):
+    def lower_block(self, src: hir.Block):
         import rich
 
         start = self._newblock()
@@ -145,23 +141,20 @@ class FuncBuilder:
         for stmt in src.body:
             rich.print(stmt)
             match stmt:
-                case ast.LocalConstant():
-                    continue
-
-                case ast.LocalVariable():
+                case hir.LocalVariable():
                     var = self._newvar(stmt)
                     if stmt.expr is None:
                         self._emit(mir.Clear(var))
-                    elif isinstance(stmt.expr, ast.Expression):
+                    elif isinstance(stmt.expr, hir.Expression):
                         self._emit(mir.Set(var, self._lower_expr(stmt.expr)))
 
-                case ast.AssignStatement():
-                    lvalue = self._lower_expr(stmt.dest)
+                case hir.AssignStatement():
+                    lvalue = self._lower_expr(stmt.dests)
                     assert isinstance(
                         lvalue, (mir.LocalVar, mir.GlobalVar, mir.Dereferenced)
                     )
 
-                case ast.ReturnStatement():
+                case hir.ReturnStatement():
                     retvals = [self._lower_expr(val_expr) for val_expr in stmt.values]
                     self._endblock(mir.Return(retvals))
 
@@ -172,37 +165,28 @@ class FuncBuilder:
 
     def _lower_expr(
         self,
-        expr: ast.Expression,
+        expr: hir.Expression,
     ) -> mir.Operand:
-        if not isinstance(expr.evaluated_value, ast.ValueSentinels):
-            assert not isinstance(
-                expr.required_type, (ast.TypeSentinels, types.FlexType)
-            ), f"required type of {expr} should have been materialized by now"
-            return self._constant(expr.evaluated_value, expr.required_type)
 
         match expr:
-            case ast.NameExpr():
-                resolved = expr.resolves_to
-                match resolved:
-                    case resolver.Variable():
-                        if local := self._vars.get(resolved.id):
-                            return local
-                        if param := self._params.get(resolved.id):
-                            return param
+            case hir.ConstExpr():
+                return mir.Constant(0)  # TODO
+
+            case hir.VarExpr():
+                match expr.references:
+                    case hir.LocalVariable():
+                        return self._vars[expr.references.id]
+                    case hir.FormalParameter():
+                        return self._params[expr.references.id]
 
                 raise NotImplementedError(
-                    f"cannot find operand for name expression resolving to {resolved}"
+                    f"cannot find operand for name expression resolving to {expr.references}"
                 )
 
-            case ast.BinopExpr():
+            case hir.BinopExpr():
                 return self._binop_expr(expr)
 
-            case ast.ScalarLiteralExpr() | ast.SimpleLiteralExpr():
-                raise AssertionError(
-                    "this should be hit by the evaluated_value check above"
-                )
-
-            case ast.UnitReinterpretExpr():
+            case hir.UnitReinterpretExpr():
                 # this is quite intentionally a no-op
                 return self._lower_expr(expr.expr)
 
@@ -251,62 +235,62 @@ class FuncBuilder:
 
     def _binop_expr(
         self,
-        expr: ast.BinopExpr,
+        expr: hir.BinopExpr,
     ) -> mir.Operand:
 
         match expr.op:
-            case ast.BinaryOp.Add:
+            case BinaryOp.Add:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.required_type)
+                result = self._newtmp(expr.type)
                 self._emit(mir.Add(result, lhs, rhs))
                 return result
 
-            case ast.BinaryOp.Subtract:
+            case BinaryOp.Subtract:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.required_type)
+                result = self._newtmp(expr.type)
                 self._emit(mir.Sub(result, lhs, rhs))
                 return result
 
-            case ast.BinaryOp.Multiply:
+            case BinaryOp.Multiply:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.required_type)
+                result = self._newtmp(expr.type)
                 self._emit(mir.Mul(result, lhs, rhs))
                 return result
 
-            case ast.BinaryOp.TrueDivide:
+            case BinaryOp.TrueDivide:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.required_type)
+                result = self._newtmp(expr.type)
                 self._emit(mir.Div(result, lhs, rhs))
                 return result
 
-            case ast.BinaryOp.FloorDivide:
+            case BinaryOp.FloorDivide:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.required_type)
+                result = self._newtmp(expr.type)
                 self._emit(mir.Div(result, lhs, rhs))
 
-                if types.is_integer(expr.lhs.evaluated_type) and types.is_integer(
-                    expr.lhs.evaluated_type
+                if not (
+                    types.is_integer(expr.lhs.type) and types.is_integer(expr.rhs.type)
                 ):
                     self._emit(mir.Truncate(result, result))
 
                 return result
 
-            case ast.BinaryOp.Remainder:
+            case BinaryOp.Remainder:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.required_type)
+                result = self._newtmp(expr.type)
                 self._emit(mir.Rem(result, lhs, rhs))
                 return result
 
-            case ast.BinaryOp.Modulo:
+            case BinaryOp.Modulo:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.required_type)
+                result = self._newtmp(expr.type)
                 self._emit(mir.Rem(result, lhs, rhs))
 
                 before = self._current_block
@@ -333,28 +317,28 @@ class FuncBuilder:
 
                 return result
 
-            case ast.BinaryOp.Is:
-                pass
-            case ast.BinaryOp.IsNot:
-                pass
+            case BinaryOp.Is:
+                raise NotImplementedError()
+            case BinaryOp.IsNot:
+                raise NotImplementedError()
 
-            case ast.BinaryOp.Equal:
-                pass
-            case ast.BinaryOp.NotEqual:
-                pass
-            case ast.BinaryOp.Less:
-                pass
-            case ast.BinaryOp.LessEqual:
-                pass
-            case ast.BinaryOp.Greater:
-                pass
-            case ast.BinaryOp.GreaterEqual:
-                pass
+            case BinaryOp.Equal:
+                raise NotImplementedError()
+            case BinaryOp.NotEqual:
+                raise NotImplementedError()
+            case BinaryOp.Less:
+                raise NotImplementedError()
+            case BinaryOp.LessEqual:
+                raise NotImplementedError()
+            case BinaryOp.Greater:
+                raise NotImplementedError()
+            case BinaryOp.GreaterEqual:
+                raise NotImplementedError()
 
-            case ast.BinaryOp.And:
-                pass
-            case ast.BinaryOp.Or:
-                pass
+            case BinaryOp.And:
+                raise NotImplementedError()
+            case BinaryOp.Or:
+                raise NotImplementedError()
 
             case Never():
                 raise AssertionError("unreachable")
