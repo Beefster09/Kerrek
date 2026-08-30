@@ -689,24 +689,55 @@ class HIRBuilder:
                     rresults = [exprs.evaluate(expr, get_symbol) for expr in stmt.exprs]
 
                 case ast.ReturnStatement():
-                    if len(stmt.values) < len(func.returns):
+                    return_exprs: list[hir.Expression] = []
+                    return_types: list[hir.Type] = []
+                    return_units: list[hir.RealizedUnit] = []
+
+                    for value in stmt.values:
+                        result = exprs.evaluate(value, get_symbol)
+
+                        if isinstance(result, exprs.FlexibleValue):
+                            result = result.materialize(value, get_symbol)
+                        if result is None:
+                            continue
+
+                        return_exprs.append(result)
+
+                        if isinstance(result, hir.SingleValueExpression):
+                            return_types.append(result.type)
+                            return_units.append(result.unit)
+                        elif isinstance(result, hir.MultiValueExpression):
+                            return_types.extend(result.types)
+                            return_units.extend(result.units)
+                        else:
+                            raise AssertionError(  # noqa: TRY004
+                                f"unreachable: {type(result).__name__} not handled"
+                            )
+
+                    if len(return_types) < len(func.returns):
                         diagnostics.error(
                             "return statement has too few values"
-                            + f" (expected {len(func.returns)}, got {len(stmt.values)})",
+                            + f" (expected {len(func.returns)}, got {len(return_types)})",
                             stmt,
                         )
                         continue
 
-                    if len(stmt.values) > len(func.returns):
+                    if len(return_types) > len(func.returns):
                         diagnostics.error(
                             "return statement has too many values"
-                            + f" (expected {len(func.returns)}, got {len(stmt.values)})",
+                            + f" (expected {len(func.returns)}, got {len(return_types)})",
                             stmt,
                         )
                         continue
 
-                    for ret, value in zip(func.returns, stmt.values, strict=True):
-                        result = exprs.evaluate(value, get_symbol)
+                    # TODO: type check
+
+                    body.append(
+                        hir.ReturnStatement(
+                            **stmt.where(),
+                            values=return_exprs,
+                        )
+                    )
 
                 case _:
                     raise NotImplementedError(

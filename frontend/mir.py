@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from enum import Enum, auto
 
+from frontend import hir
 from frontend.resolver import SymbolID
 
 
 @dataclass(kw_only=True)
 class TranslationUnit:
-    types: list[Type] = field(default_factory=list)
+    types: list[hir.Type] = field(default_factory=list)
     globals: list[GlobalVar] = field(default_factory=list)
     functions: list[Function] = field(default_factory=list)
 
@@ -20,8 +20,8 @@ class Function:
     name: str
     no_mangle: bool = False  # never mangle the name if this is true
     params: list[Parameter]
-    returns: list[Type]
-    error: Type | None
+    returns: list[hir.Type]
+    error: hir.Type | None
     locals: list[LocalVar] = field(default_factory=list)
     blocks: list[Block] = field(default_factory=list)
 
@@ -31,107 +31,6 @@ class Block:
     id: int
     ops: list[Operation]
     end: Terminator
-
-
-# === TYPES ===
-
-
-class Type:
-    pass
-
-
-class MachineType(Type, Enum):
-    Integer = auto()
-    I8 = auto()
-    I16 = auto()
-    I32 = auto()
-    I64 = auto()
-    I128 = auto()
-    U8 = auto()
-    U16 = auto()
-    U32 = auto()
-    U64 = auto()
-    U128 = auto()
-
-    D32 = auto()
-    D64 = auto()
-    D128 = auto()
-
-    F16 = auto()
-    F32 = auto()
-    F64 = auto()
-
-    Boolean = auto()
-
-    String = auto()
-
-    Void = auto()
-
-
-@dataclass
-class FixedDecimalType(Type):
-    digits: int
-    prec: int
-
-
-@dataclass
-class EnumType(Type):
-    variants: list[EnumVariant]
-
-
-@dataclass
-class EnumVariant:
-    id: SymbolID
-    slot: int
-    type: Type
-
-
-@dataclass
-class StructType(Type):
-    fields: list[StructField]
-
-
-@dataclass
-class StructField:
-    name: str
-    type: Type
-
-
-@dataclass
-class FixedArrayType(Type):
-    elem: Type
-    size: int
-
-
-@dataclass
-class SliceType(Type):
-    elem: Type
-
-
-@dataclass
-class DynamicSliceType(Type):
-    elem: Type
-
-
-@dataclass
-class Pointer(Type):
-    elem: Type
-
-
-@dataclass
-class WeakPointer(Type):
-    elem: Type
-
-
-@dataclass
-class Optional(Type):
-    elem: Type
-
-
-@dataclass
-class Map(Type):
-    key: Type
-    value: Type
 
 
 # === OPERATIONS ===
@@ -366,14 +265,14 @@ class Discard(Operand):
 class GlobalVar(Operand):
     id: int
     name: str
-    type: Type
+    type: hir.Type
 
 
 @dataclass
 class LocalVar(Operand):
     id: int
     name: str
-    type: Type
+    type: hir.Type
 
 
 @dataclass
@@ -385,7 +284,7 @@ class Temporary(Operand):
 @dataclass
 class Parameter(Operand):
     index: int
-    type: Type
+    type: hir.Type
 
 
 @dataclass

@@ -7,6 +7,8 @@ from decimal import Context as DecCtx
 from fractions import Fraction
 from typing import Never, overload
 
+import rich
+
 from frontend import ast, hir, mir, resolver, types
 from frontend.common import BinaryOp
 from frontend.exprs import ByteValue, ComptimeType
@@ -70,6 +72,8 @@ class FuncBuilder:
         )
 
     def finish(self) -> mir.Function:
+        if self._current_block:
+            self._endblock(mir.Return([]))
         self.func.blocks.sort(key=lambda b: b.id)
         return self.func
 
@@ -133,7 +137,6 @@ class FuncBuilder:
         self._current_block.ops.append(op)
 
     def lower_block(self, src: hir.Block):
-        import rich
 
         start = self._newblock()
         defers = []
@@ -149,10 +152,9 @@ class FuncBuilder:
                         self._emit(mir.Set(var, self._lower_expr(stmt.expr)))
 
                 case hir.AssignStatement():
-                    lvalue = self._lower_expr(stmt.dests)
-                    assert isinstance(
-                        lvalue, (mir.LocalVar, mir.GlobalVar, mir.Dereferenced)
-                    )
+                    lvalues = [self._lower_expr(dest) for dest in stmt.dests]
+                    rvalues = [self._lower_expr(expr) for expr in stmt.exprs]
+                    # TODO
 
                 case hir.ReturnStatement():
                     retvals = [self._lower_expr(val_expr) for val_expr in stmt.values]
