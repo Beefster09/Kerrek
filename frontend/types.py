@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 from frontend import hir
 
@@ -231,6 +231,12 @@ def is_rune(typ: ComptimeType) -> bool:
 
 def is_pointer(typ: ComptimeType) -> bool:
     return isinstance(underlying(typ), hir.PointerType)
+
+
+@overload
+def underlying(typ: hir.Type) -> hir.Type: ...
+@overload
+def underlying(typ: ComptimeType) -> ComptimeType: ...
 
 
 def underlying(typ: ComptimeType) -> ComptimeType:

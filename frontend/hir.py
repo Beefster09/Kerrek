@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import abstractmethod, abstractproperty
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
@@ -130,7 +131,13 @@ class ZeroOf:
 
 @dataclass(kw_only=True)
 class Expression(Node):
-    pass
+    @property
+    @abstractmethod
+    def singular_type(self) -> Type: ...
+
+    @property
+    @abstractmethod
+    def singular_unit(self) -> RealizedUnit: ...
 
 
 @dataclass(kw_only=True)
@@ -138,11 +145,29 @@ class SingleValueExpression(Expression):
     type: Type
     unit: RealizedUnit
 
+    @property
+    def singular_type(self) -> Type:
+        return self.type
+
+    @property
+    def singular_unit(self) -> RealizedUnit:
+        return self.unit
+
 
 @dataclass(kw_only=True)
 class MultiValueExpression(Expression):
     types: list[Type]
     units: list[RealizedUnit]
+
+    @property
+    def singular_type(self) -> Type:
+        assert len(self.types) == 1, "this expression does not have exactly one value"
+        return self.types[0]
+
+    @property
+    def singular_unit(self) -> RealizedUnit:
+        assert len(self.units) == 1, "this expression does not have exactly one value"
+        return self.units[0]
 
 
 # - concrete nodes and supporting types -

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import itertools
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
@@ -10,7 +11,7 @@ from typing import Never, overload
 import rich
 
 from frontend import ast, hir, mir, resolver, types
-from frontend.common import BinaryOp
+from frontend.common import BinaryOp, RuneValue
 from frontend.exprs import ByteValue, ComptimeType
 
 
@@ -20,8 +21,7 @@ def hir_to_mir(
     tu = mir.TranslationUnit()
 
     for typ in hir.types.values():
-        if mir_type := _translate_type(typ):
-            tu.types.append(mir_type)
+        tu.types.append(typ)
 
     for var in hir.variables.values():
         tu.globals.append(_translate_globalvar(var))
@@ -32,12 +32,8 @@ def hir_to_mir(
     return tu
 
 
-def _translate_type(typ: hir.Type) -> mir.Type:
-    pass
-
-
 def _translate_globalvar(var: hir.GlobalVariable) -> mir.GlobalVar:
-    pass
+    return mir.GlobalVar(id=var.id, name=var.name, type=var.type)
 
 
 def _translate_func(src: hir.FuncDefinition) -> mir.Function:
@@ -142,7 +138,6 @@ class FuncBuilder:
         defers = []
 
         for stmt in src.body:
-            rich.print(stmt)
             match stmt:
                 case hir.LocalVariable():
                     var = self._newvar(stmt)
@@ -171,8 +166,42 @@ class FuncBuilder:
     ) -> mir.Operand:
 
         match expr:
-            case hir.ConstExpr():
-                return mir.Constant(0)  # TODO
+            case hir.ConstExpr(value=value, type=type):
+                match value, type:
+                    case Fraction(), _ if types.is_integer(type):
+                        return mir.Constant(value.numerator)
+                    case Fraction(), _ if types.is_decimal(type):
+                        return mir.Constant(
+                            Decimal(value.numerator) / Decimal(value.denominator)
+                        )
+                    case Fraction(), _ if types.is_binfloat(type):
+                        return mir.Constant(value.numerator / value.denominator)
+                    case hir.ZeroOf(ta), tb if types.is_integer(
+                        ta
+                    ) and types.is_integer(tb):
+                        return mir.Constant(0)
+                    case hir.ZeroOf(ta), tb if types.is_decimal(
+                        ta
+                    ) and types.is_decimal(tb):
+                        return mir.Constant(Decimal(0))
+                    case hir.ZeroOf(ta), tb if types.is_binfloat(
+                        ta
+                    ) and types.is_binfloat(tb):
+                        return mir.Constant(0.0)
+                    case RuneValue(codepoint), _:
+                        return mir.Constant(codepoint)
+                    case ByteValue(byteval), _:
+                        return mir.Constant(byteval)
+                    case hir.NilOf(ta), tb if types.is_pointer(ta) and types.is_pointer(
+                        tb
+                    ):
+                        return mir.Constant(None)
+                    case str() | bool(), _:
+                        return mir.Constant(value)
+                    case _:
+                        raise NotImplementedError(
+                            f"cannot convert ({type})({value}) to constant"
+                        )
 
             case hir.VarExpr():
                 match expr.references:
@@ -188,25 +217,34 @@ class FuncBuilder:
             case hir.BinopExpr():
                 return self._binop_expr(expr)
 
-            case hir.UnitReinterpretExpr():
+            case hir.UnitReinterpretExpr(expr=sub):
                 # this is quite intentionally a no-op
-                return self._lower_expr(expr.expr)
+                return self._lower_expr(sub)
+
+            case hir.CastExpr(to=to, expr=sub):
+                if types.is_pointer(to):
+                    # pointers are interchangeable at the CPU level (and in C), so no actual cast is necessary
+                    return self._lower_expr(sub)
+                else:
+                    tmp = self._newtmp(to)
+                    self._emit(mir.Convert(tmp, self._lower_expr(sub), to))
+                    return tmp
 
             case _:
                 raise NotImplementedError(
-                    f"{type(expr).__name__} expression nodes not yet supported"
+                    f"{builtins.type(expr).__name__} expression nodes not yet supported"
                 )
 
     def _constant(
         self,
-        value: Fraction | ast.RuneValue | ByteValue | str | bool | NilOf,
-        t: RealizedType,
+        value: Fraction | ast.RuneValue | ByteValue | str | bool | hir.NilOf,
+        t: hir.Type,
     ) -> mir.Constant:
         type = types.underlying(t)
         match value, type:
             case Fraction(), _ if types.is_integer(type):
                 return mir.Constant(value.numerator // value.denominator)
-            case Fraction(), resolver.FixedDecimal(digits, prec):
+            case Fraction(), hir.SimpleType(types.FixedDecimal(digits, prec)):
                 ctx = DecCtx(digits, rounding=ROUND_HALF_UP, Emin=-prec, Emax=-prec)
                 return mir.Constant(
                     Decimal(value.numerator, ctx) / Decimal(value.denominator, ctx)
@@ -228,7 +266,7 @@ class FuncBuilder:
             case ((str() | bool()), _):
                 return mir.Constant(value)
 
-            case NilOf(), _ if types.is_pointer(type):
+            case hir.NilOf(), _ if types.is_pointer(type):
                 return mir.Constant(None)
 
             case _:
@@ -276,9 +314,12 @@ class FuncBuilder:
                 self._emit(mir.Div(result, lhs, rhs))
 
                 if not (
-                    types.is_integer(expr.lhs.type) and types.is_integer(expr.rhs.type)
+                    types.is_integer(expr.lhs.singular_type)
+                    and types.is_integer(expr.rhs.singular_type)
                 ):
-                    self._emit(mir.Truncate(result, result))
+                    result2 = self._newtmp(result.type)
+                    self._emit(mir.Truncate(result2, result))
+                    return result2
 
                 return result
 
@@ -305,12 +346,11 @@ class FuncBuilder:
 
                 self._endblock(
                     before,
-                    mir.Compare(
+                    mir.BranchLess(
                         result,
                         mir.Constant(0),
                         lt_branch=negative.id,
-                        eq_branch=after.id,
-                        gt_branch=after.id,
+                        ge_branch=after.id,
                     ),
                 )
                 self._endblock(negative, mir.Jump(after.id))

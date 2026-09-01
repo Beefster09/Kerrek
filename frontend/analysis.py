@@ -5,8 +5,6 @@ import traceback
 from dataclasses import dataclass
 from typing import Never, overload
 
-import rich
-
 from frontend import ast, diagnostics, exprs, hir
 from frontend.common import get_first
 from frontend.resolver import (
@@ -31,7 +29,7 @@ from frontend.resolver import (
     next_symbol_id,
 )
 from frontend.types import PrimitiveType
-from frontend.units import CanonicalUnit, IndeterminateUnit
+from frontend.units import IndeterminateUnit
 
 
 class HIRBuilder:
@@ -785,27 +783,3 @@ def validate_hir(node: hir.TranslationUnit):
     """
 
     diagnostics.report()
-
-
-def validate(node: hir.Node):
-    match node:
-        case hir.GlobalVariable():
-            if node.expr and not isinstance(node.expr, ast.UnboundVar):
-                exprs.evaluate(node.expr)
-
-        case hir.FuncDefinition():
-            params_scope: Scope = {}
-            for param in node.params:
-                if param.default:
-                    result = exprs.evaluate(param.default)
-                    exprs.check_type(param.type, result.type, param)
-                    params_scope[param.name] = ParamVar(declaration=param)
-
-            _validate_block(node, node.body, params_scope)
-
-
-def _validate_block(func: hir.FuncDefinition, block: ast.Block, *scopes: Scope):
-    for stmt in block.body:
-        match stmt:
-            case _:
-                pass

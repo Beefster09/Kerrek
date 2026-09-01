@@ -21,12 +21,13 @@ class Punctuation(Enum):
     LCurly = "{"
     RCurly = "}"
     Dot = "."
-    DotDot = ".."
+    DDot = ".."
     Ellipsis_ = "..."
     RangeExcl = "..<"
     RangeIncl = "..="
     Comma = ","
     Colon = ":"
+    DColon = "::"
     Semicolon = ";"
     Assign = "="
     Move = "<-"
@@ -79,7 +80,6 @@ class Keyword(Enum):
     Break = "break"
     Return = "return"
     Fail = "fail"
-    Abort = "abort"
 
     Assume = "assume"
     Assert = "assert"
@@ -130,6 +130,7 @@ class Keyword(Enum):
     Auto = "auto"
 
     Nil = "nil"
+    Zero = "zero"
     True_ = "true"
     False_ = "false"
 

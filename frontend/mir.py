@@ -61,7 +61,7 @@ class Convert(Operation):
 
     dest: Writable
     value: Operand
-    type: MachineType
+    type: hir.Type
 
 
 @dataclass
@@ -185,7 +185,7 @@ class Call(Operation):
 
 
 class Terminator:
-    """the last part of a block that tells it what block to go to next"""
+    """the last part of a block that tells it where to go next"""
 
 
 @dataclass
@@ -205,8 +205,28 @@ class BranchZero(Terminator):
 
 
 @dataclass
+class BranchLess(Terminator):
+    """branch depending on whether lhs < rhs"""
+
+    lhs: Operand
+    rhs: Operand
+    lt_branch: int
+    ge_branch: int
+
+
+@dataclass
+class BranchEqual(Terminator):
+    """branch depending on whether the values are equal"""
+
+    lhs: Operand
+    rhs: Operand
+    eq_branch: int
+    ne_branch: int
+
+
+@dataclass
 class WeakPtrValid(Terminator):
-    """branch depending on whether the value is zero or not"""
+    """branch depending on whether the weak pointer is valid"""
 
     value: Operand
     valid_branch: int
@@ -219,17 +239,6 @@ class Switch(Terminator):
 
     value: Operand
     cases: list[tuple[Constant, int]]
-
-
-@dataclass
-class Compare(Terminator):
-    """compare the lhs and rhs, branching depending on their relationship"""
-
-    lhs: Operand
-    rhs: Operand
-    lt_branch: int
-    eq_branch: int
-    gt_branch: int
 
 
 @dataclass
@@ -278,7 +287,7 @@ class LocalVar(Operand):
 @dataclass
 class Temporary(Operand):
     id: int
-    type: MachineType
+    type: hir.Type
 
 
 @dataclass

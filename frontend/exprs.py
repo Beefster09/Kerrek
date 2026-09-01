@@ -345,7 +345,10 @@ def _evaluate(node: ast.Expression, get_symbol: GetSymbolFunc) -> EvalResult:
                     return None
 
         case ast.UnitReinterpretExpr():
-            new_unit = get_canonical_unit(node.new_unit, get_symbol)
+            if node.new_unit is IndeterminateUnit.NoUnit:
+                new_unit = IndeterminateUnit.NoUnit
+            else:
+                new_unit = get_canonical_unit(node.new_unit, get_symbol)
 
             if new_unit is None:
                 return None
@@ -579,8 +582,23 @@ def _eval_binop(binop: ast.BinopExpr, get_symbol: GetSymbolFunc) -> EvalResult:
 
         mat_unit = materialize_unit(res.unit, get_symbol)
 
-        if mat_unit is None:
-            return None
+        if not isinstance(ltype, FlexType) and ltype != coerced_type:
+            l = hir.CastExpr(
+                **l.where(),
+                type=inferred_type,
+                to=inferred_type,
+                unit=l.singular_unit,
+                expr=l,
+            )
+
+        if not isinstance(rtype, FlexType) and rtype != coerced_type:
+            r = hir.CastExpr(
+                **r.where(),
+                type=inferred_type,
+                to=inferred_type,
+                unit=r.singular_unit,
+                expr=r,
+            )
 
         return hir.BinopExpr(
             **binop.where(),
