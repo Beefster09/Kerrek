@@ -68,7 +68,7 @@ class FuncBuilder:
             id=src.id,
             name=src.name,
             params=[*self._params.values()],
-            returns=[],
+            returns=[ret.type for ret in src.returns],
             error=None,
             fallible=src.fallible,
         )
@@ -85,7 +85,7 @@ class FuncBuilder:
 
     def _new_mut_tmp(self, typ: hir.Type) -> mir.LocalVar:
         tmp_id = next(self._var_num)
-        var = mir.LocalVar(tmp_id, f"mut_tmp{tmp_id}", typ)
+        var = mir.LocalVar(tmp_id, "tmp", typ)
         self.func.locals.append(var)
         return var
 
