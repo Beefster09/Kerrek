@@ -10,9 +10,9 @@ from typing import Never, overload
 
 import rich
 
-from frontend import ast, hir, mir, resolver, types
+from frontend import ast, hir, mir, types
 from frontend.common import BinaryOp, RuneValue
-from frontend.exprs import ByteValue, ComptimeType
+from frontend.exprs import ByteValue
 
 
 def hir_to_mir(
@@ -27,7 +27,11 @@ def hir_to_mir(
         tu.globals.append(_translate_globalvar(var))
 
     for func in hir.funcs.values():
-        tu.functions.append(_translate_func(func))
+        mir_func = _translate_func(func)
+        tu.functions.append(mir_func)
+        if func is hir.entry_point:
+            mir_func.no_mangle = True
+            mir_func.name = "main"
 
     return tu
 
@@ -55,7 +59,8 @@ class FuncBuilder:
         self._block_num = itertools.count(1)
         self._vars: dict[int, mir.LocalVar] = {}
         self._params: dict[int, mir.Parameter] = {
-            param.id: mir.Parameter(i, param.type) for i, param in enumerate(src.params)
+            param.id: mir.Parameter(i, param.name, param.type)
+            for i, param in enumerate(src.params)
         }
         self._current_block: FuncBuilder.WIPBlock | None = None
 
@@ -65,6 +70,7 @@ class FuncBuilder:
             params=[*self._params.values()],
             returns=[],
             error=None,
+            fallible=src.fallible,
         )
 
     def finish(self) -> mir.Function:
@@ -73,14 +79,18 @@ class FuncBuilder:
         self.func.blocks.sort(key=lambda b: b.id)
         return self.func
 
-    def _newtmp(self, typ: ComptimeType) -> mir.Temporary:
+    def _new_tmp(self, typ: hir.Type) -> mir.Temporary:
         # TODO: translate the type
         return mir.Temporary(next(self._tmp_num), typ)
 
-    def _newvar(self, decl: hir.LocalVariable) -> mir.LocalVar:
-        var = mir.LocalVar(
-            next(self._var_num), decl.name, decl.type
-        )  # TODO: ensure the realized type is translated
+    def _new_mut_tmp(self, typ: hir.Type) -> mir.LocalVar:
+        tmp_id = next(self._var_num)
+        var = mir.LocalVar(tmp_id, f"mut_tmp{tmp_id}", typ)
+        self.func.locals.append(var)
+        return var
+
+    def _new_var(self, decl: hir.LocalVariable) -> mir.LocalVar:
+        var = mir.LocalVar(next(self._var_num), decl.name, decl.type)
         self.func.locals.append(var)
         self._vars[decl.id] = var
         return var
@@ -140,7 +150,7 @@ class FuncBuilder:
         for stmt in src.body:
             match stmt:
                 case hir.LocalVariable():
-                    var = self._newvar(stmt)
+                    var = self._new_var(stmt)
                     if stmt.expr is None:
                         self._emit(mir.Clear(var))
                     elif isinstance(stmt.expr, hir.Expression):
@@ -226,7 +236,7 @@ class FuncBuilder:
                     # pointers are interchangeable at the CPU level (and in C), so no actual cast is necessary
                     return self._lower_expr(sub)
                 else:
-                    tmp = self._newtmp(to)
+                    tmp = self._new_tmp(to)
                     self._emit(mir.Convert(tmp, self._lower_expr(sub), to))
                     return tmp
 
@@ -282,58 +292,56 @@ class FuncBuilder:
             case BinaryOp.Add:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.type)
+                result = self._new_tmp(expr.type)
                 self._emit(mir.Add(result, lhs, rhs))
                 return result
 
             case BinaryOp.Subtract:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.type)
+                result = self._new_tmp(expr.type)
                 self._emit(mir.Sub(result, lhs, rhs))
                 return result
 
             case BinaryOp.Multiply:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.type)
+                result = self._new_tmp(expr.type)
                 self._emit(mir.Mul(result, lhs, rhs))
                 return result
 
             case BinaryOp.TrueDivide:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.type)
+                result = self._new_tmp(expr.type)
                 self._emit(mir.Div(result, lhs, rhs))
                 return result
 
             case BinaryOp.FloorDivide:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.type)
+                result = self._new_mut_tmp(expr.type)
                 self._emit(mir.Div(result, lhs, rhs))
 
                 if not (
                     types.is_integer(expr.lhs.singular_type)
                     and types.is_integer(expr.rhs.singular_type)
                 ):
-                    result2 = self._newtmp(result.type)
-                    self._emit(mir.Truncate(result2, result))
-                    return result2
+                    self._emit(mir.Truncate(result, result))
 
                 return result
 
             case BinaryOp.Remainder:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.type)
+                result = self._new_tmp(expr.type)
                 self._emit(mir.Rem(result, lhs, rhs))
                 return result
 
             case BinaryOp.Modulo:
                 lhs = self._lower_expr(expr.lhs)
                 rhs = self._lower_expr(expr.rhs)
-                result = self._newtmp(expr.type)
+                result = self._new_mut_tmp(expr.type)
                 self._emit(mir.Rem(result, lhs, rhs))
 
                 before = self._current_block

@@ -22,6 +22,7 @@ class Function:
     params: list[Parameter]
     returns: list[hir.Type]
     error: hir.Type | None
+    fallible: bool
     locals: list[LocalVar] = field(default_factory=list)
     blocks: list[Block] = field(default_factory=list)
 
@@ -293,6 +294,7 @@ class Temporary(Operand):
 @dataclass
 class Parameter(Operand):
     index: int
+    name: str
     type: hir.Type
 
 

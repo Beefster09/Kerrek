@@ -1,20 +1,27 @@
 from pathlib import Path
-from typing import Protocol
+from typing import BinaryIO, Protocol
 
 import rich
 
-from frontend import analysis, diagnostics, lowering, mir, resolver
+from frontend import analysis, lowering, mir, resolver
 
 
 class Backend(Protocol):
     def generate(
         self,
-        outfile: Path,
+        out: BinaryIO,
         translation_unit: mir.TranslationUnit,
     ): ...
 
+    def auto_suffix(self, infile: Path) -> Path: ...
 
-def build(entry_point: Path, backend: Backend) -> bool:
+
+def build(
+    entry_point: Path,
+    backend: Backend,
+    *,
+    out: Path | None = None,
+) -> bool:
     res = resolver.Resolver()
     main = res.require(entry_point)
     res.finish_imports()
@@ -26,6 +33,10 @@ def build(entry_point: Path, backend: Backend) -> bool:
 
     tu = lowering.hir_to_mir(hir)
 
-    rich.print(tu)
+    if out is None:
+        out = backend.auto_suffix(entry_point)
+
+    with open(out, "wb") as fp:
+        backend.generate(fp, tu)
 
     return True
