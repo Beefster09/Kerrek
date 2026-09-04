@@ -3,7 +3,7 @@ package diagnostics
 import "base:runtime"
 import "core:fmt"
 
-import "../common"
+import "../../common"
 
 
 error :: proc {
@@ -23,11 +23,17 @@ notice :: proc {
 
 suggest :: proc(diag: ^Diagnostic, fmtstr: string, args: ..any) {
 	msg := fmt.aprintf(fmtstr, ..args, allocator = _msg_allocator)
+	if diag.addendums == nil {
+		diag.addendums = make([dynamic]Addendum)
+	}
 	append(&diag.addendums, Suggestion(msg))
 }
 
 reference :: proc(diag: ^Diagnostic, span: common.Span, fmtstr: string, args: ..any) {
 	msg := fmt.aprintf(fmtstr, ..args, allocator = _msg_allocator)
+	if diag.addendums == nil {
+		diag.addendums = make([dynamic]Addendum)
+	}
 	append(&diag.addendums, Reference{message = msg, span = span})
 }
 
@@ -39,7 +45,7 @@ emit :: proc(
 	args: ..any,
 	origin: Origin = .Unknown,
 	category: Category = .Default,
-	code: Code = {'?', 0xBADF00D},
+	code: Code = {'?', 999},
 ) -> ^Diagnostic {
 	diag := Diagnostic {
 		level    = level,
@@ -59,7 +65,7 @@ notice_with_span :: proc(
 	args: ..any,
 	origin: Origin = .Unknown,
 	category: Category = .Default,
-	code: Code = {'?', 0xBADF00D},
+	code: Code = {'?', 999},
 ) -> ^Diagnostic {
 	return emit(.Notice, span, fmtstr, ..args, origin = origin, category = category, code = code)
 }
@@ -69,7 +75,7 @@ notice_without_span :: proc(
 	args: ..any,
 	origin: Origin = .Unknown,
 	category: Category = .Default,
-	code: Code = {'?', 0xBADF00D},
+	code: Code = {'?', 999},
 ) -> ^Diagnostic {
 	return emit(
 		.Notice,
@@ -88,7 +94,7 @@ warning_with_span :: proc(
 	args: ..any,
 	origin: Origin = .Unknown,
 	category: Category = .Default,
-	code: Code = {'?', 0xBADF00D},
+	code: Code = {'?', 999},
 ) -> ^Diagnostic {
 	return emit(.Warning, span, fmtstr, ..args, origin = origin, category = category, code = code)
 }
@@ -98,7 +104,7 @@ warning_without_span :: proc(
 	args: ..any,
 	origin: Origin = .Unknown,
 	category: Category = .Default,
-	code: Code = {'?', 0xBADF00D},
+	code: Code = {'?', 999},
 ) -> ^Diagnostic {
 	return emit(
 		.Warning,
@@ -117,7 +123,7 @@ error_with_span :: proc(
 	args: ..any,
 	origin: Origin = .Unknown,
 	category: Category = .Default,
-	code: Code = {'?', 0xBADF00D},
+	code: Code = {'?', 999},
 ) -> ^Diagnostic {
 	return emit(.Error, span, fmtstr, ..args, origin = origin, category = category, code = code)
 }
@@ -127,7 +133,7 @@ error_without_span :: proc(
 	args: ..any,
 	origin: Origin = .Unknown,
 	category: Category = .Default,
-	code: Code = {'?', 0xBADF00D},
+	code: Code = {'?', 999},
 ) -> ^Diagnostic {
 	return emit(
 		.Error,

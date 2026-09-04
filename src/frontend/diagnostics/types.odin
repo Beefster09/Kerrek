@@ -4,7 +4,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:io"
 
-import "../common"
+import "../../common"
 
 Level :: enum u8 {
 	Notice  = 0,
