@@ -1,6 +1,5 @@
 package common
 
-Source_ID :: distinct u32
 
 Span :: struct {
 	file:  Source_ID,
@@ -13,3 +12,5 @@ Location :: struct {
 	row:    u16,
 	col:    u16,
 }
+
+tab_width: u16 = #config(DEFAULT_TAB_WIDTH, 4) // determines how col is counted

@@ -50,6 +50,8 @@ _cmd_build :: proc(args: []string) {
 		config.backend = "c99"
 	}
 
+	diagnostics.configure_reporting(diagnostics.Report_Config{})
+
 	build(entry_point)
 }
 
