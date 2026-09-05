@@ -101,4 +101,5 @@ load_source_by_id :: proc(id: Source_ID) -> (^Source_File, Load_Source_Error) {
 initialize :: proc() {
 	xar.array_init(&_sources)
 	_sources_by_path = make(map[string]^Source_File)
+	strings.intern_init(&ident_intern)
 }

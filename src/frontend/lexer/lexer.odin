@@ -101,7 +101,34 @@ tokenize :: proc(src_path: string) -> ([]Token, common.Load_Source_Error) {
 				last_thing_was_garbage = false
 				advance_by = n
 			} else if ident, width := _match_ident_like(src[offset:]); ident != "" {
-				// TODO
+				what: Token_Data
+
+				for kw_str, keyword in KEYWORD_STRINGS {
+					if ident == kw_str {
+						what = keyword
+						break
+					}
+				}
+
+				if what == nil {
+					interned_ident, err := strings.intern_get(&common.ident_intern, ident)
+					assert(err == nil, "identifier intern failed")
+					what = Identifier(interned_ident)
+				}
+
+				append(
+					&tokens,
+					Token {
+						span = {
+							file = sf.id,
+							start = {u32(offset), line, col},
+							end = {u32(offset + len(ident)), line, col + u16(width)},
+						},
+						what = what,
+					},
+				)
+				last_thing_was_garbage = false
+				advance_by = len(ident)
 			} else if last_thing_was_garbage {
 				last_tok := &tokens[len(tokens) - 1]
 				last_tok.span.end.offset += 1
