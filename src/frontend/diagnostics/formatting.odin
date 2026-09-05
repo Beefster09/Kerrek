@@ -29,7 +29,7 @@ reference :: proc(diag: ^Diagnostic, span: common.Span, fmtstr: string, args: ..
 
 
 emit_with_default_level :: proc(
-	code: Code,
+	code: Kind,
 	span: common.Span,
 	fmtstr: string,
 	args: ..any,
@@ -46,7 +46,7 @@ emit_with_default_level :: proc(
 }
 
 emit_with_level_override :: proc(
-	code: Code,
+	code: Kind,
 	level: Level,
 	span: common.Span,
 	fmtstr: string,

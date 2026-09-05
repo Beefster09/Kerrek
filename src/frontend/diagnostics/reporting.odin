@@ -152,7 +152,7 @@ _report_simple :: proc() {
 				fmt.eprintfln(
 					"\t(in %s, line %d, column %d)",
 					sf.file,
-					diag.span.start.row,
+					diag.span.start.line,
 					diag.span.start.col,
 				)
 			}

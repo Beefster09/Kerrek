@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:reflect"
 
+import "frontend/diagnostics"
 import "frontend/lexer"
 
 build :: proc(entry_point: string, backend_id: string = "c99") {
@@ -12,6 +13,7 @@ build :: proc(entry_point: string, backend_id: string = "c99") {
 		fmt.eprintln("lexing failed")
 		os.exit(1)
 	}
+	diagnostics.report_and_exit()
 	fmt.println(len(tokens), "tokens emitted")
 	for tok in tokens {
 		fmt.printfln("{0:T}({0:v})", reflect.get_union_variant(tok.what))

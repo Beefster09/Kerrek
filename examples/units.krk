@@ -64,6 +64,7 @@ unit day: time {
 }
 
 const PI = 3.14159265358979;
+const BULLET = '\u2022'
 
 unit degrees: angle;
 unit radians: angle {

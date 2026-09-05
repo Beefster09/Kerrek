@@ -13,7 +13,7 @@ Level :: enum u8 {
 
 Origin :: enum u8 {
 	Unknown = 0,
-	Lexical,
+	Lexer,
 	Parser,
 	Resolver,
 	TypeCheck,
@@ -23,10 +23,10 @@ Origin :: enum u8 {
 }
 
 Category :: enum u8 {
-	Default = 0,
+	General = 0,
 	Unused,
 	Deprecated,
-	Suspicious,
+	Dubious,
 	Performance,
 	Portability,
 	Style,
@@ -34,7 +34,7 @@ Category :: enum u8 {
 
 Diagnostic :: struct {
 	level:     Level,
-	code:      Code,
+	code:      Kind,
 	message:   string,
 	span:      common.Span,
 	addendums: [dynamic]Addendum,
@@ -61,12 +61,12 @@ Reference :: struct {
 
 
 _format_code :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
-	assert(arg.id == Code)
+	assert(arg.id == Kind)
 	switch verb {
 	case 'v':
 		fmt.fmt_enum(fi, arg, verb)
 	case 's', 'q':
-		code := (cast(^Code)arg.data)^
+		code := (cast(^Kind)arg.data)^
 		meta := CODE_METADATA[code]
 		fmt.fmt_string(fi, meta.code, verb)
 	case:
