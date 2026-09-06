@@ -1,5 +1,6 @@
 package exact
 
+import "base:intrinsics"
 import "core:math/big"
 
 is_one :: proc {
@@ -42,4 +43,26 @@ int_is_zero :: proc(i: Int) -> bool {
 
 rat_is_zero :: proc(r: Rat) -> bool {
 	return int_is_zero(r.numerator) && !int_is_zero(r.denominator)
+}
+
+I128_MIN :: -1 << 127
+
+inline_negate :: proc(i: ^Int) {
+	switch &ii in i^ {
+	case i128:
+		if intrinsics.expect(ii == I128_MIN, false) {
+			result: big.Int
+			err := big.set(&result, ii, allocator = bigint_allocator)
+			assert(err == nil)
+			result.sign = .Zero_or_Positive
+		} else {
+			i^ = -ii
+		}
+	case big.Int:
+		if ii.sign == .Zero_or_Positive {
+			ii.sign = .Negative
+		} else {
+			ii.sign = .Zero_or_Positive
+		}
+	}
 }

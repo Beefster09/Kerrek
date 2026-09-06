@@ -4,6 +4,7 @@ import "base:intrinsics"
 import "core:math/big"
 import "core:mem"
 import "core:strconv"
+import "core:unicode"
 
 
 parse_int :: proc(s: string, radix: int = 10, allocator := bigint_allocator) -> (Int, bool) {
@@ -23,8 +24,18 @@ parse_int :: proc(s: string, radix: int = 10, allocator := bigint_allocator) -> 
 I128_DEC_DIGITS :: 38
 DIGIT_INITIAL_CAP :: 64
 
+parse_decimal :: proc(s: string) -> (Rat, bool) {
+	return #force_inline _parse_fractional(s, 10)
+}
 
-parse_decimal :: proc(s: string, radix: int = 10) -> (Rat, bool) {
+parse_hexfloat :: proc(s: string) -> (Rat, bool) {
+	return #force_inline _parse_fractional(s, 16)
+}
+
+_parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 10 || RADIX == 16 {
+	EXP_CHAR :: 'e' when RADIX == 10 else 'p'
+	I128_MAX_SCALE :: I128_DEC_DIGITS when RADIX == 10 else 128 / 16
+
 	scratch: mem.Scratch
 	{
 		err := mem.scratch_init(&scratch, 4 * mem.Kilobyte)
@@ -39,56 +50,81 @@ parse_decimal :: proc(s: string, radix: int = 10) -> (Rat, bool) {
 	point_found := false
 	point_at: int
 	exp: int
+	sign := 1
 
-	for c, i in s {
-		switch c {
+	loop: for c, i in s {
+		switch unicode.to_lower(c) {
+		case '+':
+			if i != 0 {
+				return {}, false
+			}
+		case '-':
+			if i == 0 {
+				sign = -1
+			} else {
+				return {}, false
+			}
 		case '0' ..= '9':
 			append(&digits, u8(c))
 		case '.':
-			if point_found {break}
+			if point_found {break loop}
 			point_at = i
 			point_found = true
-		case 'e', 'E':
-			exp2, ok := strconv.parse_i64(s[i + 1:], 10)
+		case EXP_CHAR:
+			exp2, ok := strconv.parse_i64(s[i + 1:], RADIX)
 			if ok {
 				exp = int(exp2)
 			} else {
 				return {}, false
 			}
-			break
+			break loop
+		case 'a' ..= 'f':
+			when RADIX == 16 {
+				append(&digits, u8(c))
+			} else {
+				break loop
+			}
 		case:
-			break
+			break loop
 		}
 	}
 
 	prec := len(digits) - point_at if point_found else 0
 
-	base, ok := parse_int(transmute(string)digits[:], 10, scratch_alloc)
+	base, ok := parse_int(transmute(string)digits[:], RADIX, scratch_alloc)
 	if !ok {
 		return {}, false
 	}
 
 	if prec >= exp {
 		denominator_scale := prec - exp
-		if denominator_scale <= I128_DEC_DIGITS {
+		if denominator_scale <= I128_MAX_SCALE {
 			den: i128 = 1
 			for i in 0 ..< denominator_scale {
-				den *= 10
+				den *= i128(RADIX)
 			}
-			return {clone(base), den}, true
+			num := clone(base)
+			if sign < 0 {
+				inline_negate(&num)
+			}
+			return {num, den}, true
 		} else {
 			den: big.Int
-			err := big.exp(&den, 10, denominator_scale, bigint_allocator)
+			err := big.exp(&den, RADIX, denominator_scale, bigint_allocator)
 			if err == nil {
-				return {clone(base), den}, true
+				num := clone(base)
+				if sign < 0 {
+					inline_negate(&num)
+				}
+				return {num, den}, true
 			}
 		}
 	} else {
 		scale := exp - prec
-		if base_as_i128, base_is_i128 := base.(i128); scale <= I128_DEC_DIGITS && base_is_i128 {
+		if base_as_i128, base_is_i128 := base.(i128); scale <= I128_MAX_SCALE && base_is_i128 {
 			mul: i128 = 1
 			for i in 0 ..< scale {
-				mul *= 10
+				mul *= i128(RADIX)
 			}
 			result, overflow := intrinsics.overflow_mul(base_as_i128, mul)
 			if !overflow {
@@ -108,7 +144,7 @@ parse_decimal :: proc(s: string, radix: int = 10) -> (Rat, bool) {
 		}
 
 		{
-			err := big.exp(&mul, 10, scale, scratch_alloc)
+			err := big.exp(&mul, RADIX, scale, scratch_alloc)
 			if err != nil {
 				return {}, false
 			}
@@ -121,6 +157,9 @@ parse_decimal :: proc(s: string, radix: int = 10) -> (Rat, bool) {
 			}
 		}
 
+		if sign < 0 {
+			result.sign = .Negative
+		}
 		return {result, 1}, true
 	}
 

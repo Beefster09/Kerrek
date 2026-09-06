@@ -382,25 +382,30 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 			return len(s), is_float, whole_digits > 0 && (!is_float || exp_digits > 0)
 		}
 		match_len, is_float, ok := _check_hexfloat(unsigned[2:])
+		full_match_len := match_len + 2 + sign_skip
 
 		if !ok {
 			diagnostics.emit(
 				.Invalid_Number_Literal,
-				common.cursor_to_span(cursor, match_len + 2 + sign_skip),
+				common.cursor_to_span(cursor, full_match_len),
 				"invalid hex literal",
 			)
 			return {}, 0
 		} else if is_float {
-			floatval, nr, ok := strconv.parse_f64_prefix(full)
+			floatval, ok := exact.parse_hexfloat(unsigned[2:match_len])
+			if sign == -1 {
+				exact.inline_negate(&floatval.numerator)
+			}
 			if !ok {
 				diagnostics.emit(
 					.Invalid_Number_Literal,
-					common.cursor_to_span(cursor, nr),
+					common.cursor_to_span(cursor, full_match_len),
 					"invalid hex float literal",
 				)
 				return {}, 0
 			}
-			panic("TODO")
+			return {raw = full[:full_match_len], value = floatval, format = .HexFloat},
+				full_match_len
 		} else {
 			if sign != 0 {
 				diagnostics.emit(
@@ -411,6 +416,9 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 			}
 			value, ok := exact.parse_int(unsigned[2:2 + match_len], 16)
 			assert(ok)
+			if sign == -1 {
+				exact.inline_negate(&value)
+			}
 			length := 2 + match_len + sign_skip
 			return {raw = full[:length], value = exact.int_to_rat(value), format = .HexInteger},
 				length
@@ -444,8 +452,6 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 			Fractional,
 			Exponent,
 			Exponent_Digits,
-			Float_Terminator,
-			Float_Terminator_After_Exponent,
 		}
 		form = .DecimalInteger
 		whole_digits := 0
@@ -463,9 +469,6 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 				case 'e':
 					form = .Decimal
 					state = .Exponent
-				case 'f':
-					form = .Float
-					state = .Float_Terminator
 				case:
 					return i, .DecimalInteger, whole_digits > 0
 				}
@@ -476,9 +479,6 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 				case 'e':
 					form = .Decimal
 					state = .Exponent
-				case 'f':
-					form = .Float
-					state = .Float_Terminator
 				case:
 					return i, .Decimal, whole_digits > 0
 				}
@@ -496,26 +496,13 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 				switch c {
 				case '0' ..= '9':
 					exp_digits += 1
-				case 'f':
-					form = .Float
-					state = .Float_Terminator_After_Exponent
 				case:
 					return i, .Decimal, whole_digits > 0 && exp_digits > 0
 				}
-			case .Float_Terminator:
-				return i, .Float, whole_digits > 0
-			case .Float_Terminator_After_Exponent:
-				return i, .Float, whole_digits > 0 && exp_digits > 0
 			}
 		}
 
-		#partial switch state {
-		case .Float_Terminator_After_Exponent:
-			return len(s), .Float, whole_digits > 0 && exp_digits > 0
-		case:
-			return len(s), form, whole_digits > 0
-		}
-
+		return len(s), form, whole_digits > 0
 	}
 	match_len, form, ok := _check_decimal(unsigned)
 	if !ok {
@@ -531,11 +518,9 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 		return {raw = full[:match_len], value = exact.int_to_rat(value), format = .DecimalInteger},
 			match_len
 	case .Decimal:
-		value, ok := exact.parse_decimal(full[:match_len], 10)
+		value, ok := exact.parse_decimal(full[:match_len])
 		assert(ok)
 		return {raw = full[:match_len], value = value, format = .Decimal}, match_len
-	case .Float:
-		panic("float literals not yet implemented")
 	}
 
 	return {}, 0

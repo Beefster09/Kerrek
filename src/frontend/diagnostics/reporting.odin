@@ -2,6 +2,7 @@ package diagnostics
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:math/bits"
 import "core:os"
 import "core:terminal"
 import "core:terminal/ansi"
@@ -23,10 +24,10 @@ Report_Config :: struct {
 _report_format: Report_Format
 _report_theme: Color_Scheme
 
-Color_Scheme :: struct {
-	error:      string,
-	warning:    string,
-	notice:     string,
+Color_Scheme :: struct #all_or_none {
+	levels:     [Level]string,
+	message:    string,
+	location:   string,
 	gutter:     string,
 	span:       string,
 	suggestion: string,
@@ -34,26 +35,36 @@ Color_Scheme :: struct {
 	clear:      string,
 }
 
-THEME_3BIT :: Color_Scheme {
-	error      = ansi.CSI + ansi.FG_RED + ansi.SGR,
-	warning    = ansi.CSI + ansi.FG_YELLOW + ansi.SGR,
-	notice     = ansi.CSI + ansi.FG_CYAN + ansi.SGR,
-	gutter     = ansi.CSI + ansi.FG_BLUE + ansi.SGR,
-	span       = ansi.CSI + ansi.FG_YELLOW + ansi.SGR,
-	suggestion = ansi.CSI + ansi.FG_GREEN + ansi.SGR,
-	reference  = ansi.CSI + ansi.FG_MAGENTA + ansi.SGR,
-	clear      = ansi.CSI + ansi.RESET + ansi.SGR,
+@(rodata)
+DEFAULT_THEME_3BIT := Color_Scheme {
+	levels = {
+		.Error = ansi.CSI + ansi.FG_RED + ansi.SGR,
+		.Warning = ansi.CSI + ansi.FG_YELLOW + ansi.SGR,
+		.Notice = ansi.CSI + ansi.FG_CYAN + ansi.SGR,
+	},
+	message = (ansi.CSI + ansi.FG_DEFAULT + ansi.SGR),
+	location = (ansi.CSI + ansi.FG_DEFAULT + ansi.SGR),
+	gutter = (ansi.CSI + ansi.FG_BLUE + ansi.SGR),
+	span = (ansi.CSI + ansi.FG_YELLOW + ansi.SGR),
+	suggestion = (ansi.CSI + ansi.FG_GREEN + ansi.SGR),
+	reference = (ansi.CSI + ansi.FG_MAGENTA + ansi.SGR),
+	clear = (ansi.CSI + ansi.RESET + ansi.SGR),
 }
 
-THEME_4BIT :: Color_Scheme {
-	error      = ansi.CSI + ansi.FG_BRIGHT_RED + ansi.SGR,
-	warning    = ansi.CSI + ansi.FG_YELLOW + ansi.SGR,
-	notice     = ansi.CSI + ansi.FG_CYAN + ansi.SGR,
-	gutter     = ansi.CSI + ansi.FG_BLUE + ansi.SGR,
-	span       = ansi.CSI + ansi.FG_BRIGHT_YELLOW + ansi.SGR,
-	suggestion = ansi.CSI + ansi.FG_BRIGHT_GREEN + ansi.SGR,
-	reference  = ansi.CSI + ansi.FG_BRIGHT_MAGENTA + ansi.SGR,
-	clear      = ansi.CSI + ansi.RESET + ansi.SGR,
+@(rodata)
+DEFAULT_THEME_4BIT := Color_Scheme {
+	levels = {
+		.Error = ansi.CSI + ansi.FG_BRIGHT_RED + ansi.SGR,
+		.Warning = ansi.CSI + ansi.FG_YELLOW + ansi.SGR,
+		.Notice = ansi.CSI + ansi.FG_CYAN + ansi.SGR,
+	},
+	message = (ansi.CSI + ansi.BOLD + ";" + ansi.FG_DEFAULT + ansi.SGR),
+	location = (ansi.CSI + ansi.FAINT + ";" + ansi.FG_DEFAULT + ansi.SGR),
+	gutter = (ansi.CSI + ansi.FG_BLUE + ansi.SGR),
+	span = (ansi.CSI + ansi.FG_BRIGHT_YELLOW + ansi.SGR),
+	suggestion = (ansi.CSI + ansi.FG_BRIGHT_GREEN + ansi.SGR),
+	reference = (ansi.CSI + ansi.FG_BRIGHT_MAGENTA + ansi.SGR),
+	clear = (ansi.CSI + ansi.RESET + ansi.SGR),
 }
 
 @(rodata)
@@ -84,9 +95,9 @@ configure_reporting :: proc(conf: Report_Config) {
 		switch terminal.color_depth {
 		case .None:
 		case .Three_Bit:
-			_report_theme = THEME_3BIT
+			_report_theme = DEFAULT_THEME_3BIT
 		case .Four_Bit, .Eight_Bit, .True_Color:
-			_report_theme = THEME_4BIT
+			_report_theme = DEFAULT_THEME_4BIT
 		}
 	}
 }
@@ -118,7 +129,7 @@ report_and_exit :: proc() {
 		if warn_count > 0 {
 			fmt.eprintfln(
 				"%sencountered %d error%s and %d warning%s%s",
-				_report_theme.error,
+				_report_theme.levels[.Error],
 				err_count,
 				"s" if err_count != 1 else "",
 				warn_count,
@@ -128,7 +139,7 @@ report_and_exit :: proc() {
 		} else {
 			fmt.eprintfln(
 				"%sencountered %d error%s%s",
-				_report_theme.error,
+				_report_theme.levels[.Error],
 				err_count,
 				"s" if err_count != 1 else "",
 				_report_theme.clear,
@@ -138,7 +149,7 @@ report_and_exit :: proc() {
 	} else if warn_count > 0 {
 		fmt.eprintfln(
 			"%sencountered %d warning%s%s",
-			_report_theme.warning,
+			_report_theme.levels[.Warning],
 			warn_count,
 			"s" if warn_count != 1 else "",
 			_report_theme.clear,
@@ -146,8 +157,48 @@ report_and_exit :: proc() {
 	}
 }
 
+MAX_U16 :: 1 << 16 - 1
+
 _report_pretty :: proc() {
-	_report_simple()
+	for diag in _current_diagnostics {
+		fmt.eprintfln(
+			"%s%s[%s]%s %s%s%s",
+			_report_theme.levels[diag.level],
+			SEVERITY_STRINGS[diag.level],
+			diag.code,
+			_report_theme.clear,
+			_report_theme.message,
+			diag.message,
+			_report_theme.clear,
+		)
+		if diag.span.file != 0 {
+			sf, _ := common.load_source(diag.span.file)
+			if sf != nil {
+				if diag.span.start.line > 0 &&
+				   diag.span.start.col > 0 &&
+				   diag.span.start.line < MAX_U16 &&
+				   diag.span.start.col < MAX_U16 {
+					fmt.eprintfln(
+						"\t%s@ %s:%d:%d%s",
+						_report_theme.location,
+						sf.file,
+						diag.span.start.line,
+						diag.span.start.col,
+						_report_theme.clear,
+					)
+				} else {
+					fmt.eprintfln(
+						"\t%sin %s%s",
+						_report_theme.location,
+						sf.file,
+						diag.span.start.line,
+						diag.span.start.col,
+						_report_theme.clear,
+					)
+				}
+			}
+		}
+	}
 }
 
 _report_simple :: proc() {

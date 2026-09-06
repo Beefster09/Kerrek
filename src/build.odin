@@ -15,14 +15,17 @@ build :: proc(entry_point: string, backend_id: string = "c99") {
 	}
 	diagnostics.report_and_exit()
 	fmt.println(len(tokens), "tokens emitted")
-	for tok in tokens {
-		fmt.printfln(
-			"{1}:{2} - {3}:{4} = {0:T}({0:v})",
-			reflect.get_union_variant(tok.what),
-			tok.span.start.line,
-			tok.span.start.col,
-			tok.span.end.line,
-			tok.span.end.col,
-		)
-	}
+	fmt.printfln("%%v: %v", tokens[0].span)
+	fmt.printfln("%%s: %s", tokens[0].span)
+	fmt.printfln("%%f: %f", tokens[0].span)
+	fmt.printfln("%%b: %b", tokens[0].span)
+	fmt.printfln("%%e: %e", tokens[0].span)
+	fmt.printfln("%%d: %d", tokens[0].span)
+	fmt.printfln("%%a: %a", tokens[0].span)
+	fmt.printfln("%%z: %z", tokens[0].span)
+
+	// for tok in tokens {
+	// 	fmt.printfln("{1:d} {0:T}({0:v})", reflect.get_union_variant(tok.what), tok.span)
+	// }
+
 }

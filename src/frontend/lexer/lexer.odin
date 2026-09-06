@@ -16,6 +16,7 @@ tokenize :: proc(src_path: string) -> ([]Token, common.Load_Source_Error) {
 	if ldsrc_err != .OK {
 		return nil, ldsrc_err
 	}
+	defer common.unload_source(sf)
 
 	tokens := make(
 		[dynamic]Token,

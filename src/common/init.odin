@@ -16,4 +16,6 @@ initialize :: proc() {
 	exact.bigint_allocator = virtual.arena_allocator(&exact._bigint_arena)
 	fmt.register_user_formatter(exact.Rat, exact.fmt_rat)
 	fmt.register_user_formatter(exact.Int, exact.fmt_int)
+	fmt.register_user_formatter(Span, fmt_span)
+	fmt.register_user_formatter(Cursor, fmt_cursor)
 }
