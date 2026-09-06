@@ -12,7 +12,7 @@ Source_File :: struct {
 	id:           Source_ID,
 	file:         string, // location of file; owned
 	contents:     []u8, // contents of file; owned, may be purged when not in use
-	line_offsets: [dynamic]u32, // offsets where the beginning of each line is; owned
+	line_offsets: []u32, // offsets where the beginning of each line is; owned
 }
 Load_Source_Error :: enum {
 	OK,
@@ -30,6 +30,9 @@ _next_id: Source_ID = 1
 _sources: xar.Array(Source_File, 4)
 _sources_by_path: map[string]^Source_File
 _source_lock: sync.Mutex
+
+
+AVG_CHARS_PER_LINE :: 50 // very ballpark estimate of number of characters per source line
 
 load_source_from_path :: proc(file: string) -> (sfptr: ^Source_File, ret_err: Load_Source_Error) {
 	sync.lock(&_source_lock)
@@ -58,6 +61,15 @@ load_source_from_path :: proc(file: string) -> (sfptr: ^Source_File, ret_err: Lo
 		delete(sf.contents)
 	}
 
+	line_offsets := make([dynamic]u32, 1, len(sf.contents) / AVG_CHARS_PER_LINE + 16)
+	for c, i in sf.contents {
+		if c == '\n' {
+			append(&line_offsets, u32(i))
+		}
+	}
+
+	shrink(&line_offsets)
+	sf.line_offsets = line_offsets[:]
 	sf.id = _next_id
 	sf.file = strings.clone(file)
 

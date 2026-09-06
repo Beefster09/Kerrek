@@ -1,12 +1,13 @@
 package lexer
 
-import "core:math/big"
+import "core:fmt"
 import "core:strconv"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 
 import "../../common"
+import "../../common/exact"
 import "../diagnostics"
 
 
@@ -80,6 +81,158 @@ _match_rune_literal :: proc(cursor: common.Cursor, s: string) -> (rune_lit: Rune
 	}
 
 	return {s[:length], codepoint}, width
+}
+
+
+_match_string_literal :: proc(
+	start: common.Cursor,
+	s: string,
+) -> (
+	str_lit: String,
+	end: common.Cursor,
+	matched: bool,
+) {
+	mode: String_Mode
+	start_offset := 0
+	switch s[0] {
+	case '"':
+		mode = .Normal
+	case '\\':
+		if s[1] != '"' {
+			return {}, start, false
+		}
+		mode = .Raw
+		start_offset = 1
+	case:
+		return {}, start, false
+	}
+
+	multiline := strings.starts_with(s[start_offset:], `"""`)
+	quote_count := 3 if multiline else 1
+	start_offset += quote_count
+	end_offset: int
+	closed := false
+
+	assert(start_offset >= 1)
+	loop: for i in start_offset ..< len(s) {
+		switch c := s[i]; c {
+		case '"':
+			if mode != .Raw && s[i - 1] == '\\' { 	// i - 1 is safe because start_offset >= 1
+				continue loop
+			}
+			if !multiline {
+				end_offset = i + 1
+				closed = true
+				break loop
+			}
+			if strings.starts_with(s[i:], `"""`) {
+				end_offset = i + 3
+				closed = true
+				break loop
+			}
+		case '\n':
+			if !multiline {
+				end_offset = i
+				closed = false
+				break loop
+			}
+		}
+	}
+
+	if !closed {
+		diagnostics.emit(
+			.Unclosed_String,
+			common.cursor_to_span(start, 1),
+			"string literal was not closed",
+		)
+		return {}, start, false
+	}
+
+	end = start
+
+	switch mode {
+	case .Raw:
+		common.cursor_advance(&end, s, end_offset)
+		return {
+				raw = s[:end_offset],
+				value = strings.clone(s[start_offset:end_offset - quote_count]),
+				mode = mode,
+				is_multiline = multiline,
+			},
+			end,
+			true
+	case .Normal:
+		common.cursor_advance(&end, s, start_offset)
+
+		trim_leading_whitespace := 0
+
+		// trim common leading whitespace for multiline strings that start with a line break
+		if multiline && s[start_offset] == '\n' {
+			line_iter := s[start_offset + 1:end_offset]
+			max_leading_space := end_offset
+
+			for line in strings.split_lines_iterator(&line_iter) {
+				trimmed_line := strings.trim_left_space(line)
+				if trimmed_line == "" || trimmed_line == `"""` {
+					continue // ignore empty lines or the last line if it has no text on it besides the triple-quotes
+				}
+				leading_space := len(line) - len(trimmed_line)
+				if leading_space < max_leading_space {
+					max_leading_space = leading_space
+				}
+			}
+
+			// Possibly surprising behavior: if there were no significant lines in the string literal
+			// then the resulting string will only contain newlines (except for the first one)
+			trim_leading_whitespace = max_leading_space
+		}
+
+		sb: strings.Builder
+		strings.builder_init(&sb, 0, end_offset - quote_count)
+		advance_by: int
+		ignore_space := trim_leading_whitespace
+		for i := start_offset; i < end_offset - quote_count; i += advance_by {
+			advance_by = 1
+			defer {
+				assert(advance_by >= 1)
+				common.cursor_advance(&end, s[i:], advance_by)
+			}
+
+			switch c := s[i]; c {
+			case '\\':
+				r, n := _interpret_escape(end, s[i:])
+				if n > 0 {
+					strings.write_rune(&sb, r)
+					advance_by = n
+				} else {
+					advance_by = 2
+				}
+			case '\n':
+				if !(multiline && i == start_offset) {
+					strings.write_byte(&sb, c)
+				}
+				ignore_space = trim_leading_whitespace
+			case:
+				if ignore_space > 0 {
+					ignore_space -= 1
+					continue
+				}
+				strings.write_byte(&sb, c)
+			}
+		}
+
+		common.cursor_advance(&end, s[end_offset - quote_count:], quote_count)
+		return {
+				raw = s[:end_offset],
+				value = strings.to_string(sb),
+				mode = mode,
+				is_multiline = multiline,
+			},
+			end,
+			true
+	}
+
+	return {}, start, false
 }
 
 
@@ -247,6 +400,7 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 				)
 				return {}, 0
 			}
+			panic("TODO")
 		} else {
 			if sign != 0 {
 				diagnostics.emit(
@@ -255,13 +409,13 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 					"hex integer literal is signed",
 				)
 			}
-			value: big.Rat
-			err := big.atoi(&value.a, unsigned[2:2 + match_len], 16, common.bigint_allocator)
-			assert(err == nil)
-			big.one(&value.b)
+			value, ok := exact.parse_int(unsigned[2:2 + match_len], 16)
+			assert(ok)
 			length := 2 + match_len + sign_skip
-			return {raw = full[:length], value = value, format = .HexInteger}, length
+			return {raw = full[:length], value = exact.int_to_rat(value), format = .HexInteger},
+				length
 		}
+
 	} else if strings.starts_with(unsigned, "0o") {
 
 		if sign != 0 {
@@ -271,8 +425,9 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 				"found signed octal integer literal",
 			)
 		}
-	} else if strings.starts_with(unsigned, "0b") {
+		panic("TODO")
 
+	} else if strings.starts_with(unsigned, "0b") {
 		if sign != 0 {
 			diagnostics.emit(
 				.Signed_Unsigned_Literal,
@@ -280,6 +435,7 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 				"found signed binary integer literal",
 			)
 		}
+		panic("TODO")
 	}
 
 	_check_decimal :: proc(s: string) -> (length: int, form: Number_Format, ok: bool) {
@@ -370,13 +526,16 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 
 	#partial switch form {
 	case .DecimalInteger:
-		value: big.Rat
-		err := big.atoi(&value.a, full[:match_len], 10, common.bigint_allocator)
-		assert(err == nil)
-		big.one(&value.b)
-		return {raw = full[:match_len], value = value, format = .DecimalInteger}, match_len
+		value, ok := exact.parse_int(full[:match_len], 10)
+		assert(ok)
+		return {raw = full[:match_len], value = exact.int_to_rat(value), format = .DecimalInteger},
+			match_len
 	case .Decimal:
+		value, ok := exact.parse_decimal(full[:match_len], 10)
+		assert(ok)
+		return {raw = full[:match_len], value = value, format = .Decimal}, match_len
 	case .Float:
+		panic("float literals not yet implemented")
 	}
 
 	return {}, 0

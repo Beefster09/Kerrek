@@ -1,9 +1,8 @@
 package lexer
 
 import "base:runtime"
+import "core:fmt"
 import "core:strings"
-import "core:unicode"
-import "core:unicode/utf8"
 
 import "../../common"
 
@@ -32,32 +31,12 @@ tokenize :: proc(src_path: string) -> ([]Token, common.Load_Source_Error) {
 		col  = 1,
 	}
 	src := transmute(string)sf.contents
-	for offset := 0; offset < len(src); offset += advance_by {
-		cursor.offset = u32(offset)
+	for offset := 0; offset < len(src); {
 		advance_by = 1
 		defer { 	// col advance and line offsets; run after each loop
-			assert(advance_by >= 1)
-			for i in offset ..< offset + advance_by {
-				switch c := src[i]; c {
-				case '\n':
-					append(&sf.line_offsets, u32(i + 1))
-					cursor.col = 1
-					cursor.line += 1
-				case '\t':
-					cursor.col += common.tab_width - (cursor.col - 1) % common.tab_width
-				case 0 ..< ' ':
-				// other ASCII control; no need to increment col
-				case ' ' ..< utf8.LOCB:
-					cursor.col += 1
-				case utf8.LOCB ..= utf8.HICB:
-				// continuation byte; no need to increment col
-				case utf8.T2 ..< utf8.T5:
-					r, n := utf8.decode_rune(src[i:])
-					if n > 1 {
-						cursor.col += u16(unicode.normalized_east_asian_width(r))
-					}
-				}
-			}
+			fmt.assertf(advance_by >= 1, "advance_by = %d", advance_by)
+			common.cursor_advance(&cursor, src[cursor.offset:], advance_by)
+			offset = int(cursor.offset)
 		}
 
 		switch c := src[offset]; c {
@@ -87,10 +66,29 @@ tokenize :: proc(src_path: string) -> ([]Token, common.Load_Source_Error) {
 				last_thing_was_garbage = true
 			}
 
-		case '"': // string
+		case '"':
+			if str, end, matched := _match_string_literal(cursor, src[offset:]); matched {
+				append(&tokens, Token{span = common.cursor_to_span(cursor, end), what = str})
+				advance_by = len(str.raw)
+				last_thing_was_garbage = false
+			} else {
+				append(
+					&tokens,
+					Token {
+						span = common.cursor_to_span(cursor, 1),
+						what = Garbage(src[offset:offset + 1]),
+					},
+				)
+				last_thing_was_garbage = true
+			}
 		case '\\':
-			// comment maybe
-			if strings.starts_with(src[offset:], "\\\\") {
+			if str, end, matched := _match_string_literal(cursor, src[offset:]); matched {
+				append(&tokens, Token{span = common.cursor_to_span(cursor, end), what = str})
+				advance_by = len(str.raw)
+				last_thing_was_garbage = false
+
+				// comment?
+			} else if strings.starts_with(src[offset:], "\\\\") {
 				newline_at := strings.index(src[offset:], "\n")
 				if newline_at != -1 {
 					advance_by = newline_at

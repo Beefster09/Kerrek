@@ -1,5 +1,7 @@
 package common
 
+import "core:unicode"
+import "core:unicode/utf8"
 
 Span :: struct {
 	file:  Source_ID,
@@ -29,6 +31,30 @@ cursor_to_span :: proc {
 	cursor_to_span_len_same_line,
 	cursor_to_span_len_and_width_same_line,
 	cursor_to_span_other_span,
+}
+
+cursor_advance :: proc(cursor: ^Cursor, src: string, advance_by: int) {
+	for i in 0 ..< advance_by {
+		switch c := src[i]; c {
+		case '\n':
+			cursor.col = 1
+			cursor.line += 1
+		case '\t':
+			cursor.col += tab_width - (cursor.col - 1) % tab_width
+		case 0 ..= 0x1f:
+		// other ASCII control; no need to increment col
+		case ' ' ..< utf8.LOCB:
+			cursor.col += 1
+		case utf8.LOCB ..= utf8.HICB:
+		// continuation byte; no need to increment col
+		case utf8.T2 ..< utf8.T5:
+			r, n := utf8.decode_rune(src[i:])
+			if n > 1 {
+				cursor.col += u16(unicode.normalized_east_asian_width(r))
+			}
+		}
+	}
+	cursor.offset += u32(advance_by)
 }
 
 cursor_add_len :: proc(curs: Cursor, length: int) -> Cursor {

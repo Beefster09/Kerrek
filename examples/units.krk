@@ -139,7 +139,14 @@ func flapjacks_required(num_workers: Integer | man) -> Decimal | count
 
 	let e = a + b * 123 mod c;
 
-	return count * hunger / 200;
+	return count * hunger / +0x200;
 }
 
+const LONG_STRING = """
+			hello"
+				world
+					haldo • \x85 \u2022
+				throw \U10045f baby
+""" + "strong bad"+
+\"this\interprets\backslashes\literally";const x23 = ""
 func main() {}

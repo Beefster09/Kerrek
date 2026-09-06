@@ -56,6 +56,13 @@ THEME_4BIT :: Color_Scheme {
 	clear      = ansi.CSI + ansi.RESET + ansi.SGR,
 }
 
+@(rodata)
+SEVERITY_STRINGS := [Level]string {
+	.Notice  = "notice",
+	.Warning = "warning",
+	.Error   = "error",
+}
+
 
 configure_reporting :: proc(conf: Report_Config) {
 	stderr_is_tty := os.is_tty(os.stderr)
@@ -145,23 +152,18 @@ _report_pretty :: proc() {
 
 _report_simple :: proc() {
 	for diag in _current_diagnostics {
-		fmt.eprintfln("%s[%s]: %s", diag.level, diag.code, diag.message)
+		fmt.eprintfln("%s[%s] %s", SEVERITY_STRINGS[diag.level], diag.code, diag.message)
 		if diag.span.file != 0 {
 			sf, _ := common.load_source(diag.span.file)
 			if sf != nil {
-				fmt.eprintfln(
-					"\t(in %s, line %d, column %d)",
-					sf.file,
-					diag.span.start.line,
-					diag.span.start.col,
-				)
+				fmt.eprintfln("\t@ %s:%d:%d", sf.file, diag.span.start.line, diag.span.start.col)
 			}
 		}
 	}
 }
 
 _report_json :: proc() {
-	// IMPORTANT: json diagnostic reports reports go to stdout
-	// as such, this is not allowed if the backend output is directed to stdout
+	// IMPORTANT: json diagnostic reports reports go to *stdout*
+	// as such, this should not be allowed if the backend output is directed to stdout
 	json.marshal_to_writer(os.to_writer(os.stdout), _current_diagnostics, nil)
 }

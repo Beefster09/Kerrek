@@ -3,6 +3,7 @@ package lexer
 import "core:math/big"
 
 import "../../common"
+import "../../common/exact"
 
 // Tokens are valid as long as the file they came from is valid
 Token :: struct {
@@ -26,8 +27,13 @@ Identifier :: common.Identifier
 String :: struct {
 	raw:          string,
 	value:        string, // owned
-	is_raw:       bool,
+	mode:         String_Mode,
 	is_multiline: bool,
+}
+
+String_Mode :: enum {
+	Normal,
+	Raw,
 }
 
 Rune :: struct {
@@ -37,7 +43,7 @@ Rune :: struct {
 
 Numeric :: struct {
 	raw:    string,
-	value:  big.Rat,
+	value:  exact.Rat,
 	format: Number_Format,
 }
 
