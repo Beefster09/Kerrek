@@ -1,6 +1,7 @@
 package common
 
 import "core:container/xar"
+import "core:encoding/json"
 import "core:fmt"
 import "core:mem/virtual"
 import "core:strings"
@@ -18,4 +19,6 @@ initialize :: proc() {
 	fmt.register_user_formatter(exact.Int, exact.fmt_int)
 	fmt.register_user_formatter(Span, fmt_span)
 	fmt.register_user_formatter(Cursor, fmt_cursor)
+
+	json.register_user_marshaler(Cursor, marshal_source_id)
 }

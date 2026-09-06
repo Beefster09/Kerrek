@@ -13,18 +13,18 @@ emit :: proc {
 
 suggest :: proc(diag: ^Diagnostic, fmtstr: string, args: ..any) {
 	msg := fmt.aprintf(fmtstr, ..args, allocator = _msg_allocator)
-	if diag.addendums == nil {
-		diag.addendums = make([dynamic]Addendum)
+	if diag.extra == nil {
+		diag.extra = make([dynamic]Addendum)
 	}
-	append(&diag.addendums, Suggestion(msg))
+	append(&diag.extra, Suggestion(msg))
 }
 
 reference :: proc(diag: ^Diagnostic, span: common.Span, fmtstr: string, args: ..any) {
 	msg := fmt.aprintf(fmtstr, ..args, allocator = _msg_allocator)
-	if diag.addendums == nil {
-		diag.addendums = make([dynamic]Addendum)
+	if diag.extra == nil {
+		diag.extra = make([dynamic]Addendum)
 	}
-	append(&diag.addendums, Reference{message = msg, span = span})
+	append(&diag.extra, Reference{message = msg, span = span})
 }
 
 

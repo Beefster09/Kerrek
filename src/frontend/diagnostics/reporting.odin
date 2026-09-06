@@ -68,7 +68,7 @@ DEFAULT_THEME_4BIT := Color_Scheme {
 }
 
 @(rodata)
-SEVERITY_STRINGS := [Level]string {
+LEVEL_STRINGS := [Level]string {
 	.Notice  = "notice",
 	.Warning = "warning",
 	.Error   = "error",
@@ -102,6 +102,8 @@ configure_reporting :: proc(conf: Report_Config) {
 	}
 }
 
+EXIT_REPORT_ERRORS :: 1
+
 report_and_exit :: proc() {
 	defer clear(&_current_diagnostics)
 
@@ -125,6 +127,10 @@ report_and_exit :: proc() {
 		}
 	}
 
+	if _report_format == .JSON && err_count > 0 {
+		os.exit(EXIT_REPORT_ERRORS)
+	}
+
 	if err_count > 0 {
 		if warn_count > 0 {
 			fmt.eprintfln(
@@ -145,7 +151,7 @@ report_and_exit :: proc() {
 				_report_theme.clear,
 			)
 		}
-		os.exit(1)
+		os.exit(EXIT_REPORT_ERRORS)
 	} else if warn_count > 0 {
 		fmt.eprintfln(
 			"%sencountered %d warning%s%s",
@@ -157,14 +163,12 @@ report_and_exit :: proc() {
 	}
 }
 
-MAX_U16 :: 1 << 16 - 1
-
 _report_pretty :: proc() {
 	for diag in _current_diagnostics {
 		fmt.eprintfln(
 			"%s%s[%s]%s %s%s%s",
 			_report_theme.levels[diag.level],
-			SEVERITY_STRINGS[diag.level],
+			LEVEL_STRINGS[diag.level],
 			diag.code,
 			_report_theme.clear,
 			_report_theme.message,
@@ -174,28 +178,12 @@ _report_pretty :: proc() {
 		if diag.span.file != 0 {
 			sf, _ := common.load_source(diag.span.file)
 			if sf != nil {
-				if diag.span.start.line > 0 &&
-				   diag.span.start.col > 0 &&
-				   diag.span.start.line < MAX_U16 &&
-				   diag.span.start.col < MAX_U16 {
-					fmt.eprintfln(
-						"\t%s@ %s:%d:%d%s",
-						_report_theme.location,
-						sf.file,
-						diag.span.start.line,
-						diag.span.start.col,
-						_report_theme.clear,
-					)
-				} else {
-					fmt.eprintfln(
-						"\t%sin %s%s",
-						_report_theme.location,
-						sf.file,
-						diag.span.start.line,
-						diag.span.start.col,
-						_report_theme.clear,
-					)
-				}
+				fmt.eprintfln(
+					"\t%sin %s%s",
+					_report_theme.location,
+					diag.span,
+					_report_theme.clear,
+				)
 			}
 		}
 	}
@@ -203,12 +191,9 @@ _report_pretty :: proc() {
 
 _report_simple :: proc() {
 	for diag in _current_diagnostics {
-		fmt.eprintfln("%s[%s] %s", SEVERITY_STRINGS[diag.level], diag.code, diag.message)
+		fmt.eprintfln("%s[%s] %s", LEVEL_STRINGS[diag.level], diag.code, diag.message)
 		if diag.span.file != 0 {
-			sf, _ := common.load_source(diag.span.file)
-			if sf != nil {
-				fmt.eprintfln("\t@ %s:%d:%d", sf.file, diag.span.start.line, diag.span.start.col)
-			}
+			fmt.eprintfln("\t@ %b", diag.span)
 		}
 	}
 }
@@ -216,5 +201,9 @@ _report_simple :: proc() {
 _report_json :: proc() {
 	// IMPORTANT: json diagnostic reports reports go to *stdout*
 	// as such, this should not be allowed if the backend output is directed to stdout
-	json.marshal_to_writer(os.to_writer(os.stdout), _current_diagnostics, nil)
+	json_opts := json.Marshal_Options {
+		use_enum_names = true,
+	}
+	json.marshal_to_writer(os.to_writer(os.stdout), _current_diagnostics, &json_opts)
+	fmt.println()
 }

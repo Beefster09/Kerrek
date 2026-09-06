@@ -392,7 +392,7 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 			)
 			return {}, 0
 		} else if is_float {
-			floatval, ok := exact.parse_hexfloat(unsigned[2:match_len])
+			floatval, ok := exact.parse_hexfloat(unsigned[2:2 + match_len])
 			if sign == -1 {
 				exact.inline_negate(&floatval.numerator)
 			}

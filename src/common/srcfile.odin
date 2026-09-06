@@ -1,6 +1,7 @@
 package common
 
 import "core:container/xar"
+import "core:encoding/json"
 import "core:io"
 import "core:os"
 import "core:strings"
@@ -158,4 +159,14 @@ get_source_lines :: proc(dest: []string, sf: ^Source_File, #any_int first_line: 
 		dest[i] = transmute(string)sf.contents[start:end]
 	}
 	return len(dest)
+}
+
+
+marshal_source_id :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
+	assert(v.id == Source_ID)
+	sf, err := load_source_by_id((cast(^Source_ID)v.data)^)
+	if err != nil {
+		return json.Marshal_Data_Error.Unsupported_Type // not really the right thing to return but it'll do
+	}
+	return json.marshal_to_writer(w, sf.file, opt)
 }

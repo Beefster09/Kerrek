@@ -262,6 +262,7 @@ fmt_span :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 
 	return true
 }
+
 fmt_cursor :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	assert(arg.id == Cursor)
 	cursor := cast(^Cursor)arg.data

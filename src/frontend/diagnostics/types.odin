@@ -1,7 +1,8 @@
 package diagnostics
 
 import "base:runtime"
-import "core:fmt"
+import "core:encoding/json"
+import "core:io"
 
 import "../../common"
 
@@ -33,11 +34,11 @@ Category :: enum u8 {
 }
 
 Diagnostic :: struct {
-	level:     Level,
-	code:      Kind,
-	message:   string,
-	span:      common.Span,
-	addendums: [dynamic]Addendum,
+	level:   Level,
+	code:    Kind,
+	message: string,
+	span:    common.Span,
+	extra:   [dynamic]Addendum `json:",omitempty"`,
 }
 
 Diagnostic_Metadata :: struct {
@@ -59,18 +60,8 @@ Reference :: struct {
 	span:    common.Span,
 }
 
-
-_format_code :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
-	assert(arg.id == Kind)
-	switch verb {
-	case 'v':
-		fmt.fmt_enum(fi, arg, verb)
-	case 's', 'q':
-		code := (cast(^Kind)arg.data)^
-		meta := CODE_METADATA[code]
-		fmt.fmt_string(fi, meta.code, verb)
-	case:
-		return false
-	}
-	return true
+_marshal_level :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
+	assert(v.id == Level)
+	level := (cast(^Level)v.data)^
+	return json.marshal_to_writer(w, LEVEL_STRINGS[level], opt)
 }

@@ -64,8 +64,6 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 			} else {
 				return {}, false
 			}
-		case '0' ..= '9':
-			append(&digits, u8(c))
 		case '.':
 			if point_found {break loop}
 			point_at = i
@@ -78,6 +76,8 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 				return {}, false
 			}
 			break loop
+		case '0' ..= '9':
+			append(&digits, u8(c))
 		case 'a' ..= 'f':
 			when RADIX == 16 {
 				append(&digits, u8(c))
