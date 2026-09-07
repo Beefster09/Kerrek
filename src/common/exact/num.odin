@@ -4,10 +4,10 @@ import "base:runtime"
 import "core:fmt"
 import "core:io"
 import "core:math/big"
-import "core:mem/virtual"
+import "core:mem"
 
 bigint_allocator: runtime.Allocator
-_bigint_arena: virtual.Arena
+_bigint_arena: mem.Dynamic_Arena
 
 
 // an exact value represented as a rational

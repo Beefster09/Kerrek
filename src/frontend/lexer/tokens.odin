@@ -157,6 +157,7 @@ Keyword :: enum {
 	Break,
 	Return,
 	Fail,
+	Catch,
 	Assume,
 	Assert,
 	Defer,
@@ -179,6 +180,7 @@ Keyword :: enum {
 	Per,
 	To,
 	From,
+	Fact,
 	Capability,
 	Requires,
 	Annotation,
@@ -200,7 +202,6 @@ Keyword :: enum {
 	Owned,
 	Shared,
 	Weak,
-	Unsafe_Ptr,
 	Foreign,
 }
 
@@ -215,6 +216,7 @@ KEYWORD_STRINGS := [Keyword]string {
 	.Break       = "break",
 	.Return      = "return",
 	.Fail        = "fail",
+	.Catch       = "catch",
 	.Assume      = "assume",
 	.Assert      = "assert",
 	.Defer       = "defer",
@@ -237,6 +239,7 @@ KEYWORD_STRINGS := [Keyword]string {
 	.Per         = "per",
 	.To          = "to",
 	.From        = "from",
+	.Fact        = "fact",
 	.Capability  = "capability",
 	.Requires    = "requires",
 	.Annotation  = "annotation",
@@ -258,6 +261,5 @@ KEYWORD_STRINGS := [Keyword]string {
 	.Owned       = "owned",
 	.Shared      = "shared",
 	.Weak        = "weak",
-	.Unsafe_Ptr  = "unsafe_ptr",
 	.Foreign     = "foreign",
 }
