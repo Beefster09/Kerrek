@@ -105,7 +105,7 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 			}
 			num := clone(base)
 			if sign < 0 {
-				inline_negate(&num)
+				inplace_negate_int(&num)
 			}
 			return {num, den}, true
 		} else {
@@ -114,7 +114,7 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 			if err == nil {
 				num := clone(base)
 				if sign < 0 {
-					inline_negate(&num)
+					inplace_negate_int(&num)
 				}
 				return {num, den}, true
 			}

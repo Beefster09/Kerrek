@@ -2,7 +2,6 @@ package diagnostics
 
 import "core:encoding/json"
 import "core:fmt"
-import "core:math/bits"
 import "core:os"
 import "core:terminal"
 import "core:terminal/ansi"
@@ -166,7 +165,7 @@ report_and_exit :: proc() {
 _report_pretty :: proc() {
 	for diag in _current_diagnostics {
 		fmt.eprintfln(
-			"%s%s[%s]%s %s%s%s",
+			"%s%s (%s)%s: %s%s%s",
 			_report_theme.levels[diag.level],
 			LEVEL_STRINGS[diag.level],
 			diag.code,
@@ -178,12 +177,7 @@ _report_pretty :: proc() {
 		if diag.span.file != 0 {
 			sf, _ := common.load_source(diag.span.file)
 			if sf != nil {
-				fmt.eprintfln(
-					"\t%sin %s%s",
-					_report_theme.location,
-					diag.span,
-					_report_theme.clear,
-				)
+				fmt.eprintfln("\t%s@ %s%s", _report_theme.location, diag.span, _report_theme.clear)
 			}
 		}
 	}
@@ -191,7 +185,7 @@ _report_pretty :: proc() {
 
 _report_simple :: proc() {
 	for diag in _current_diagnostics {
-		fmt.eprintfln("%s[%s] %s", LEVEL_STRINGS[diag.level], diag.code, diag.message)
+		fmt.eprintfln("%s (%s): %s", LEVEL_STRINGS[diag.level], diag.code, diag.message)
 		if diag.span.file != 0 {
 			fmt.eprintfln("\t@ %b", diag.span)
 		}

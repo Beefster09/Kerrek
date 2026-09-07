@@ -47,7 +47,7 @@ rat_is_zero :: proc(r: Rat) -> bool {
 
 I128_MIN :: -1 << 127
 
-inline_negate :: proc(i: ^Int) {
+inplace_negate_int :: proc(i: ^Int) {
 	switch &ii in i^ {
 	case i128:
 		if intrinsics.expect(ii == I128_MIN, false) {

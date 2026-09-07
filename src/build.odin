@@ -6,28 +6,17 @@ import "core:reflect"
 
 import "frontend/diagnostics"
 import "frontend/lexer"
+import "frontend/units"
 
 build :: proc(entry_point: string, backend_id: string = "c99") {
+	a := units.Small_Rat{22, 7}
+	b := units.Small_Rat{2, 5}
+	fmt.println(units.add_rat(a, b))
+	fmt.println(size_of(units.Inline_Compound_Unit))
 	tokens, err := lexer.tokenize(entry_point)
 	if err != .OK {
 		fmt.eprintln("lexing failed")
 		os.exit(1)
 	}
 	diagnostics.report_and_exit()
-
-	/*
-	for tok in tokens {
-		fmt.printfln("{1:d} {0:T}({0:v})", reflect.get_union_variant(tok.what), tok.span)
-	}
-
-	fmt.println(len(tokens), "tokens emitted")
-	fmt.printfln("%%v: %v", tokens[0].span)
-	fmt.printfln("%%s: %s", tokens[0].span)
-	fmt.printfln("%%f: %f", tokens[0].span)
-	fmt.printfln("%%b: %b", tokens[0].span)
-	fmt.printfln("%%e: %e", tokens[0].span)
-	fmt.printfln("%%d: %d", tokens[0].span)
-	fmt.printfln("%%a: %a", tokens[0].span)
-	fmt.printfln("%%z: %z", tokens[0].span)
-	*/
 }

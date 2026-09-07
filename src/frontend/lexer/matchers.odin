@@ -311,20 +311,8 @@ _is_hex :: proc(s: string) -> bool {
 	return true
 }
 
-_match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
-	sign := 0 // also encodes if sign is given
-
-	switch full[0] {
-	case '+':
-		sign = 1
-	case '-':
-		sign = -1
-	}
-
-	sign_skip := 0 if sign == 0 else 1
-	unsigned := full[sign_skip:]
-
-	if strings.starts_with(unsigned, "0x") {
+_match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
+	if strings.starts_with(src, "0x") {
 		_check_hexfloat :: proc(s: string) -> (length: int, is_float: bool, ok: bool) {
 			state: enum {
 				Whole,
@@ -381,8 +369,8 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 
 			return len(s), is_float, whole_digits > 0 && (!is_float || exp_digits > 0)
 		}
-		match_len, is_float, ok := _check_hexfloat(unsigned[2:])
-		full_match_len := match_len + 2 + sign_skip
+		match_len, is_float, ok := _check_hexfloat(src[2:])
+		full_match_len := match_len + 2
 
 		if !ok {
 			diagnostics.emit(
@@ -392,10 +380,7 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 			)
 			return {}, 0
 		} else if is_float {
-			floatval, ok := exact.parse_hexfloat(unsigned[2:2 + match_len])
-			if sign == -1 {
-				exact.inline_negate(&floatval.numerator)
-			}
+			floatval, ok := exact.parse_hexfloat(src[2:2 + match_len])
 			if !ok {
 				diagnostics.emit(
 					.Invalid_Number_Literal,
@@ -404,45 +389,22 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 				)
 				return {}, 0
 			}
-			return {raw = full[:full_match_len], value = floatval, format = .HexFloat},
+			return {raw = src[:full_match_len], value = floatval, format = .HexFloat},
 				full_match_len
 		} else {
-			if sign != 0 {
-				diagnostics.emit(
-					.Signed_Unsigned_Literal,
-					common.cursor_to_span(cursor, 1),
-					"hex integer literal is signed",
-				)
+			value, ok := exact.parse_int(src[2:2 + match_len], 16)
+			if !ok {
+				return {}, 0
 			}
-			value, ok := exact.parse_int(unsigned[2:2 + match_len], 16)
-			assert(ok)
-			if sign == -1 {
-				exact.inline_negate(&value)
-			}
-			length := 2 + match_len + sign_skip
-			return {raw = full[:length], value = exact.int_to_rat(value), format = .HexInteger},
+			length := 2 + match_len
+			return {raw = src[:length], value = exact.int_to_rat(value), format = .HexInteger},
 				length
 		}
 
-	} else if strings.starts_with(unsigned, "0o") {
-
-		if sign != 0 {
-			diagnostics.emit(
-				.Signed_Unsigned_Literal,
-				common.cursor_to_span(cursor, 1),
-				"found signed octal integer literal",
-			)
-		}
+	} else if strings.starts_with(src, "0o") {
 		panic("TODO")
 
-	} else if strings.starts_with(unsigned, "0b") {
-		if sign != 0 {
-			diagnostics.emit(
-				.Signed_Unsigned_Literal,
-				common.cursor_to_span(cursor, 1),
-				"found signed binary integer literal",
-			)
-		}
+	} else if strings.starts_with(src, "0b") {
 		panic("TODO")
 	}
 
@@ -504,23 +466,21 @@ _match_numeric :: proc(cursor: common.Cursor, full: string) -> (Numeric, int) {
 
 		return len(s), form, whole_digits > 0
 	}
-	match_len, form, ok := _check_decimal(unsigned)
+	match_len, form, ok := _check_decimal(src)
 	if !ok {
 		return {}, 0
 	}
 
-	match_len += sign_skip
-
 	#partial switch form {
 	case .DecimalInteger:
-		value, ok := exact.parse_int(full[:match_len], 10)
+		value, ok := exact.parse_int(src[:match_len], 10)
 		assert(ok)
-		return {raw = full[:match_len], value = exact.int_to_rat(value), format = .DecimalInteger},
+		return {raw = src[:match_len], value = exact.int_to_rat(value), format = .DecimalInteger},
 			match_len
 	case .Decimal:
-		value, ok := exact.parse_decimal(full[:match_len])
+		value, ok := exact.parse_decimal(src[:match_len])
 		assert(ok)
-		return {raw = full[:match_len], value = value, format = .Decimal}, match_len
+		return {raw = src[:match_len], value = value, format = .Decimal}, match_len
 	}
 
 	return {}, 0
