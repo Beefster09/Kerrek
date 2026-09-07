@@ -7,6 +7,7 @@ import "core:os"
 
 import "common"
 import "frontend/diagnostics"
+import "frontend/units"
 
 _user_formatters: map[typeid]fmt.User_Formatter
 _json_marshalers: map[typeid]json.User_Marshaler
@@ -19,6 +20,7 @@ main :: proc() {
 
 	common.initialize()
 	diagnostics.initialize()
+	units.initialize()
 
 	cmd := os.args[1] if len(os.args) >= 2 else ""
 

@@ -1,6 +1,9 @@
 package units
 
 import "base:intrinsics"
+import "base:runtime"
+import "core:fmt"
+import "core:io"
 import "core:math"
 
 import "../../common/exact"
@@ -54,6 +57,31 @@ div_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	return _reduce_to_rat(n, d)
 }
 
+cmp_rat :: proc "contextless" (a, b: Small_Rat) -> int {
+	// NOTE: undefined behavior if either denominator == 0
+	l := i32(a.numerator) * i32(b.denominator)
+	r := i32(b.numerator) * i32(a.denominator)
+	if l < r {
+		return -1
+	}
+	if l > r {
+		return 1
+	}
+	return 0
+}
+
+lt_rat :: proc "contextless" (a, b: Small_Rat) -> bool {
+	return #force_inline cmp_rat(a, b) < 0
+}
+
+eq_rat :: proc "contextless" (a, b: Small_Rat) -> bool {
+	return #force_inline cmp_rat(a, b) == 0
+}
+
+gt_rat :: proc "contextless" (a, b: Small_Rat) -> bool {
+	return #force_inline cmp_rat(a, b) > 0
+}
+
 _reduce_to_rat :: proc "contextless" (
 	n, d: $I,
 ) -> (
@@ -79,4 +107,30 @@ _reduce_to_rat :: proc "contextless" (
 		return {i8(n), u8(d)}, true
 	}
 	return {}, false
+}
+
+fmt_rat :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
+	assert(arg.id == Small_Rat)
+	switch verb {
+	case 'v':
+		fmt.fmt_struct(
+			fi,
+			arg,
+			verb,
+			// insane incantation to get the type info of the struct itself
+			type_info_of(Small_Rat).variant.(runtime.Type_Info_Named).base.variant.(runtime.Type_Info_Struct),
+			type_info_of(Small_Rat).variant.(runtime.Type_Info_Named).name,
+		)
+		return true
+	case 's', 'r', 'd':
+		r := (cast(^Small_Rat)arg.data)^
+		io.write_int(fi.writer, int(r.numerator))
+		if r.denominator != 0 {
+			io.write_rune(fi.writer, '/')
+			io.write_int(fi.writer, int(r.denominator))
+		}
+	case:
+		return false
+	}
+	return true
 }
