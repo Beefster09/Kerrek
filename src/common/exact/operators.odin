@@ -14,12 +14,11 @@ is_zero :: proc {
 }
 
 int_is_one :: proc(i: Int) -> bool {
-	i := i
-	switch &ii in i {
+	switch ii in i {
 	case i128:
 		return ii == 1
-	case big.Int:
-		is_one, err := big.eq(&ii, big.INT_ONE)
+	case ^big.Int:
+		is_one, err := big.eq(ii, big.INT_ONE)
 		return err == nil && is_one
 	}
 	return false
@@ -30,12 +29,11 @@ rat_is_one :: proc(r: Rat) -> bool {
 }
 
 int_is_zero :: proc(i: Int) -> bool {
-	i := i
-	switch &ii in i {
+	switch ii in i {
 	case i128:
 		return ii == 0
-	case big.Int:
-		is_zero, err := big.eq(&ii, big.INT_ZERO)
+	case ^big.Int:
+		is_zero, err := big.eq(ii, big.INT_ZERO)
 		return err == nil && is_zero
 	}
 	return false
@@ -58,7 +56,7 @@ inplace_negate_int :: proc(i: ^Int) {
 		} else {
 			i^ = -ii
 		}
-	case big.Int:
+	case ^big.Int:
 		if ii.sign == .Zero_or_Positive {
 			ii.sign = .Negative
 		} else {

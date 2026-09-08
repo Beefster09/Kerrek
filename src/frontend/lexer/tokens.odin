@@ -104,7 +104,8 @@ Punctuation :: enum {
 	Tilde,
 }
 
-PUNCTUATION_STRINGS :: [Punctuation]string {
+@(rodata)
+PUNCTUATION_STRINGS := [Punctuation]string {
 	.LParen    = "(",
 	.RParen    = ")",
 	.LSquare   = "[",

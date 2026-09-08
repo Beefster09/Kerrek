@@ -2,23 +2,23 @@ package parser
 
 import "base:intrinsics"
 import "base:runtime"
+import "core:fmt"
 import "core:mem"
+import "core:slice"
 
 import "../../common"
 import "../ast"
+import "../diagnostics"
 import "../lexer"
 
-Parsing_State :: struct {
-	tokens:    []lexer.Token,
-	cur_token: int,
-}
 
+// external-facing parse error
 Parse_Error :: enum {
 	OK,
 	Syntax_Error, // an unrecoverable syntax error
 	Not_Found,
 	Cannot_Read,
-	Other_Error,
+	Other_OS_Error,
 }
 
 
@@ -30,7 +30,7 @@ parse :: proc(src_path: string) -> (file: ^ast.File, err: Parse_Error) {
 	case .Cannot_Read:
 		return nil, .Cannot_Read
 	case .Other_Error:
-		return nil, .Other_Error
+		return nil, .Other_OS_Error
 	case .OK:
 	// nothing to do; continue onward
 	}
@@ -73,27 +73,134 @@ parse :: proc(src_path: string) -> (file: ^ast.File, err: Parse_Error) {
 
 
 _parse :: proc(ps: ^Parsing_State, file: ^ast.File) -> Parse_Error {
-	annotations := make([dynamic]^ast.Annotation)
+	annotations := make([dynamic]^ast.Annotation, context.temp_allocator)
+	imports := make([dynamic]^ast.Import, context.temp_allocator)
+	declarations := make([dynamic]ast.Top_Level_Declaration, 0, 256, context.temp_allocator)
 
-	for ps.cur_token < len(ps.tokens) {
-		node_raw, err := _toplevel_item(ps)
-		if err != .OK {
+	for node_raw in _toplevel_item(ps) {
+		if node_raw == nil {
 			continue
 		}
+
 		switch node in node_raw {
+		case ^ast.Annotation:
+			append(&annotations, node)
+		case ^ast.Import:
+			append(&imports, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
+		case ^ast.Global_Constant:
+			append(&declarations, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
+		case ^ast.Global_Variable:
+			append(&declarations, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
+		case ^ast.Type_Alias:
+			append(&declarations, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
+		case ^ast.Annotation_Def:
+			append(&declarations, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
+		case ^ast.Unit_Type_Decl:
+			append(&declarations, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
+		case ^ast.Unit_Type_Alias_Decl:
+			append(&declarations, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
+		case ^ast.Unit_Decl:
+			append(&declarations, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
+		case ^ast.Unit_Alias_Decl:
+			append(&declarations, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
+		case ^ast.Capability_Decl:
+			append(&declarations, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
+		case ^ast.Func_Definition:
+			append(&declarations, node)
+			_attach_annotations(node, annotations[:])
+			clear(&annotations)
 		}
 	}
+
+	file.imports = slice.clone(imports[:])
+	file.declarations = slice.clone(declarations[:])
 
 	return .OK
 }
 
-_attach_annotations :: proc(to: $Node, annotations: []^ast.Annotation) {
-	when intrinsics.type_is_union(Node) {
-		#panic("TODO")
-	} else when intrinsics.type_has_field(Node, "annotations") {
-		to.annotations = copy(annotations)
-	} else {
-		#panic("unsupported type for annotation attachment")
+_toplevel_item :: proc(ps: ^Parsing_State) -> (result: ast.Top_Level_Item, more: bool) {
+	tok := peek(ps) or_return
+
+	switch tok.what {
+	case Punctuation.At:
+		anno := _annotation(ps)
+		if anno == nil {
+			_attempt_recovery(ps)
+		}
+		return anno, true
+
+	case Keyword.Type:
+		panic("not implemented")
+
+	case Keyword.Let, Keyword.Const:
+		decl := _const_or_var(ps, .Global)
+		if _end_of_statement(ps) {
+			switch d in decl {
+			case ^ast.Global_Variable:
+				return d, true
+			case ^ast.Global_Constant:
+				return d, true
+			case ^ast.Local_Constant, ^ast.Local_Variable, nil:
+				panic("got local var/constant")
+			}
+		} else {
+			diagnostics.emit(.Syntax_Error, common.collapse_span(tok.span), "expected a ; here")
+			_attempt_recovery(ps)
+			return nil, true
+		}
+
+	case Keyword.Unit:
+	// return _unit_decl(ps), true
+
+	case Keyword.Func:
+	// return _func_def(ps), true
+
 	}
 
+	tok_str: string
+	#partial switch what in tok.what {
+	case Keyword:
+		tok_str = fmt.tprintf("'%s'", lexer.KEYWORD_STRINGS[what])
+	case Punctuation:
+		tok_str = fmt.tprintf("'%s'", lexer.PUNCTUATION_STRINGS[what])
+	case Identifier:
+		tok_str = fmt.tprintf("Identifier '%s'", what)
+	case Directive:
+		tok_str = fmt.tprintf("'\\%s'", what)
+	case Numeric:
+		tok_str = fmt.tprintf("Number '%s'", what.raw)
+	case String:
+		tok_str = fmt.tprintf("String %q", what.raw)
+	case:
+		tok_str = fmt.tprintf("%v", what)
+	}
+
+	diagnostics.emit(.Syntax_Error, tok.span, "unexpected %s", tok_str)
+	_attempt_recovery(ps)
+
+	return nil, true
+}
+
+_annotation :: proc(ps: ^Parsing_State) -> ^ast.Annotation {
+	return nil
 }

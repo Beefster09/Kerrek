@@ -1,14 +1,15 @@
 package ast
 
 Func_Definition :: struct {
-	span:       Span,
-	name:       Name,
-	params:     []^Formal_Parameter,
-	returns:    []^Func_Return,
-	error_type: Type_Expression,
-	fallible:   bool,
-	requires:   Capability_Expression,
-	body:       ^Block,
+	span:        Span,
+	name:        Name,
+	params:      []^Formal_Parameter,
+	returns:     []^Func_Return,
+	error_type:  Type_Expression,
+	fallible:    bool,
+	requires:    Capability_Expression,
+	body:        ^Block,
+	annotations: []^Annotation,
 }
 
 Formal_Parameter :: struct {

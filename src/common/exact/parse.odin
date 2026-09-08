@@ -12,8 +12,8 @@ parse_int :: proc(s: string, radix: int = 10, allocator := bigint_allocator) -> 
 	if ok {
 		return reg, true
 	}
-	large: big.Int
-	err := big.atoi(&large, s, i8(radix), allocator)
+	large := new(big.Int)
+	err := big.atoi(large, s, i8(radix), allocator)
 	if err == nil {
 		return large, true
 	}
@@ -109,8 +109,8 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 			}
 			return {num, den}, true
 		} else {
-			den: big.Int
-			err := big.exp(&den, RADIX, denominator_scale, bigint_allocator)
+			den := new(big.Int, bigint_allocator)
+			err := big.exp(den, RADIX, denominator_scale, bigint_allocator)
 			if err == nil {
 				num := clone(base)
 				if sign < 0 {
@@ -132,15 +132,15 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 			}
 		}
 
-		base_big, mul, result: big.Int
+		base_big, mul: big.Int
 		switch b in base {
 		case i128:
 			err := big.set(&base_big, b)
 			if err != nil {
 				return {}, false
 			}
-		case big.Int:
-			base_big = b // intentional dumb copy since this is already a temp
+		case ^big.Int:
+			base_big = b^ // intentional dumb copy since this is already a temp
 		}
 
 		{
@@ -150,8 +150,9 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 			}
 		}
 
+		result := new(big.Int, bigint_allocator)
 		{
-			err := big.mul(&result, &base_big, &mul, bigint_allocator)
+			err := big.mul(result, &base_big, &mul, bigint_allocator)
 			if err != nil {
 				return {}, false
 			}

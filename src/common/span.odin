@@ -37,6 +37,14 @@ cursor_to_span :: proc {
 	cursor_to_span_other_span,
 }
 
+collapse_span :: proc "contextless" (span: Span) -> Span {
+	return {span.file, span.start, span.start}
+}
+
+collapse_span_to_end :: proc "contextless" (span: Span) -> Span {
+	return {span.file, span.end, span.end}
+}
+
 cursor_advance :: proc(cursor: ^Cursor, src: string, advance_by: int) {
 	for i in 0 ..< advance_by {
 		switch c := src[i]; c {
@@ -67,7 +75,7 @@ cursor_advance :: proc(cursor: ^Cursor, src: string, advance_by: int) {
 	cursor.offset += u32(advance_by)
 }
 
-cursor_add_len :: proc(curs: Cursor, length: int) -> Cursor {
+cursor_add_len :: proc "contextless" (curs: Cursor, length: int) -> Cursor {
 	return {
 		file = curs.file,
 		at = {
@@ -78,7 +86,7 @@ cursor_add_len :: proc(curs: Cursor, length: int) -> Cursor {
 	}
 }
 
-cursor_add_len_and_width :: proc(curs: Cursor, length: int, width: int) -> Cursor {
+cursor_add_len_and_width :: proc "contextless" (curs: Cursor, length: int, width: int) -> Cursor {
 	return {
 		file = curs.file,
 		at = {
@@ -89,7 +97,7 @@ cursor_add_len_and_width :: proc(curs: Cursor, length: int, width: int) -> Curso
 	}
 }
 
-cursor_to_span_len_same_line :: proc(curs: Cursor, length: int) -> Span {
+cursor_to_span_len_same_line :: proc "contextless" (curs: Cursor, length: int) -> Span {
 	if length >= 0 {
 		return {
 			file = curs.file,
@@ -113,7 +121,11 @@ cursor_to_span_len_same_line :: proc(curs: Cursor, length: int) -> Span {
 	}
 }
 
-cursor_to_span_len_and_width_same_line :: proc(curs: Cursor, length: int, width: int) -> Span {
+cursor_to_span_len_and_width_same_line :: proc "contextless" (
+	curs: Cursor,
+	length: int,
+	width: int,
+) -> Span {
 	if length >= 0 {
 		return {
 			file = curs.file,
@@ -148,7 +160,7 @@ cursor_to_span_other_span :: proc(a: Cursor, b: Cursor) -> Span {
 
 MAX_U16 :: 1 << 16 - 1
 
-location_in_bounds :: proc(loc: Location) -> bool {
+location_in_bounds :: proc "contextless" (loc: Location) -> bool {
 	return loc.line > 0 && loc.line < MAX_U16 && loc.col > 0 && loc.col < MAX_U16
 }
 

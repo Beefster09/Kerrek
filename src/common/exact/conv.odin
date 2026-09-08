@@ -13,13 +13,12 @@ int_to_rat :: proc(i: Int) -> Rat {
 }
 
 clone_int :: proc(i: Int, allocator := bigint_allocator) -> Int {
-	i := i
-	switch &ii in i {
+	switch ii in i {
 	case i128:
 		return ii
-	case big.Int:
-		result: big.Int
-		big.set(&result, &ii, allocator = allocator)
+	case ^big.Int:
+		result := new(big.Int, allocator)
+		big.set(result, ii, allocator = allocator)
 		return result
 	}
 	panic("unreachable")

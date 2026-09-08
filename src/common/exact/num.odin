@@ -19,7 +19,8 @@ Rat :: struct {
 // An integer that is an i128 in the general case but promotes to bigint for very large values
 Int :: union #no_nil {
 	i128,
-	big.Int,
+	^big.Int, // this has to be a pointer so that Int and Rat are simply comparable
+	// technically they're not *really* simply comparable, but this keeps things simpler in the parser
 }
 
 
@@ -89,18 +90,17 @@ fmt_rat :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 STACK_DIGITS :: 500
 
 write_int :: proc(w: io.Writer, value: Int, radix: int = 10) {
-	value := value
-	switch &i in value {
+	switch i in value {
 	case i128:
 		io.write_i128(w, i, radix)
-	case big.Int:
+	case ^big.Int:
 		stack_buf: [STACK_DIGITS]u8
-		bytes_needed, err := big.radix_size(&i, i8(radix))
+		bytes_needed, err := big.radix_size(i, i8(radix))
 		buf := make([]u8, bytes_needed) if bytes_needed > STACK_DIGITS else stack_buf[:]
 		defer if raw_data(buf) != &stack_buf[0] {
 			delete(buf)
 		}
-		big.int_itoa_raw(&i, i8(radix), buf)
+		big.int_itoa_raw(i, i8(radix), buf)
 		io.write(w, buf)
 	}
 }

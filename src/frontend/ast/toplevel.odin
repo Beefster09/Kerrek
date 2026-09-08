@@ -1,7 +1,9 @@
 package ast
 
-import "../../common"
+import "base:intrinsics"
 import "core:mem"
+
+import "../../common"
 
 File :: struct {
 	source:       ^common.Source_File,
@@ -9,6 +11,11 @@ File :: struct {
 	declarations: []Top_Level_Declaration,
 	node_arena:   ^mem.Dynamic_Arena,
 }
+
+Top_Level_Item :: intrinsics.type_merge(Top_Level_Declaration, union {
+		^Import,
+		^Annotation,
+	})
 
 Top_Level_Declaration :: union {
 	^Global_Constant,
