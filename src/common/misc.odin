@@ -25,13 +25,13 @@ Pointer_Ownership :: enum {
 }
 
 Unary_Op :: enum {
-	Positive,
+	Positive = 1,
 	Negate,
 	Not,
 }
 
 Binary_Op :: enum {
-	Add,
+	Add = 1,
 	Subtract,
 	Multiply,
 	True_Divide,

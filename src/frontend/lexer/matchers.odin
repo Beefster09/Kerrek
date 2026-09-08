@@ -155,7 +155,10 @@ _match_string_literal :: proc(
 		common.cursor_advance(&end, s, end_offset)
 		return {
 				raw = s[:end_offset],
-				value = strings.clone(s[start_offset:end_offset - quote_count]),
+				value = strings.clone(
+					s[start_offset:end_offset - quote_count],
+					common.string_allocator,
+				),
 				mode = mode,
 				is_multiline = multiline,
 			},
@@ -188,7 +191,7 @@ _match_string_literal :: proc(
 		}
 
 		sb: strings.Builder
-		strings.builder_init(&sb, 0, end_offset - quote_count)
+		strings.builder_init(&sb, 0, end_offset - quote_count, common.string_allocator)
 		advance_by: int
 		ignore_space := trim_leading_whitespace
 		for i := start_offset; i < end_offset - quote_count; i += advance_by {

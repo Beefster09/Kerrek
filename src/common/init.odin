@@ -12,8 +12,9 @@ initialize :: proc() {
 	xar.array_init(&_sources)
 	_sources_by_path = make(map[string]^Source_File)
 
-	mem.dynamic_arena_init(&_intern_arena, block_size = 64 * mem.Kilobyte)
-	strings.intern_init(&ident_intern, allocator = mem.dynamic_arena_allocator(&_intern_arena))
+	mem.dynamic_arena_init(&_string_arena, block_size = 64 * mem.Kilobyte)
+	string_allocator = mem.dynamic_arena_allocator(&_string_arena)
+	strings.intern_init(&ident_intern, allocator = string_allocator)
 
 	mem.dynamic_arena_init(&exact._bigint_arena, block_size = 8 * mem.Kilobyte)
 	exact.bigint_allocator = mem.dynamic_arena_allocator(&exact._bigint_arena)

@@ -1,7 +1,5 @@
 package lexer
 
-import "core:math/big"
-
 import "../../common"
 import "../../common/exact"
 
@@ -16,12 +14,17 @@ Token_Data :: union {
 	Punctuation,
 	Keyword,
 	Identifier,
+	Directive,
 	String,
 	Rune,
 	Numeric,
 }
 
+// the purpose of Garbage tokens is to be able to sorta-kinda recover from bad parsing states
+// and be able to emit multiple syntax error diagnostics throughout the file
+// rather than failing at the lexical level before any parsing happens
 Garbage :: distinct string
+Directive :: distinct string
 Identifier :: common.Identifier
 
 String :: struct {
@@ -98,7 +101,6 @@ Punctuation :: enum {
 	Bang,
 	Question,
 	Bar,
-	Backslash,
 	Tilde,
 }
 
@@ -143,7 +145,6 @@ PUNCTUATION_STRINGS :: [Punctuation]string {
 	.Bang      = "!",
 	.Question  = "?",
 	.Bar       = "|",
-	.Backslash = "\\",
 	.Tilde     = "~",
 }
 

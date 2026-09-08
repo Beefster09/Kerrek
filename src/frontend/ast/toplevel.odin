@@ -4,7 +4,7 @@ import "../../common"
 import "core:mem"
 
 File :: struct {
-	id:           common.Source_ID,
+	source:       ^common.Source_File,
 	imports:      []^Import,
 	declarations: []Top_Level_Declaration,
 	node_arena:   ^mem.Dynamic_Arena,

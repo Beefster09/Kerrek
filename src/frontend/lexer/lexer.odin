@@ -11,12 +11,8 @@ _PREALLOC_CAP_FACTOR_MUL :: #config(TOKEN_PREALLOC_FACTOR_MUL, 1)
 @(private = "file")
 _PREALLOC_CAP_FACTOR_DIV :: #config(TOKEN_PREALLOC_FACTOR_DIV, 4)
 
-tokenize :: proc(src_path: string) -> ([]Token, common.Load_Source_Error) {
-	sf, ldsrc_err := common.load_source(src_path)
-	if ldsrc_err != .OK {
-		return nil, ldsrc_err
-	}
-	defer common.unload_source(sf)
+tokenize :: proc(sf: ^common.Source_File) -> []Token {
+	assert(sf.contents != nil)
 
 	tokens := make(
 		[dynamic]Token,
@@ -83,25 +79,48 @@ tokenize :: proc(src_path: string) -> ([]Token, common.Load_Source_Error) {
 				last_thing_was_garbage = true
 			}
 		case '\\':
-			if str, end, matched := _match_string_literal(cursor, src[offset:]); matched {
-				append(&tokens, Token{span = common.cursor_to_span(cursor, end), what = str})
-				advance_by = len(str.raw)
-				last_thing_was_garbage = false
-
-				// comment?
-			} else if strings.starts_with(src[offset:], "\\\\") {
+			// comment?
+			if strings.starts_with(src[offset:], "\\\\") {
 				newline_at := strings.index(src[offset:], "\n")
 				if newline_at != -1 {
 					advance_by = newline_at
 				} else {
 					advance_by = len(src) - offset
 				}
+
+				// raw string?
+			} else if str, end, matched := _match_string_literal(cursor, src[offset:]); matched {
+				append(&tokens, Token{span = common.cursor_to_span(cursor, end), what = str})
+				advance_by = len(str.raw)
+				last_thing_was_garbage = false
+
+				// directive?
+			} else if directive, width := _match_ident_like(src[offset:]); directive != "" {
+				append(
+					&tokens,
+					Token {
+						span = common.cursor_to_span(cursor, len(directive), width),
+						// ASSUMPTION: the underlying strings of the directive are never
+						// going to outlive the loaded source.
+						// There should be specific AST nodes dedicated to each use case
+						// and in the rare case that a particular directive's textual value
+						// must be preserved, you can intern it on the spot
+						what = Directive(directive),
+					},
+				)
+				last_thing_was_garbage = false
+				advance_by = len(directive)
+
+				// welp, I guess it's garbage
 			} else {
 				append(
 					&tokens,
-					Token{span = common.cursor_to_span(cursor, 1), what = Punctuation.Backslash},
+					Token {
+						span = common.cursor_to_span(cursor, 1),
+						what = Garbage(src[offset:offset + 1]),
+					},
 				)
-				last_thing_was_garbage = false
+				last_thing_was_garbage = true
 			}
 
 		case:
@@ -148,8 +167,8 @@ tokenize :: proc(src_path: string) -> ([]Token, common.Load_Source_Error) {
 			} else if last_thing_was_garbage {
 				last_tok := &tokens[len(tokens) - 1]
 				last_tok.span.end.offset += 1
-				last_tok.span.end.col += 1
-				(cast(^runtime.Raw_String)(&last_tok.what.(Garbage))).len += 1
+				last_tok.span.end.col += 1 // FIXME: does not respect utf8 or wide characters
+				last_tok.what = Garbage(src[last_tok.span.start.offset:offset + 1])
 
 			} else {
 				append(
@@ -165,5 +184,5 @@ tokenize :: proc(src_path: string) -> ([]Token, common.Load_Source_Error) {
 	}
 
 	shrink(&tokens)
-	return tokens[:], .OK
+	return tokens[:]
 }
