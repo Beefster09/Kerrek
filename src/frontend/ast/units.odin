@@ -2,9 +2,9 @@ package ast
 
 import "../../common/exact"
 
-Declared_Unit :: union #no_nil {
+Declared_Unit :: union {
+	^Compound_Unit,
 	Indeterminate_Unit,
-	Compound_Unit,
 }
 
 Indeterminate_Unit :: enum {
@@ -22,7 +22,7 @@ Unit_Type_Decl :: struct {
 Unit_Type_Alias_Decl :: struct {
 	span:        Span,
 	name:        Name,
-	orig:        Compound_Unit,
+	orig:        ^Compound_Unit,
 	annotations: []^Annotation,
 }
 
@@ -37,7 +37,7 @@ Unit_Decl :: struct {
 Unit_Alias_Decl :: struct {
 	span:        Span,
 	name:        Name,
-	orig:        Compound_Unit,
+	orig:        ^Compound_Unit,
 	annotations: []^Annotation,
 }
 
@@ -79,11 +79,11 @@ Unit_Exponent :: union {
 
 Integer_Unit_Exponent :: struct {
 	span: Span,
-	exp:  int,
+	exp:  i8,
 }
 
 Rational_Unit_Exponent :: struct {
 	span: Span,
-	num:  int,
-	den:  int,
+	num:  i8,
+	den:  u8,
 }

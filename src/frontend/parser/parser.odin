@@ -36,7 +36,7 @@ parse :: proc(src_path: string) -> (file: ^ast.File, err: Parse_Error) {
 	}
 	defer common.unload_source(sf)
 
-	ps := Parsing_State {
+	ps := Parser_State {
 		tokens = lexer.tokenize(sf),
 	}
 	defer delete(ps.tokens)
@@ -72,7 +72,7 @@ parse :: proc(src_path: string) -> (file: ^ast.File, err: Parse_Error) {
 }
 
 
-_parse :: proc(ps: ^Parsing_State, file: ^ast.File) -> Parse_Error {
+_parse :: proc(ps: ^Parser_State, file: ^ast.File) -> Parse_Error {
 	annotations := make([dynamic]^ast.Annotation, context.temp_allocator)
 	imports := make([dynamic]^ast.Import, context.temp_allocator)
 	declarations := make([dynamic]ast.Top_Level_Declaration, 0, 256, context.temp_allocator)
@@ -85,50 +85,50 @@ _parse :: proc(ps: ^Parsing_State, file: ^ast.File) -> Parse_Error {
 		switch node in node_raw {
 		case ^ast.Annotation:
 			append(&annotations, node)
+
 		case ^ast.Import:
 			append(&imports, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
+
 		case ^ast.Global_Constant:
 			append(&declarations, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
+
 		case ^ast.Global_Variable:
 			append(&declarations, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
+
 		case ^ast.Type_Alias:
 			append(&declarations, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
+
 		case ^ast.Annotation_Def:
 			append(&declarations, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
+
 		case ^ast.Unit_Type_Decl:
 			append(&declarations, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
+
 		case ^ast.Unit_Type_Alias_Decl:
 			append(&declarations, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
+
 		case ^ast.Unit_Decl:
 			append(&declarations, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
+
 		case ^ast.Unit_Alias_Decl:
 			append(&declarations, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
+
 		case ^ast.Capability_Decl:
 			append(&declarations, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
+
 		case ^ast.Func_Definition:
 			append(&declarations, node)
-			_attach_annotations(node, annotations[:])
-			clear(&annotations)
+			_attach_annotations(node, &annotations)
 		}
 	}
 
@@ -138,8 +138,8 @@ _parse :: proc(ps: ^Parsing_State, file: ^ast.File) -> Parse_Error {
 	return .OK
 }
 
-_toplevel_item :: proc(ps: ^Parsing_State) -> (result: ast.Top_Level_Item, more: bool) {
-	tok := peek(ps) or_return
+_toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: bool) {
+	tok := _peek(ps) or_return
 
 	switch tok.what {
 	case Punctuation.At:
@@ -170,7 +170,18 @@ _toplevel_item :: proc(ps: ^Parsing_State) -> (result: ast.Top_Level_Item, more:
 		}
 
 	case Keyword.Unit:
-	// return _unit_decl(ps), true
+		#partial switch decl in _unit_decl(ps) {
+		case ^ast.Unit_Decl:
+			return decl, true
+		case ^ast.Unit_Alias_Decl:
+			return decl, true
+		case ^ast.Unit_Type_Decl:
+			return decl, true
+		case ^ast.Unit_Type_Alias_Decl:
+			return decl, true
+		case:
+			return nil, false
+		}
 
 	case Keyword.Func:
 	// return _func_def(ps), true
@@ -201,6 +212,6 @@ _toplevel_item :: proc(ps: ^Parsing_State) -> (result: ast.Top_Level_Item, more:
 	return nil, true
 }
 
-_annotation :: proc(ps: ^Parsing_State) -> ^ast.Annotation {
+_annotation :: proc(ps: ^Parser_State) -> ^ast.Annotation {
 	return nil
 }

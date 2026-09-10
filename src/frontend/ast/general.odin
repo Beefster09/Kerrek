@@ -11,5 +11,5 @@ Name :: struct {
 
 Qualified_Name :: struct {
 	span: Span,
-	path: []common.Identifier,
+	path: []Name,
 }

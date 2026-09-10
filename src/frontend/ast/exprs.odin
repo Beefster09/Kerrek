@@ -41,7 +41,7 @@ FieldAccess_Expr :: struct {
 Scalar_Literal_Expr :: struct {
 	span:  Span,
 	value: exact.Rat,
-	unit:  Compound_Unit,
+	unit:  ^Compound_Unit,
 }
 
 Simple_Literal_Expr :: struct {
@@ -91,13 +91,13 @@ Cast_Expr :: struct {
 Unit_Conversion_Expr :: struct {
 	span: Span,
 	expr: Expression,
-	to:   Compound_Unit,
+	to:   ^Compound_Unit,
 }
 
 Unit_Reinterpret_Expr :: struct {
 	span:     Span,
 	expr:     Expression,
-	new_unit: Compound_Unit,
+	new_unit: ^Compound_Unit,
 }
 
 Index_Expr :: struct {
@@ -119,5 +119,5 @@ Type_Expr_Expr :: struct {
 
 Unit_Expr :: struct {
 	span: Span,
-	unit: Compound_Unit,
+	unit: ^Compound_Unit,
 }
