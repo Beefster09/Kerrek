@@ -25,6 +25,7 @@ Expression :: union {
 }
 
 Name_Expr :: struct {
+	span: Span,
 	name: Name,
 }
 

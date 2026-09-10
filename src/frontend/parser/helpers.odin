@@ -67,39 +67,41 @@ _match :: proc(ps: ^Parser_State, expected: ..union {
 	}) -> ([]lexer.Token, bool) {
 
 	for exp_union, i in expected {
-		if tok, exists := _peek(ps, i); exists {
-			switch exp in exp_union {
-			case M:
-				switch exp {
-				case .Identifier:
-					if _, ok := tok.what.(Identifier); !ok {
-						return nil, false
-					}
-				case .String:
-					if _, ok := tok.what.(String); !ok {
-						return nil, false
-					}
-				case .Rune:
-					if _, ok := tok.what.(Rune); !ok {
-						return nil, false
-					}
-				case .Numeric:
-					if _, ok := tok.what.(Numeric); !ok {
-						return nil, false
-					}
-				}
-			case Punctuation:
-				if tok.what != exp {
+		tok, exists := _peek(ps, i)
+		if !exists {
+			return nil, false
+		}
+		switch exp in exp_union {
+		case M:
+			switch exp {
+			case .Identifier:
+				if _, ok := tok.what.(Identifier); !ok {
 					return nil, false
 				}
-			case Keyword:
-				if tok.what != exp {
+			case .String:
+				if _, ok := tok.what.(String); !ok {
 					return nil, false
 				}
-			case Directive:
-				if tok.what != exp {
+			case .Rune:
+				if _, ok := tok.what.(Rune); !ok {
 					return nil, false
 				}
+			case .Numeric:
+				if _, ok := tok.what.(Numeric); !ok {
+					return nil, false
+				}
+			}
+		case Punctuation:
+			if tok.what != exp {
+				return nil, false
+			}
+		case Keyword:
+			if tok.what != exp {
+				return nil, false
+			}
+		case Directive:
+			if tok.what != exp {
+				return nil, false
 			}
 		}
 	}
@@ -117,20 +119,22 @@ _just_match :: proc(ps: ^Parser_State, expected: ..union {
 	}) -> bool {
 
 	for exp_union, i in expected {
-		if tok, exists := _peek(ps, i); exists {
-			switch exp in exp_union {
-			case Punctuation:
-				if tok.what != exp {
-					return false
-				}
-			case Keyword:
-				if tok.what != exp {
-					return false
-				}
-			case Directive:
-				if tok.what != exp {
-					return false
-				}
+		tok, exists := _peek(ps, i)
+		if !exists {
+			return false
+		}
+		switch exp in exp_union {
+		case Punctuation:
+			if tok.what != exp {
+				return false
+			}
+		case Keyword:
+			if tok.what != exp {
+				return false
+			}
+		case Directive:
+			if tok.what != exp {
+				return false
 			}
 		}
 	}
@@ -156,18 +160,13 @@ _match1 :: proc(
 }
 
 _end_of_statement :: proc(ps: ^Parser_State, _: ..struct{}, required := true) -> bool {
-	if ps.tokens[ps.cur_token].what == Punctuation.Semicolon {
+	if tok, ok := _peek(ps); ok && tok.what == Punctuation.Semicolon {
 		ps.cur_token += 1
 		return true
 	}
 
 	if required {
-		prev := ps.tokens[max(ps.cur_token - 1, 0)]
-		diagnostics.emit(
-			.Syntax_Error,
-			{file = prev.span.file, start = prev.span.end, end = prev.span.end},
-			"expected ';' here",
-		)
+		_error_before_here(ps, "expected ';' here")
 	}
 
 	return false
@@ -194,12 +193,13 @@ _attach_annotations :: proc(
 
 
 _error_here :: proc(ps: ^Parser_State, format: string, args: ..any) -> ^diagnostics.Diagnostic {
-	return diagnostics.emit_with_default_level(
-		.Syntax_Error,
-		ps.tokens[ps.cur_token].span,
-		format,
-		..args,
-	)
+	span: common.Span
+	if tok, ok := _peek(ps); ok {
+		span = tok.span
+	} else if len(ps.tokens) > 0 {
+		span = common.collapse_span_to_end(ps.tokens[len(ps.tokens) - 1].span)
+	}
+	return diagnostics.emit_with_default_level(.Syntax_Error, span, format, ..args)
 }
 
 _error_before_here :: proc(
@@ -207,10 +207,9 @@ _error_before_here :: proc(
 	format: string,
 	args: ..any,
 ) -> ^diagnostics.Diagnostic {
-	return diagnostics.emit_with_default_level(
-		.Syntax_Error,
-		common.collapse_span_to_end(ps.tokens[max(ps.cur_token - 1, 0)].span),
-		format,
-		..args,
-	)
+	span: common.Span
+	if len(ps.tokens) > 0 {
+		span = common.collapse_span_to_end(ps.tokens[max(ps.cur_token - 1, 0)].span)
+	}
+	return diagnostics.emit_with_default_level(.Syntax_Error, span, format, ..args)
 }

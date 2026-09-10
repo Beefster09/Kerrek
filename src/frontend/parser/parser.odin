@@ -164,7 +164,6 @@ _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: 
 				panic("got local var/constant")
 			}
 		} else {
-			diagnostics.emit(.Syntax_Error, common.collapse_span(tok.span), "expected a ; here")
 			_attempt_recovery(ps)
 			return nil, true
 		}
@@ -180,11 +179,11 @@ _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: 
 		case ^ast.Unit_Type_Alias_Decl:
 			return decl, true
 		case:
-			return nil, false
+			return nil, true
 		}
 
 	case Keyword.Func:
-	// return _func_def(ps), true
+		return _func_def(ps), true
 
 	}
 
@@ -213,5 +212,19 @@ _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: 
 }
 
 _annotation :: proc(ps: ^Parser_State) -> ^ast.Annotation {
-	return nil
+	at, has_at := _match(ps, Punctuation.At)
+	if !has_at {
+		return nil
+	}
+	base, ok := _qualname(ps)
+	if !ok {
+		_error_here(ps, "expected annotation name after the @")
+		return nil
+	}
+	annotation := new(ast.Annotation)
+	annotation^ = {
+		span = common.merge_spans(at[0].span, base.span),
+		base = base,
+	}
+	return annotation
 }

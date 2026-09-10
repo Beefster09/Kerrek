@@ -145,7 +145,10 @@ _compound_unit :: proc(ps: ^Parser_State, required := false) -> ^ast.Compound_Un
 
 	unit := new(ast.Compound_Unit)
 	unit^ = {
-		span        = common.merge_spans(components[0].span, components[len(components) - 1].span),
+		span        = common.merge_spans(
+			leading_hash[0].span if is_absolute else components[0].span,
+			components[len(components) - 1].span,
+		),
 		components  = components[:],
 		is_absolute = is_absolute,
 	}

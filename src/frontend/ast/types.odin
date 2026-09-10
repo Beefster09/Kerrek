@@ -35,29 +35,35 @@ Type_Expression :: union {
 }
 
 Simple_Type :: struct {
+	span: Span,
 	type: Qualified_Name,
 }
 
 Type_With_Args :: struct {
+	span: Span,
 	base: Qualified_Name,
 	args: []Argument,
 }
 
 Generic_Type :: struct {
+	span:  Span,
 	name:  Name,
 	bound: Type_Expression,
 }
 
 Optional_Type :: struct {
+	span: Span,
 	base: Type_Expression,
 }
 
 Pointer_Type :: struct {
+	span:      Span,
 	to:        Type_Expression,
 	ownership: common.Pointer_Ownership,
 }
 
 Type_With_Tags :: struct {
+	span: Span,
 	base: Type_Expression,
 	tags: []Qualified_Name,
 }

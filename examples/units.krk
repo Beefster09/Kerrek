@@ -64,7 +64,7 @@ unit day: time {
 }
 
 const PI = 3.14159265358979;
-const BULLET = '\u2022'
+const BULLET = '\u2022';
 
 unit degrees: angle;
 unit radians: angle {
@@ -139,7 +139,7 @@ func flapjacks_required(num_workers: Integer | man) -> Decimal | count
 
 	let e = a + b * 123 mod c;
 
-	return count * hunger / +0x200;
+	return count * hunger / 0x200;
 }
 
 const HEX_FLOAT = 0xfff.3a5df + 0x1.23456789abcdefp4 - 0x1.1p2;
@@ -150,5 +150,5 @@ const LONG_STRING = """
 					haldo • \x85 \u2022
 				throw \U10045f baby
 """ + "strong bad"+
-\"this\interprets\backslashes\literally";const x23 = "";23x45 1x
+\"this\interprets\backslashes\literally";const x23 = ""; \\23x45 1x
 func main() {}

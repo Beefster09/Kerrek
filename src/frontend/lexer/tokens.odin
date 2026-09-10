@@ -204,6 +204,7 @@ Keyword :: enum {
 	Owned,
 	Shared,
 	Weak,
+	Unsafe_Ptr,
 	Foreign,
 }
 
@@ -263,5 +264,6 @@ KEYWORD_STRINGS := [Keyword]string {
 	.Owned       = "owned",
 	.Shared      = "shared",
 	.Weak        = "weak",
+	.Unsafe_Ptr  = "unsafe_ptr",
 	.Foreign     = "foreign",
 }

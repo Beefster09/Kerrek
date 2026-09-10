@@ -24,7 +24,8 @@ Location :: struct {
 	col:    u16,
 }
 
-tab_width: u16 = #config(DEFAULT_TAB_WIDTH, 4) // determines how col is counted with tabs; configurable at runtime
+// determines how columns are counted on tabs; configurable at runtime
+tab_width: u16 = 4
 
 cursor_add :: proc {
 	cursor_add_len,
@@ -272,16 +273,18 @@ fmt_span :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 			io.write_string(fi.writer, "???")
 		}
 	}
-	if show_start && show_end {
-		io.write_string(fi.writer, " .. ")
-	}
-	if show_end {
-		if location_in_bounds(span.end) {
-			io.write_uint(fi.writer, uint(span.end.line))
-			io.write_rune(fi.writer, ':')
-			io.write_uint(fi.writer, uint(span.end.col))
-		} else {
-			io.write_string(fi.writer, "???")
+	if span.end != span.start {
+		if show_start && show_end {
+			io.write_string(fi.writer, " .. ")
+		}
+		if show_end {
+			if location_in_bounds(span.end) {
+				io.write_uint(fi.writer, uint(span.end.line))
+				io.write_rune(fi.writer, ':')
+				io.write_uint(fi.writer, uint(span.end.col))
+			} else {
+				io.write_string(fi.writer, "???")
+			}
 		}
 	}
 	if brackets {

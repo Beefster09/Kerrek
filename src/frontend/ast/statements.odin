@@ -28,8 +28,8 @@ Assign_Statement :: struct {
 Local_Variable :: struct {
 	span: Span,
 	name: Name,
-	type: ^Type_Expression,
-	unit: ^Declared_Unit,
+	type: Type_Expression,
+	unit: Declared_Unit,
 	expr: union {
 		Expression,
 		Unbound_Var,
