@@ -86,13 +86,13 @@ _func_def :: proc(ps: ^Parser_State) -> ^ast.Func_Definition {
 
 	function := new(ast.Func_Definition)
 	function^ = {
-		span = common.merge_spans(func_keyword[0].span, body.span),
-		name = _name(func_name),
-		params = params,
-		returns = returns[:],
+		span       = common.merge_spans(func_keyword[0].span, body.span),
+		name       = _name(func_name),
+		params     = params,
+		returns    = returns[:],
 		error_type = error_type,
-		fallible = fallible,
-		body = body,
+		fallible   = fallible,
+		body       = body,
 	}
 	return function
 }
@@ -127,10 +127,10 @@ _param_list :: proc(ps: ^Parser_State) -> ([]^ast.Formal_Parameter, bool) {
 
 		param := new(ast.Formal_Parameter)
 		param^ = {
-			span = common.merge_spans(match[0].span, _type_span(param_type)),
-			name = _name(match[0]),
-			type = param_type,
-			unit = unit,
+			span    = common.merge_spans(match[0].span, _type_span(param_type)),
+			name    = _name(match[0]),
+			type    = param_type,
+			unit    = unit,
 			default = default,
 		}
 		append(&params, param)

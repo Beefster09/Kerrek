@@ -1,6 +1,5 @@
 package parser
 
-import "base:intrinsics"
 import "base:runtime"
 import "core:fmt"
 import "core:mem"
@@ -188,25 +187,32 @@ _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: 
 	}
 
 	tok_str: string
-	#partial switch what in tok.what {
+	switch what in tok.what {
 	case Keyword:
 		tok_str = fmt.tprintf("'%s'", lexer.KEYWORD_STRINGS[what])
 	case Punctuation:
 		tok_str = fmt.tprintf("'%s'", lexer.PUNCTUATION_STRINGS[what])
 	case Identifier:
-		tok_str = fmt.tprintf("Identifier '%s'", what)
+		tok_str = fmt.tprintf("an identifier: %s", what)
 	case Directive:
 		tok_str = fmt.tprintf("'\\%s'", what)
 	case Numeric:
-		tok_str = fmt.tprintf("Number '%s'", what.raw)
+		tok_str = fmt.tprintf("a number: %s", what.raw)
 	case String:
-		tok_str = fmt.tprintf("String %q", what.raw)
-	case:
-		tok_str = fmt.tprintf("%v", what)
+		tok_str = fmt.tprintf("a string: %s", what.raw)
+	case Rune:
+		tok_str = fmt.tprintf("a rune: %s", what.raw)
+	case lexer.Garbage:
+		tok_str = fmt.tprintf("garbage: %s", what)
 	}
 
-	diagnostics.emit(.Syntax_Error, tok.span, "unexpected %s", tok_str)
-	_attempt_recovery(ps)
+	diagnostics.emit(
+		.Syntax_Error,
+		tok.span,
+		"expected a top-level declaration here but got %s",
+		tok_str,
+	)
+	ps.cur_token += 1
 
 	return nil, true
 }

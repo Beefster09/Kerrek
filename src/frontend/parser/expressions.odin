@@ -27,8 +27,8 @@ _expr :: proc(ps: ^Parser_State) -> ast.Expression {
 		}
 		reinterpret := new(ast.Unit_Reinterpret_Expr)
 		reinterpret^ = {
-			span = common.merge_spans(_expression_span(expr), to_unit.span),
-			expr = expr,
+			span     = common.merge_spans(_expression_span(expr), to_unit.span),
+			expr     = expr,
 			new_unit = to_unit,
 		}
 		return reinterpret
@@ -44,7 +44,7 @@ _expr :: proc(ps: ^Parser_State) -> ast.Expression {
 		cast_expr^ = {
 			span = common.merge_spans(_expression_span(expr), _type_span(to_type)),
 			expr = expr,
-			to = to_type,
+			to   = to_type,
 		}
 		return cast_expr
 	}
@@ -75,7 +75,10 @@ _expr_atom :: proc(ps: ^Parser_State) -> ast.Expression {
 		}
 	} else if ident, ok := _match1(ps, Identifier); ok {
 		name_expr := new(ast.Name_Expr)
-		name_expr^ = {span = ident.span, name = _name(ident)}
+		name_expr^ = {
+			span = ident.span,
+			name = _name(ident),
+		}
 		atom = name_expr
 	} else {
 		atom = _literal_expr(ps)
@@ -99,39 +102,54 @@ _literal_expr :: proc(ps: ^Parser_State) -> ast.Expression {
 		unit := _compound_unit(ps)
 		literal := new(ast.Scalar_Literal_Expr)
 		literal^ = {
-			span = common.merge_spans(tok.span, unit.span) if unit != nil else tok.span,
+			span  = common.merge_spans(tok.span, unit.span) if unit != nil else tok.span,
 			value = value.value,
-			unit = unit,
+			unit  = unit,
 		}
 		return literal
 
 	case String:
 		ps.cur_token += 1
 		literal := new(ast.Simple_Literal_Expr)
-		literal^ = {span = tok.span, value = value.value}
+		literal^ = {
+			span  = tok.span,
+			value = value.value,
+		}
 		return literal
 
 	case Rune:
 		ps.cur_token += 1
 		literal := new(ast.Simple_Literal_Expr)
-		literal^ = {span = tok.span, value = value.codepoint}
+		literal^ = {
+			span  = tok.span,
+			value = value.codepoint,
+		}
 		return literal
 
 	case Keyword:
 		#partial switch value {
 		case .True:
 			literal := new(ast.Simple_Literal_Expr)
-			literal^ = {span = tok.span, value = true}
+			literal^ = {
+				span  = tok.span,
+				value = true,
+			}
 			ps.cur_token += 1
 			return literal
 		case .False:
 			literal := new(ast.Simple_Literal_Expr)
-			literal^ = {span = tok.span, value = false}
+			literal^ = {
+				span  = tok.span,
+				value = false,
+			}
 			ps.cur_token += 1
 			return literal
 		case .Nil:
 			literal := new(ast.Simple_Literal_Expr)
-			literal^ = {span = tok.span, value = common.Flex_Value.Nil}
+			literal^ = {
+				span  = tok.span,
+				value = common.Flex_Value.Nil,
+			}
 			ps.cur_token += 1
 			return literal
 		case .Placeholder:
@@ -148,9 +166,12 @@ _literal_expr :: proc(ps: ^Parser_State) -> ast.Expression {
 }
 
 
-_binop_expr :: proc(ps: ^Parser_State, lhs: ast.Expression, min_precedence := 0) -> ast.Expression {
+_binop_expr :: proc(
+	ps: ^Parser_State,
+	lhs: ast.Expression,
+	min_precedence := 0,
+) -> ast.Expression {
 	result := lhs
-	precedence := BINOPS_PRECEDENCE
 	for {
 		op_tok1, has_op1 := _peek(ps)
 		if !has_op1 {
@@ -160,7 +181,7 @@ _binop_expr :: proc(ps: ^Parser_State, lhs: ast.Expression, min_precedence := 0)
 		if !has_binary_op {
 			return result
 		}
-		prec1 := precedence[op].prec
+		prec1 := BINOPS_PRECEDENCE[op].prec
 		if prec1 < min_precedence {
 			return result
 		}
@@ -181,7 +202,7 @@ _binop_expr :: proc(ps: ^Parser_State, lhs: ast.Expression, min_precedence := 0)
 			if !has_binary_op2 {
 				break
 			}
-			info2 := precedence[op2]
+			info2 := BINOPS_PRECEDENCE[op2]
 			if info2.associativity == .None && info2.prec == prec1 {
 				diagnostics.emit(
 					.Syntax_Error,
@@ -201,27 +222,25 @@ _binop_expr :: proc(ps: ^Parser_State, lhs: ast.Expression, min_precedence := 0)
 			}
 		}
 
-		binary := new(ast.Binop_Expr)
-		binary^ = {
+		binop := new(ast.Binop_Expr)
+		binop^ = {
 			span = common.merge_spans(_expression_span(result), _expression_span(rhs)),
-			op = op,
-			lhs = result,
-			rhs = rhs,
+			op   = op,
+			lhs  = result,
+			rhs  = rhs,
 		}
-		result = binary
+		result = binop
 	}
 }
 
 
 _binary_op :: proc "contextless" (tok: lexer.Token) -> (common.Binary_Op, bool) {
-	punct_binops := PUNCT_BINOP
-	keyword_binops := KW_BINOP
 	#partial switch what in tok.what {
 	case Punctuation:
-		op := punct_binops[what]
+		op := PUNCT_BINOP[what]
 		return op, op != common.Binary_Op(0)
 	case Keyword:
-		op := keyword_binops[what]
+		op := KW_BINOP[what]
 		return op, op != common.Binary_Op(0)
 	case:
 		return common.Binary_Op(0), false

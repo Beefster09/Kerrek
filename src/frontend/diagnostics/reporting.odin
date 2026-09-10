@@ -104,6 +104,7 @@ configure_reporting :: proc(conf: Report_Config) {
 EXIT_REPORT_ERRORS :: 1
 
 report_and_exit :: proc() {
+	defer free_all(_msg_allocator)
 	defer clear(&_current_diagnostics)
 
 	switch _report_format {

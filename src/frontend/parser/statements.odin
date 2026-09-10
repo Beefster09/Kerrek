@@ -73,19 +73,19 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 		}
 		ret := new(ast.Return_Statement)
 		ret^ = {
-			span = common.merge_spans(tok.span, end_span),
+			span   = common.merge_spans(tok.span, end_span),
 			values = values[:],
 		}
 		stmt = ret
 
 	case Keyword.Let, Keyword.Const:
-		#partial switch local in _const_or_var(ps, .Local) {
+		switch local in _const_or_var(ps, .Local) {
 		case ^ast.Local_Variable:
 			stmt = local
 		case ^ast.Local_Constant:
 			stmt = local
-		case:
-			return nil
+		case ^ast.Global_Constant, ^ast.Global_Variable, nil:
+			panic("unreachable: got a global const/var in a local context")
 		}
 
 	case:
@@ -124,7 +124,7 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 			}
 			assignment := new(ast.Assign_Statement)
 			assignment^ = {
-				span = common.merge_spans(
+				span  = common.merge_spans(
 					_expression_span(expr),
 					_expression_span(rvalues[len(rvalues) - 1]),
 				),
@@ -137,7 +137,10 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 			return nil
 		} else {
 			expr_stmt := new(ast.Expr_Statement)
-			expr_stmt^ = {span = _expression_span(expr), expr = expr}
+			expr_stmt^ = {
+				span = _expression_span(expr),
+				expr = expr,
+			}
 			stmt = expr_stmt
 		}
 	}
