@@ -1,6 +1,7 @@
 package resolver
 
 import "../../common"
+import "../ast"
 import "../units"
 
 _Symbol_Header :: struct {
@@ -60,29 +61,29 @@ Local_Variable :: struct {
 
 Unit_Type :: struct {
 	using _: _Symbol_Header,
-	ast:     rawptr, // TODO
+	ast:     ^ast.Unit_Type_Decl,
 	hir:     rawptr, // TODO
 }
 
 
 Base_Unit :: struct {
 	using _: _Symbol_Header,
-	ast:     rawptr, // TODO
+	ast:     ^ast.Unit_Decl,
 	hir:     rawptr, // TODO
 }
 
 
 Unit_Type_Alias :: struct {
 	using _:   _Symbol_Header,
-	ast:       rawptr, // TODO
-	canonical: units.CompoundDimension,
+	ast:       ^ast.Unit_Type_Alias_Decl,
+	canonical: units.Compound_Unit,
 }
 
 
 Unit_Alias :: struct {
 	using _:   _Symbol_Header,
-	ast:       rawptr, // TODO
-	canonical: units.CompoundUnit,
+	ast:       ^ast.Unit_Alias_Decl,
+	canonical: units.Compound_Unit,
 	// NOTE: these *might* still exist in the HIR for reflection purposes
 	// e.g. printing a kg m / s^2 as newtons
 }

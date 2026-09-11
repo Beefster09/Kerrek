@@ -11,6 +11,7 @@ import "../../common/exact"
 
 NUMERATOR_BITS :: 11
 DENOMINATOR_BITS :: 5
+
 Small_Rat :: bit_field i16 {
 	// CONSIDER: bit field (which will break some tests)
 	n: i16 | NUMERATOR_BITS,
@@ -19,6 +20,11 @@ Small_Rat :: bit_field i16 {
 
 RAT_ONE :: Small_Rat {
 	n = 1,
+	d = 0,
+}
+
+RAT_ZERO :: Small_Rat {
+	n = 0,
 	d = 0,
 }
 

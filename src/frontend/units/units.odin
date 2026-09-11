@@ -106,7 +106,8 @@ combine_units :: proc(
 	result: Compound_Unit,
 	err: Unit_Error,
 ) {
-	if is_absolute(a) != is_absolute(b) {
+	a_is_abs := is_absolute(a)
+	if a_is_abs != is_absolute(b) {
 		return nil, .Absolute_Relative_Mismatch
 	}
 
@@ -116,50 +117,83 @@ combine_units :: proc(
 	}
 
 	for cu in ([]Compound_Unit{a, b}) {
-		for i in 0 ..< num_components(cu) {
+		next_component: for i in 0 ..< num_components(cu) {
 			comp := get_component(cu, i)
 			new_exp, ok := mul_rat(comp.exp, a_exp)
 			if !ok {
 				return nil, .Unrepresentable_Exponent
 			}
 
-			found := false
-			for &existing in cmp_out {
+			for &existing, i in cmp_out {
 
 				if comp.unit == existing.unit {
 					existing.exp, ok = add_rat(existing.exp, new_exp)
 					if !ok {
 						return nil, .Unrepresentable_Exponent
 					}
-					found = true
-					break
+
+					if eq(existing.exp, RAT_ZERO) {
+						unordered_remove(&cmp_out, i)
+					}
+					continue next_component
 				}
 			}
 
-			if !found {
-				append(&cmp_out, Unit_Component{comp.unit, new_exp})
-			}
+			append(&cmp_out, Unit_Component{comp.unit, new_exp})
 		}
 	}
+	shrink(&cmp_out)
+	return build_compound_unit(cmp_out[:], a_is_abs), .OK
+}
 
-	slice.sort_by_cmp(cmp_out[:], _cmp_components)
+// creates a compound unit, inline if possible
+// assumes ownership of the given slice and sorts the components
+build_compound_unit :: proc(components: []Unit_Component, absolute: bool) -> Compound_Unit {
+	slice.sort_by_cmp(components, _cmp_components)
 
-	if len(cmp_out) <= MAX_INLINE_UNITS {
+	if len(components) <= MAX_INLINE_UNITS {
 		res := Inline_Compound_Unit {
-			count    = u8(len(cmp_out)),
-			absolute = is_absolute(a),
+			count    = u8(len(components)),
+			absolute = absolute,
 		}
-		for cmp, i in cmp_out {
+		for cmp, i in components {
 			res.comp_base[i] = cmp.unit
 			res.comp_exp[i] = cmp.exp
 		}
-		return res, .OK
+		return res
 	} else {
-		shrink(&cmp_out)
-		return Heap_Compound_Unit{components = cmp_out[:], absolute = is_absolute(a)}, .OK
+		return Heap_Compound_Unit{components = components[:], absolute = absolute}
 	}
 }
 
+compound_units_equal :: proc(a, b: Compound_Unit) -> bool {
+	a_len := num_components(a)
+	b_len := num_components(b)
+
+	if a_len != b_len {
+		return false
+	}
+
+	outer: for i in 0 ..< a_len {
+		cmp_a := get_component(a, i)
+		for j in 0 ..< b_len {
+			cmp_b := get_component(b, j)
+			if cmp_a.unit == cmp_b.unit {
+				if eq_rat(cmp_a.exp, cmp_b.exp) {
+					continue outer
+				} else {
+					return false
+				}
+			}
+		}
+
+		// matching base unit wasn't found
+		return false
+	}
+
+	// everything matched
+	return true
+}
 
 @(rodata)
 SUPERSCRIPT_DIGITS := [10]rune{'⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'}
@@ -186,7 +220,7 @@ fmt_compound_unit :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 			}
 
 			if comp.exp.d == 0 {
-				sup_digits: [dynamic; 3]rune
+				sup_digits: [dynamic; 4]rune
 				x := abs(i16(comp.exp.n))
 				for x > 0 {
 					append(&sup_digits, SUPERSCRIPT_DIGITS[x % 10])
