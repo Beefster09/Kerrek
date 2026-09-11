@@ -151,4 +151,4 @@ const LONG_STRING = """
 				throw \U10045f baby
 """ + "strong bad"+
 \"this\interprets\backslashes\literally";const x23 = ""; \\23x45 1x
-func main() {}
+func main() {;;}

@@ -46,12 +46,7 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 	switch tok.what {
 	case Punctuation.Semicolon:
 		ps.cur_token += 1
-		diagnostics.emit(
-			.Syntax_Error,
-			diagnostics.Level.Notice,
-			common.collapse_span(tok.span),
-			"empty statement",
-		)
+		diagnostics.emit(.Empty_Statement, common.collapse_span(tok.span), "empty statement")
 		return nil
 
 	case Keyword.Return:
@@ -78,15 +73,10 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 		}
 		stmt = ret
 
-	case Keyword.Let, Keyword.Const:
-		switch local in _const_or_var(ps, .Local) {
-		case ^ast.Local_Variable:
-			stmt = local
-		case ^ast.Local_Constant:
-			stmt = local
-		case ^ast.Global_Constant, ^ast.Global_Variable, nil:
-			panic("unreachable: got a global const/var in a local context")
-		}
+	case Keyword.Let:
+		stmt = _const_or_var(ps, ast.Local_Variable)
+	case Keyword.Const:
+		stmt = _const_or_var(ps, ast.Local_Constant)
 
 	case:
 		expr := _expr(ps)

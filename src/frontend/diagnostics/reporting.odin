@@ -1,8 +1,13 @@
 package diagnostics
 
+import "base:intrinsics"
 import "core:encoding/json"
 import "core:fmt"
+import "core:io"
+import "core:math"
+import "core:mem"
 import "core:os"
+import "core:strings"
 import "core:terminal"
 import "core:terminal/ansi"
 
@@ -60,7 +65,7 @@ DEFAULT_THEME_4BIT := Color_Scheme {
 	message = (ansi.CSI + ansi.BOLD + ";" + ansi.FG_DEFAULT + ansi.SGR),
 	location = (ansi.CSI + ansi.FAINT + ";" + ansi.FG_DEFAULT + ansi.SGR),
 	gutter = (ansi.CSI + ansi.FG_BLUE + ansi.SGR),
-	span = (ansi.CSI + ansi.FG_BRIGHT_YELLOW + ansi.SGR),
+	span = (ansi.CSI + ansi.BOLD + ";" + ansi.FG_BRIGHT_YELLOW + ansi.SGR),
 	suggestion = (ansi.CSI + ansi.FG_BRIGHT_GREEN + ansi.SGR),
 	reference = (ansi.CSI + ansi.FG_BRIGHT_MAGENTA + ansi.SGR),
 	clear = (ansi.CSI + ansi.RESET + ansi.SGR),
@@ -179,6 +184,7 @@ _report_pretty :: proc() {
 			sf, _ := common.load_source(diag.span.file)
 			if sf != nil {
 				fmt.eprintfln("\t%s@ %s%s", _report_theme.location, diag.span, _report_theme.clear)
+				_render_span(sf, diag.span)
 			}
 		}
 	}
@@ -201,4 +207,63 @@ _report_json :: proc() {
 	}
 	json.marshal_to_writer(os.to_writer(os.stdout), _current_diagnostics, &json_opts)
 	fmt.println()
+}
+
+CONTEXT_LINES :: 5
+_render_span :: proc(sf: ^common.Source_File, span: common.Span) {
+	_line_arena: mem.Dynamic_Arena
+	mem.dynamic_arena_init(&_line_arena)
+	defer mem.dynamic_arena_destroy(&_line_arena)
+	context.temp_allocator = mem.dynamic_arena_allocator(&_line_arena)
+
+	n_lines := 1 + span.end.line - span.start.line
+
+	gutter_width := max(2, math.count_digits_of_base(span.end.line, 10)) + 1
+
+	if n_lines == 1 {
+		lines: [1]string
+		common.get_source_lines(lines[:], sf, span.start.line)
+
+		expanded := strings.expand_tabs(
+			strings.trim_right_space(lines[0]),
+			int(common.tab_width),
+			context.temp_allocator,
+		)
+		trimmed := strings.trim_space(expanded)
+		_render_gutter(span.start.line, gutter_width)
+		fmt.eprintfln(" %s", trimmed)
+		_render_gutter("", gutter_width)
+		for _ in len(expanded) - len(trimmed) ..< int(span.start.col) {
+			os.write_rune(os.stderr, ' ')
+		}
+		os.write_string(os.stderr, _report_theme.span)
+		for _ in 0 ..< max(1, span.end.col - span.start.col) {
+			os.write_rune(os.stderr, '^')
+		}
+		fmt.eprintln(_report_theme.clear)
+	} else {
+		//
+	}
+}
+
+GUTTER_SEP :: '│'
+_render_gutter :: proc(prefix: $T, width: int) where intrinsics.type_is_integer(T) || T == string {
+	w := os.to_writer(os.stderr)
+	io.write_string(w, _report_theme.gutter)
+
+	when intrinsics.type_is_integer(T) {
+		for _ in 0 ..< width - math.count_digits_of_base(prefix, 10) {
+			io.write_rune(w, ' ')
+		}
+		io.write_int(w, int(prefix))
+	} else {
+		for _ in 0 ..< width - len(prefix) {
+			io.write_rune(w, ' ')
+		}
+		io.write_string(w, prefix)
+	}
+
+	io.write_rune(w, GUTTER_SEP)
+
+	io.write_string(w, _report_theme.clear)
 }

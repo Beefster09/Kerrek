@@ -18,14 +18,23 @@ Cursor :: struct {
 	using at: Location,
 }
 
+LINE_BITS :: 32 - COL_BITS
+COL_BITS :: 10
+
+MAX_LINE :: 1 << LINE_BITS - 1
+MAX_COL :: 1 << COL_BITS - 1
+
 Location :: struct {
-	offset: u32,
-	line:   u16,
-	col:    u16,
+	offset:         u32,
+	using line_col: bit_field u32 {
+		line: u32 | LINE_BITS,
+		col:  u32 | COL_BITS,
+	},
 }
+#assert(size_of(Location) == 8)
 
 // determines how columns are counted on tabs; configurable at runtime
-tab_width: u16 = 4
+tab_width: u32 = 4
 
 cursor_add :: proc {
 	cursor_add_len,
@@ -67,25 +76,21 @@ cursor_advance :: proc(cursor: ^Cursor, src: string, advance_by: int) {
 		switch c := src[i]; c {
 		case '\n':
 			cursor.col = 1
-			cursor.line = intrinsics.saturating_add(cursor.line, 1)
+			cursor.line = min(cursor.line + 1, MAX_LINE)
 		case '\t':
-			cursor.col = intrinsics.saturating_add(
-				cursor.col,
-				tab_width - (cursor.col - 1) % tab_width,
-			)
+			width := tab_width - (cursor.col - 1) % tab_width
+			cursor.col = min(cursor.col + width, MAX_COL)
 		case 0 ..= 0x1f:
 		// other ASCII control; no need to increment col
 		case ' ' ..< utf8.LOCB:
-			cursor.col = intrinsics.saturating_add(cursor.col, 1)
+			cursor.col = min(cursor.col + 1, MAX_COL)
 		case utf8.LOCB ..= utf8.HICB:
 		// continuation byte; no need to increment col
 		case utf8.T2 ..< utf8.T5:
 			r, n := utf8.decode_rune(src[i:])
 			if n > 1 {
-				cursor.col = intrinsics.saturating_add(
-					cursor.col,
-					u16(unicode.normalized_east_asian_width(r)),
-				)
+				width := u32(unicode.normalized_east_asian_width(r))
+				cursor.col = min(cursor.col + width, MAX_COL)
 			}
 		}
 	}
@@ -98,7 +103,7 @@ cursor_add_len :: proc "contextless" (curs: Cursor, length: int) -> Cursor {
 		at = {
 			offset = curs.at.offset + u32(length),
 			line = curs.at.line,
-			col = curs.at.col + u16(length),
+			col = curs.at.col + u32(length),
 		},
 	}
 }
@@ -109,7 +114,7 @@ cursor_add_len_and_width :: proc "contextless" (curs: Cursor, length: int, width
 		at = {
 			offset = curs.at.offset + u32(length),
 			line = curs.at.line,
-			col = curs.at.col + u16(width),
+			col = curs.at.col + u32(width),
 		},
 	}
 }
@@ -122,7 +127,7 @@ cursor_to_span_len_same_line :: proc "contextless" (curs: Cursor, length: int) -
 			end = {
 				offset = curs.at.offset + u32(length),
 				line = curs.at.line,
-				col = curs.at.col + u16(length),
+				col = curs.at.col + u32(length),
 			},
 		}
 	} else {
@@ -131,7 +136,7 @@ cursor_to_span_len_same_line :: proc "contextless" (curs: Cursor, length: int) -
 			start = {
 				offset = curs.at.offset + u32(length),
 				line = curs.at.line,
-				col = curs.at.col + u16(length),
+				col = curs.at.col + u32(length),
 			},
 			end = curs.at,
 		}
@@ -150,7 +155,7 @@ cursor_to_span_len_and_width_same_line :: proc "contextless" (
 			end = {
 				offset = curs.at.offset + u32(length),
 				line = curs.at.line,
-				col = curs.at.col + u16(width),
+				col = curs.at.col + u32(width),
 			},
 		}
 	} else {
@@ -159,7 +164,7 @@ cursor_to_span_len_and_width_same_line :: proc "contextless" (
 			start = {
 				offset = curs.at.offset + u32(length),
 				line = curs.at.line,
-				col = curs.at.col + u16(width),
+				col = curs.at.col + u32(width),
 			},
 			end = curs.at,
 		}
@@ -178,7 +183,7 @@ cursor_to_span_other_span :: proc(a: Cursor, b: Cursor) -> Span {
 MAX_U16 :: 1 << 16 - 1
 
 location_in_bounds :: proc "contextless" (loc: Location) -> bool {
-	return loc.line > 0 && loc.line < MAX_U16 && loc.col > 0 && loc.col < MAX_U16
+	return loc.line > 0 && loc.line < MAX_LINE && loc.col > 0 && loc.col < MAX_COL
 }
 
 fmt_span :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
@@ -265,26 +270,29 @@ fmt_span :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 		io.write_rune(fi.writer, '[')
 	}
 	if show_start {
-		if location_in_bounds(span.start) {
+		if span.start.line > 0 && span.start.line < MAX_LINE {
 			io.write_uint(fi.writer, uint(span.start.line))
-			io.write_rune(fi.writer, ':')
-			io.write_uint(fi.writer, uint(span.start.col))
 		} else {
 			io.write_string(fi.writer, "???")
+		}
+		if span.start.col > 0 && span.start.col < MAX_COL {
+			io.write_rune(fi.writer, ':')
+			io.write_uint(fi.writer, uint(span.start.col))
 		}
 	}
 	if span.end != span.start {
 		if show_start && show_end {
 			io.write_string(fi.writer, " .. ")
 		}
-		if show_end {
-			if location_in_bounds(span.end) {
-				io.write_uint(fi.writer, uint(span.end.line))
-				io.write_rune(fi.writer, ':')
-				io.write_uint(fi.writer, uint(span.end.col))
-			} else {
-				io.write_string(fi.writer, "???")
-			}
+
+		if span.end.line > 0 && span.end.line < MAX_LINE {
+			io.write_uint(fi.writer, uint(span.end.line))
+		} else {
+			io.write_string(fi.writer, "???")
+		}
+		if span.end.col > 0 && span.end.col < MAX_COL {
+			io.write_rune(fi.writer, ':')
+			io.write_uint(fi.writer, uint(span.end.col))
 		}
 	}
 	if brackets {

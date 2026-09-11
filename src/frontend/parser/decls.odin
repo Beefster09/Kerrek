@@ -7,18 +7,22 @@ import "../ast"
 import "../diagnostics"
 import "../lexer"
 
-_const_or_var :: proc(ps: ^Parser_State, $MODE: enum {
-		Local,
-		Global,
-	}) -> union {
-		^ast.Global_Variable,
-		^ast.Global_Constant,
-		^ast.Local_Variable,
-		^ast.Local_Constant,
-	} {
-	keyword, has_keyword := _pop(ps)
-	assert(has_keyword && (keyword.what == Keyword.Let || keyword.what == Keyword.Const))
-	is_const := keyword.what == Keyword.Const
+_const_or_var :: proc(
+	ps: ^Parser_State,
+	$T: typeid,
+) -> ^T where T == ast.Global_Variable ||
+	T == ast.Global_Constant ||
+	T == ast.Local_Variable ||
+	T == ast.Local_Constant {
+	GLOBAL :: T == ast.Global_Variable || T == ast.Global_Constant
+	LOCAL :: !GLOBAL
+	CONST :: T == ast.Global_Constant || T == ast.Local_Constant
+	VAR :: !CONST
+
+	keyword, has_keyword := _match(ps, Keyword.Const when CONST else Keyword.Let)
+	if !has_keyword {
+		return nil
+	}
 
 	name_tok, ok := _match1(ps, Identifier)
 	if !ok {
@@ -81,19 +85,15 @@ _const_or_var :: proc(ps: ^Parser_State, $MODE: enum {
 			end_span = _type_span(type_expr)
 		}
 	}
-	span := common.merge_spans(keyword.span, end_span)
+	span := common.merge_spans(keyword[0].span, end_span)
 
-	if is_const {
+	when CONST {
 		expr, has_expr := value.(ast.Expression)
 		if !has_expr || expr == nil {
-			diagnostics.emit(
-				.Syntax_Error,
-				keyword.span,
-				"const declarations must be given a value",
-			)
+			diagnostics.emit(.Syntax_Error, name_tok.span, "constants must be given a value")
 			return nil
 		}
-		when MODE == .Local {
+		when LOCAL {
 			decl := new(ast.Local_Constant)
 			decl^ = {
 				span = span,
@@ -114,33 +114,33 @@ _const_or_var :: proc(ps: ^Parser_State, $MODE: enum {
 			}
 			return decl
 		}
-	}
-
-	when MODE == .Local {
-		decl := new(ast.Local_Variable)
-		decl^ = {
-			span = span,
-			name = _name(name_tok),
-			type = type_expr,
-			unit = unit,
-			expr = value,
-		}
-		return decl
 	} else {
-		if _, unbound := value.(ast.Unbound_Var); unbound {
-			diagnostics.emit(.Syntax_Error, end_span, "global variables cannot be unbound")
-			return nil
+		when LOCAL {
+			decl := new(ast.Local_Variable)
+			decl^ = {
+				span = span,
+				name = _name(name_tok),
+				type = type_expr,
+				unit = unit,
+				expr = value,
+			}
+			return decl
+		} else {
+			if _, unbound := value.(ast.Unbound_Var); unbound {
+				diagnostics.emit(.Syntax_Error, end_span, "global variables cannot be unbound")
+				return nil
+			}
+			expr, _ := value.(ast.Expression)
+			decl := new(ast.Global_Variable)
+			decl^ = {
+				span = span,
+				name = _name(name_tok),
+				type = type_expr,
+				unit = unit,
+				expr = expr,
+			}
+			return decl
 		}
-		expr, _ := value.(ast.Expression)
-		decl := new(ast.Global_Variable)
-		decl^ = {
-			span = span,
-			name = _name(name_tok),
-			type = type_expr,
-			unit = unit,
-			expr = expr,
-		}
-		return decl
 	}
 }
 

@@ -138,7 +138,10 @@ _parse :: proc(ps: ^Parser_State, file: ^ast.File) -> Parse_Error {
 }
 
 _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: bool) {
-	tok := _peek(ps) or_return
+	tok, has_tok := _peek(ps)
+	if !has_tok { 	// EOF
+		return nil, false
+	}
 
 	switch tok.what {
 	case Punctuation.At:
@@ -151,20 +154,17 @@ _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: 
 	case Keyword.Type:
 		panic("not implemented")
 
-	case Keyword.Let, Keyword.Const:
-		decl := _const_or_var(ps, .Global)
-		if _end_of_statement(ps) {
-			switch d in decl {
-			case ^ast.Global_Variable:
-				return d, true
-			case ^ast.Global_Constant:
-				return d, true
-			case ^ast.Local_Constant, ^ast.Local_Variable, nil:
-				panic("got local var/constant")
-			}
-		} else {
-			_attempt_recovery(ps)
-			return nil, true
+	case Keyword.Let:
+		decl := _const_or_var(ps, ast.Global_Variable)
+		_end_of_statement(ps)
+		if decl != nil {
+			return decl, true
+		}
+	case Keyword.Const:
+		decl := _const_or_var(ps, ast.Global_Constant)
+		_end_of_statement(ps)
+		if decl != nil {
+			return decl, true
 		}
 
 	case Keyword.Unit:
