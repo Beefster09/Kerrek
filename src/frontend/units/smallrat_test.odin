@@ -1,5 +1,6 @@
 package units
 
+import "core:slice"
 import "core:testing"
 
 Rat_Binary_Case :: struct {
@@ -9,59 +10,68 @@ Rat_Binary_Case :: struct {
 	ok:       bool,
 }
 
+Rat_Comparison_Case :: struct {
+	a:        Small_Rat,
+	b:        Small_Rat,
+	expected: slice.Ordering,
+}
+
+@(test)
+test_cmp_rat :: proc(t: ^testing.T) {
+	cases := [?]Rat_Comparison_Case {
+		{{n = 1, d = 3}, {n = 1, d = 2}, .Less},
+		{{n = 1, d = 2}, {n = 1, d = 3}, .Greater},
+		{{n = 1, d = 2}, {n = 1, d = 2}, .Equal},
+		{{n = 2, d = 4}, {n = 1, d = 2}, .Equal}, // unreduced values
+		{{n = 0, d = 31}, {n = 0, d = 1}, .Equal},
+		{{n = -1, d = 2}, {n = -1, d = 3}, .Less},
+		{{n = -1, d = 3}, {n = -1, d = 2}, .Greater},
+		{{n = -1, d = 31}, {n = 0, d = 1}, .Less},
+		{{n = 1, d = 31}, {n = 0, d = 1}, .Greater},
+		{{n = -1024, d = 1}, {n = 1023, d = 1}, .Less}, // numerator boundaries
+		{{n = 1023, d = 31}, {n = 33, d = 1}, .Equal},
+		{{n = 1023, d = 31}, {n = 1022, d = 31}, .Greater},
+		{{n = -1024, d = 31}, {n = -1023, d = 31}, .Less},
+		{{n = 1, d = 31}, {n = 1, d = 30}, .Less}, // denominator boundary
+		{{n = 30, d = 31}, {n = 29, d = 30}, .Greater}, // adjacent cross-products
+	}
+
+	for tc, i in cases {
+		actual := cmp_rat(tc.a, tc.b)
+		testing.expectf(
+			t,
+			actual == tc.expected,
+			"cmp_rat case %d: ordering mismatch for %v and %v: expected %v, got %v",
+			i,
+			tc.a,
+			tc.b,
+			tc.expected,
+			actual,
+		)
+	}
+}
+
 @(test)
 test_add_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{Small_Rat{1, 2}, Small_Rat{1, 3}, Small_Rat{5, 6}, true},
-		{Small_Rat{-1, 2}, Small_Rat{1, 2}, Small_Rat{0, 1}, true},
-		{Small_Rat{0, 1}, Small_Rat{7, 9}, Small_Rat{7, 9}, true},
-		{Small_Rat{7, 9}, Small_Rat{0, 1}, Small_Rat{7, 9}, true},
-		{Small_Rat{2, 3}, Small_Rat{1, 3}, Small_Rat{1, 1}, true},
-		{Small_Rat{-2, 3}, Small_Rat{-1, 3}, Small_Rat{-1, 1}, true},
-		{Small_Rat{5, 6}, Small_Rat{-1, 2}, Small_Rat{1, 3}, true},
-		{Small_Rat{-5, 6}, Small_Rat{1, 2}, Small_Rat{-1, 3}, true},
-		{Small_Rat{63, 1}, Small_Rat{64, 1}, Small_Rat{127, 1}, true}, // inclusive storage boundary
-		{Small_Rat{-64, 1}, Small_Rat{-64, 1}, Small_Rat{-128, 1}, true}, // inclusive storage boundary
-		{Small_Rat{127, 1}, Small_Rat{1, 1}, Small_Rat{}, false},
-		{Small_Rat{-128, 1}, Small_Rat{-1, 1}, Small_Rat{}, false},
-		{Small_Rat{1, 255}, Small_Rat{0, 1}, Small_Rat{1, 255}, true}, // inclusive storage boundary
-		{Small_Rat{-1, 255}, Small_Rat{0, 1}, Small_Rat{-1, 255}, true}, // inclusive storage boundary
-		{Small_Rat{1, 200}, Small_Rat{1, 200}, Small_Rat{1, 100}, true}, // stresses i16 intermediates
-		{Small_Rat{1, 254}, Small_Rat{1, 254}, Small_Rat{1, 127}, true}, // stresses i16 intermediates
-		{Small_Rat{100, 201}, Small_Rat{-100, 201}, Small_Rat{0, 1}, true}, // stresses i16 intermediates
-		{Small_Rat{63, 127}, Small_Rat{64, 127}, Small_Rat{1, 1}, true},
-		{Small_Rat{50, 251}, Small_Rat{50, 251}, Small_Rat{100, 251}, true}, // stresses i16 intermediates
-		{Small_Rat{-50, 251}, Small_Rat{-50, 251}, Small_Rat{-100, 251}, true}, // stresses i16 intermediates
-		{Small_Rat{-50, 251}, Small_Rat{1, 3}, Small_Rat{}, false},
-		{Small_Rat{-1, 7}, Small_Rat{-50, 251}, Small_Rat{}, false},
-		{Small_Rat{-63, 127}, Small_Rat{7, 10}, Small_Rat{}, false},
-		{Small_Rat{-1, 251}, Small_Rat{5, 6}, Small_Rat{}, false},
-		{Small_Rat{3, 1}, Small_Rat{-63, 127}, Small_Rat{}, false},
-		{Small_Rat{3, 7}, Small_Rat{5, 9}, Small_Rat{62, 63}, true},
-		{Small_Rat{127, 254}, Small_Rat{-17, 31}, Small_Rat{-3, 62}, true},
-		{Small_Rat{-4, 5}, Small_Rat{7, 1}, Small_Rat{31, 5}, true},
-		{Small_Rat{-2, 7}, Small_Rat{-2, 1}, Small_Rat{-16, 7}, true},
-		{Small_Rat{-1, 127}, Small_Rat{-17, 31}, Small_Rat{}, false},
-		{Small_Rat{-1, 251}, Small_Rat{1, 1}, Small_Rat{}, false},
-		{Small_Rat{1, 2}, Small_Rat{1, 127}, Small_Rat{}, false},
-		{Small_Rat{2, 7}, Small_Rat{-13, 17}, Small_Rat{-57, 119}, true},
-		{Small_Rat{-100, 201}, Small_Rat{-1, 7}, Small_Rat{}, false},
-		{Small_Rat{1, 251}, Small_Rat{-2, 5}, Small_Rat{}, false},
-		{Small_Rat{3, 7}, Small_Rat{5, 6}, Small_Rat{53, 42}, true},
-		{Small_Rat{-3, 7}, Small_Rat{50, 251}, Small_Rat{}, false},
-		{Small_Rat{-17, 31}, Small_Rat{1, 1}, Small_Rat{14, 31}, true},
-		{Small_Rat{-17, 31}, Small_Rat{-3, 4}, Small_Rat{}, false},
-		{Small_Rat{-50, 251}, Small_Rat{-3, 7}, Small_Rat{}, false},
-		{Small_Rat{63, 127}, Small_Rat{17, 31}, Small_Rat{}, false},
-		{Small_Rat{1, 4}, Small_Rat{1, 127}, Small_Rat{}, false},
-		{Small_Rat{-1, 3}, Small_Rat{0, 1}, Small_Rat{-1, 3}, true},
-		{Small_Rat{1, 200}, Small_Rat{1, 127}, Small_Rat{}, false},
-		{Small_Rat{-7, 8}, Small_Rat{1, 2}, Small_Rat{-3, 8}, true},
-		{Small_Rat{3, 7}, Small_Rat{2, 3}, Small_Rat{23, 21}, true},
-		{Small_Rat{5, 9}, Small_Rat{-4, 5}, Small_Rat{-11, 45}, true},
-		{Small_Rat{-1, 1}, Small_Rat{5, 6}, Small_Rat{-1, 6}, true},
-		{Small_Rat{2, 7}, Small_Rat{3, 4}, Small_Rat{29, 28}, true},
-		{Small_Rat{11, 12}, Small_Rat{13, 17}, Small_Rat{}, false},
+		{{n = 1, d = 2}, {n = 1, d = 3}, {n = 5, d = 6}, true},
+		{{n = -1, d = 2}, {n = 1, d = 2}, {n = 0, d = 1}, true},
+		{{n = 0, d = 1}, {n = 7, d = 9}, {n = 7, d = 9}, true},
+		{{n = 7, d = 9}, {n = 0, d = 1}, {n = 7, d = 9}, true},
+		{{n = 5, d = 6}, {n = -1, d = 2}, {n = 1, d = 3}, true},
+		{{n = -5, d = 6}, {n = 1, d = 2}, {n = -1, d = 3}, true},
+		{{n = 1022, d = 1}, {n = 1, d = 1}, {n = 1023, d = 1}, true}, // maximum numerator
+		{{n = 1023, d = 1}, {n = 1, d = 1}, {}, false},
+		{{n = -1023, d = 1}, {n = -1, d = 1}, {n = -1024, d = 1}, true}, // minimum numerator
+		{{n = -1024, d = 1}, {n = -1, d = 1}, {}, false},
+		{{n = 1, d = 31}, {n = 0, d = 1}, {n = 1, d = 31}, true}, // maximum denominator
+		{{n = -1, d = 31}, {n = 0, d = 1}, {n = -1, d = 31}, true},
+		{{n = 1, d = 30}, {n = 1, d = 30}, {n = 1, d = 15}, true}, // oversized intermediate reduces
+		{{n = 1, d = 31}, {n = 1, d = 30}, {}, false}, // irreducible denominator overflow
+		{{n = 511, d = 31}, {n = 512, d = 31}, {n = 33, d = 1}, true},
+		{{n = 1000, d = 31}, {n = 23, d = 31}, {n = 33, d = 1}, true},
+		{{n = -1000, d = 31}, {n = -23, d = 31}, {n = -33, d = 1}, true},
+		{{n = 17, d = 29}, {n = -13, d = 23}, {}, false},
 	}
 
 	for tc, i in cases {
@@ -94,56 +104,22 @@ test_add_rat :: proc(t: ^testing.T) {
 @(test)
 test_sub_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{Small_Rat{1, 2}, Small_Rat{1, 3}, Small_Rat{1, 6}, true},
-		{Small_Rat{1, 2}, Small_Rat{1, 2}, Small_Rat{0, 1}, true},
-		{Small_Rat{0, 1}, Small_Rat{7, 9}, Small_Rat{-7, 9}, true},
-		{Small_Rat{7, 9}, Small_Rat{0, 1}, Small_Rat{7, 9}, true},
-		{Small_Rat{2, 3}, Small_Rat{1, 3}, Small_Rat{1, 3}, true},
-		{Small_Rat{-2, 3}, Small_Rat{-1, 3}, Small_Rat{-1, 3}, true},
-		{Small_Rat{5, 6}, Small_Rat{-1, 2}, Small_Rat{4, 3}, true},
-		{Small_Rat{-5, 6}, Small_Rat{1, 2}, Small_Rat{-4, 3}, true},
-		{Small_Rat{127, 1}, Small_Rat{0, 1}, Small_Rat{127, 1}, true}, // inclusive storage boundary
-		{Small_Rat{-128, 1}, Small_Rat{0, 1}, Small_Rat{-128, 1}, true}, // inclusive storage boundary
-		{Small_Rat{127, 1}, Small_Rat{-1, 1}, Small_Rat{}, false},
-		{Small_Rat{-128, 1}, Small_Rat{1, 1}, Small_Rat{}, false},
-		{Small_Rat{1, 255}, Small_Rat{0, 1}, Small_Rat{1, 255}, true}, // inclusive storage boundary
-		{Small_Rat{-1, 255}, Small_Rat{0, 1}, Small_Rat{-1, 255}, true}, // inclusive storage boundary
-		{Small_Rat{1, 200}, Small_Rat{-1, 200}, Small_Rat{1, 100}, true}, // stresses i16 intermediates
-		{Small_Rat{1, 254}, Small_Rat{-1, 254}, Small_Rat{1, 127}, true}, // stresses i16 intermediates
-		{Small_Rat{100, 201}, Small_Rat{100, 201}, Small_Rat{0, 1}, true}, // stresses i16 intermediates
-		{Small_Rat{64, 127}, Small_Rat{-63, 127}, Small_Rat{1, 1}, true},
-		{Small_Rat{50, 251}, Small_Rat{-50, 251}, Small_Rat{100, 251}, true}, // stresses i16 intermediates
-		{Small_Rat{-50, 251}, Small_Rat{50, 251}, Small_Rat{-100, 251}, true}, // stresses i16 intermediates
-		{Small_Rat{1, 4}, Small_Rat{100, 201}, Small_Rat{}, false},
-		{Small_Rat{-1, 254}, Small_Rat{-50, 251}, Small_Rat{}, false},
-		{Small_Rat{-3, 5}, Small_Rat{-50, 251}, Small_Rat{}, false},
-		{Small_Rat{-3, 4}, Small_Rat{-2, 5}, Small_Rat{-7, 20}, true},
-		{Small_Rat{-3, 7}, Small_Rat{0, 1}, Small_Rat{-3, 7}, true},
-		{Small_Rat{-3, 4}, Small_Rat{-63, 127}, Small_Rat{}, false},
-		{Small_Rat{7, 8}, Small_Rat{-2, 1}, Small_Rat{23, 8}, true},
-		{Small_Rat{-5, 9}, Small_Rat{2, 3}, Small_Rat{-11, 9}, true},
-		{Small_Rat{-2, 3}, Small_Rat{-1, 200}, Small_Rat{}, false},
-		{Small_Rat{-100, 201}, Small_Rat{3, 4}, Small_Rat{}, false},
-		{Small_Rat{2, 1}, Small_Rat{5, 9}, Small_Rat{13, 9}, true},
-		{Small_Rat{-1, 254}, Small_Rat{0, 1}, Small_Rat{-1, 254}, true},
-		{Small_Rat{1, 251}, Small_Rat{1, 251}, Small_Rat{0, 1}, true},
-		{Small_Rat{-2, 7}, Small_Rat{100, 201}, Small_Rat{}, false},
-		{Small_Rat{5, 9}, Small_Rat{7, 8}, Small_Rat{-23, 72}, true},
-		{Small_Rat{-1, 3}, Small_Rat{50, 251}, Small_Rat{}, false},
-		{Small_Rat{-1, 3}, Small_Rat{-1, 251}, Small_Rat{}, false},
-		{Small_Rat{1, 127}, Small_Rat{3, 5}, Small_Rat{}, false},
-		{Small_Rat{-3, 1}, Small_Rat{-4, 5}, Small_Rat{-11, 5}, true},
-		{Small_Rat{-1, 3}, Small_Rat{-1, 3}, Small_Rat{0, 1}, true},
-		{Small_Rat{-4, 5}, Small_Rat{1, 3}, Small_Rat{-17, 15}, true},
-		{Small_Rat{-1, 127}, Small_Rat{-50, 251}, Small_Rat{}, false},
-		{Small_Rat{1, 200}, Small_Rat{-50, 251}, Small_Rat{}, false},
-		{Small_Rat{-13, 17}, Small_Rat{2, 3}, Small_Rat{-73, 51}, true},
-		{Small_Rat{1, 200}, Small_Rat{-3, 7}, Small_Rat{}, false},
-		{Small_Rat{100, 201}, Small_Rat{-1, 251}, Small_Rat{}, false},
-		{Small_Rat{1, 1}, Small_Rat{-3, 5}, Small_Rat{8, 5}, true},
-		{Small_Rat{-5, 9}, Small_Rat{-3, 5}, Small_Rat{2, 45}, true},
-		{Small_Rat{-1, 251}, Small_Rat{17, 31}, Small_Rat{}, false},
-		{Small_Rat{5, 9}, Small_Rat{1, 200}, Small_Rat{}, false},
+		{{n = 1, d = 2}, {n = 1, d = 3}, {n = 1, d = 6}, true},
+		{{n = 1, d = 2}, {n = 1, d = 2}, {n = 0, d = 1}, true},
+		{{n = 0, d = 1}, {n = 7, d = 9}, {n = -7, d = 9}, true},
+		{{n = 7, d = 9}, {n = 0, d = 1}, {n = 7, d = 9}, true},
+		{{n = 5, d = 6}, {n = -1, d = 2}, {n = 4, d = 3}, true},
+		{{n = -5, d = 6}, {n = 1, d = 2}, {n = -4, d = 3}, true},
+		{{n = 1023, d = 1}, {n = 0, d = 1}, {n = 1023, d = 1}, true}, // maximum numerator
+		{{n = 1023, d = 1}, {n = -1, d = 1}, {}, false},
+		{{n = -1024, d = 1}, {n = 0, d = 1}, {n = -1024, d = 1}, true}, // minimum numerator
+		{{n = -1024, d = 1}, {n = 1, d = 1}, {}, false},
+		{{n = 1, d = 31}, {n = 0, d = 1}, {n = 1, d = 31}, true}, // maximum denominator
+		{{n = 1, d = 30}, {n = -1, d = 30}, {n = 1, d = 15}, true}, // oversized intermediate reduces
+		{{n = 1, d = 31}, {n = -1, d = 30}, {}, false}, // irreducible denominator overflow
+		{{n = 512, d = 31}, {n = -511, d = 31}, {n = 33, d = 1}, true},
+		{{n = -512, d = 31}, {n = 511, d = 31}, {n = -33, d = 1}, true},
+		{{n = 17, d = 29}, {n = 13, d = 23}, {}, false},
 	}
 
 	for tc, i in cases {
@@ -176,56 +152,22 @@ test_sub_rat :: proc(t: ^testing.T) {
 @(test)
 test_mul_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{Small_Rat{1, 2}, Small_Rat{1, 3}, Small_Rat{1, 6}, true},
-		{Small_Rat{-1, 2}, Small_Rat{1, 3}, Small_Rat{-1, 6}, true},
-		{Small_Rat{-1, 2}, Small_Rat{-1, 3}, Small_Rat{1, 6}, true},
-		{Small_Rat{0, 1}, Small_Rat{127, 1}, Small_Rat{0, 1}, true},
-		{Small_Rat{127, 1}, Small_Rat{1, 1}, Small_Rat{127, 1}, true}, // inclusive storage boundary
-		{Small_Rat{-128, 1}, Small_Rat{1, 1}, Small_Rat{-128, 1}, true}, // inclusive storage boundary
-		{Small_Rat{127, 1}, Small_Rat{2, 1}, Small_Rat{}, false},
-		{Small_Rat{-128, 1}, Small_Rat{2, 1}, Small_Rat{}, false},
-		{Small_Rat{2, 3}, Small_Rat{3, 4}, Small_Rat{1, 2}, true},
-		{Small_Rat{5, 6}, Small_Rat{6, 5}, Small_Rat{1, 1}, true},
-		{Small_Rat{7, 9}, Small_Rat{3, 14}, Small_Rat{1, 6}, true},
-		{Small_Rat{-7, 9}, Small_Rat{3, 14}, Small_Rat{-1, 6}, true},
-		{Small_Rat{1, 255}, Small_Rat{1, 1}, Small_Rat{1, 255}, true}, // inclusive storage boundary
-		{Small_Rat{-1, 255}, Small_Rat{1, 1}, Small_Rat{-1, 255}, true}, // inclusive storage boundary
-		{Small_Rat{100, 201}, Small_Rat{100, 200}, Small_Rat{50, 201}, true}, // reduced result fits; raw i16 denominator product does not
-		{Small_Rat{-100, 201}, Small_Rat{100, 200}, Small_Rat{-50, 201}, true}, // reduced result fits; raw i16 denominator product does not
-		{Small_Rat{100, 251}, Small_Rat{125, 100}, Small_Rat{125, 251}, true},
-		{Small_Rat{63, 127}, Small_Rat{2, 63}, Small_Rat{2, 127}, true},
-		{Small_Rat{127, 254}, Small_Rat{2, 1}, Small_Rat{1, 1}, true},
-		{Small_Rat{-128, 255}, Small_Rat{1, 1}, Small_Rat{-128, 255}, true},
-		{Small_Rat{7, 10}, Small_Rat{63, 127}, Small_Rat{}, false},
-		{Small_Rat{17, 31}, Small_Rat{2, 3}, Small_Rat{34, 93}, true},
-		{Small_Rat{-1, 2}, Small_Rat{1, 5}, Small_Rat{-1, 10}, true},
-		{Small_Rat{-2, 3}, Small_Rat{-1, 127}, Small_Rat{}, false},
-		{Small_Rat{17, 31}, Small_Rat{-1, 254}, Small_Rat{}, false},
-		{Small_Rat{-1, 3}, Small_Rat{3, 4}, Small_Rat{-1, 4}, true},
-		{Small_Rat{127, 254}, Small_Rat{1, 4}, Small_Rat{1, 8}, true},
-		{Small_Rat{-7, 1}, Small_Rat{-7, 10}, Small_Rat{49, 10}, true},
-		{Small_Rat{3, 4}, Small_Rat{-4, 5}, Small_Rat{-3, 5}, true},
-		{Small_Rat{-7, 10}, Small_Rat{-2, 7}, Small_Rat{1, 5}, true},
-		{Small_Rat{5, 6}, Small_Rat{0, 1}, Small_Rat{0, 1}, true},
-		{Small_Rat{1, 200}, Small_Rat{1, 200}, Small_Rat{}, false},
-		{Small_Rat{-1, 5}, Small_Rat{2, 5}, Small_Rat{-2, 25}, true},
-		{Small_Rat{-4, 5}, Small_Rat{0, 1}, Small_Rat{0, 1}, true},
-		{Small_Rat{-1, 4}, Small_Rat{-3, 4}, Small_Rat{3, 16}, true},
-		{Small_Rat{3, 4}, Small_Rat{2, 3}, Small_Rat{1, 2}, true},
-		{Small_Rat{-1, 5}, Small_Rat{7, 1}, Small_Rat{-7, 5}, true},
-		{Small_Rat{-100, 201}, Small_Rat{-4, 5}, Small_Rat{80, 201}, true},
-		{Small_Rat{3, 4}, Small_Rat{17, 31}, Small_Rat{51, 124}, true},
-		{Small_Rat{-1, 5}, Small_Rat{1, 7}, Small_Rat{-1, 35}, true},
-		{Small_Rat{-2, 3}, Small_Rat{1, 251}, Small_Rat{}, false},
-		{Small_Rat{1, 2}, Small_Rat{50, 251}, Small_Rat{25, 251}, true},
-		{Small_Rat{1, 127}, Small_Rat{1, 4}, Small_Rat{}, false},
-		{Small_Rat{-4, 5}, Small_Rat{-3, 4}, Small_Rat{3, 5}, true},
-		{Small_Rat{-11, 12}, Small_Rat{50, 251}, Small_Rat{}, false},
-		{Small_Rat{17, 31}, Small_Rat{-50, 251}, Small_Rat{}, false},
-		{Small_Rat{-1, 2}, Small_Rat{-2, 7}, Small_Rat{1, 7}, true},
-		{Small_Rat{1, 200}, Small_Rat{-7, 10}, Small_Rat{}, false},
-		{Small_Rat{-1, 200}, Small_Rat{-1, 2}, Small_Rat{}, false},
-		{Small_Rat{5, 6}, Small_Rat{-7, 1}, Small_Rat{-35, 6}, true},
+		{{n = 1, d = 2}, {n = 1, d = 3}, {n = 1, d = 6}, true},
+		{{n = -1, d = 2}, {n = 1, d = 3}, {n = -1, d = 6}, true},
+		{{n = -1, d = 2}, {n = -1, d = 3}, {n = 1, d = 6}, true},
+		{{n = 0, d = 1}, {n = 1023, d = 1}, {n = 0, d = 1}, true},
+		{{n = 1023, d = 1}, {n = 1, d = 1}, {n = 1023, d = 1}, true}, // maximum numerator
+		{{n = -1024, d = 1}, {n = 1, d = 1}, {n = -1024, d = 1}, true}, // minimum numerator
+		{{n = 512, d = 1}, {n = 2, d = 1}, {}, false},
+		{{n = -1024, d = 1}, {n = -1, d = 1}, {}, false},
+		{{n = 1, d = 31}, {n = 1, d = 1}, {n = 1, d = 31}, true}, // maximum denominator
+		{{n = 1, d = 31}, {n = 1, d = 2}, {}, false}, // irreducible denominator overflow
+		{{n = 2, d = 31}, {n = 1, d = 2}, {n = 1, d = 31}, true}, // oversized denominator reduces
+		{{n = 1023, d = 31}, {n = 31, d = 3}, {n = 341, d = 1}, true}, // cross-cancellation
+		{{n = 1000, d = 31}, {n = 31, d = 25}, {n = 40, d = 1}, true},
+		{{n = 33, d = 29}, {n = 31, d = 3}, {n = 341, d = 29}, true},
+		{{n = -33, d = 29}, {n = 31, d = 3}, {n = -341, d = 29}, true},
+		{{n = 100, d = 29}, {n = 31, d = 3}, {}, false}, // numerator overflow after reduction
 	}
 
 	for tc, i in cases {
@@ -258,56 +200,23 @@ test_mul_rat :: proc(t: ^testing.T) {
 @(test)
 test_div_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{Small_Rat{1, 2}, Small_Rat{1, 3}, Small_Rat{3, 2}, true},
-		{Small_Rat{-1, 2}, Small_Rat{1, 3}, Small_Rat{-3, 2}, true},
-		{Small_Rat{-1, 2}, Small_Rat{-1, 3}, Small_Rat{3, 2}, true},
-		{Small_Rat{0, 1}, Small_Rat{7, 9}, Small_Rat{0, 1}, true},
-		{Small_Rat{1, 2}, Small_Rat{0, 1}, Small_Rat{}, false}, // division by zero
-		{Small_Rat{-1, 2}, Small_Rat{0, 1}, Small_Rat{}, false}, // division by zero
-		{Small_Rat{127, 1}, Small_Rat{1, 1}, Small_Rat{127, 1}, true}, // inclusive storage boundary
-		{Small_Rat{-128, 1}, Small_Rat{1, 1}, Small_Rat{-128, 1}, true}, // inclusive storage boundary
-		{Small_Rat{127, 1}, Small_Rat{1, 2}, Small_Rat{}, false},
-		{Small_Rat{-128, 1}, Small_Rat{1, 2}, Small_Rat{}, false},
-		{Small_Rat{2, 3}, Small_Rat{4, 5}, Small_Rat{5, 6}, true},
-		{Small_Rat{5, 6}, Small_Rat{10, 9}, Small_Rat{3, 4}, true},
-		{Small_Rat{7, 9}, Small_Rat{14, 3}, Small_Rat{1, 6}, true},
-		{Small_Rat{-7, 9}, Small_Rat{14, 3}, Small_Rat{-1, 6}, true},
-		{Small_Rat{1, 255}, Small_Rat{1, 1}, Small_Rat{1, 255}, true}, // inclusive storage boundary
-		{Small_Rat{-1, 255}, Small_Rat{1, 1}, Small_Rat{-1, 255}, true}, // inclusive storage boundary
-		{Small_Rat{100, 201}, Small_Rat{100, 201}, Small_Rat{1, 1}, true},
-		{Small_Rat{63, 127}, Small_Rat{63, 127}, Small_Rat{1, 1}, true},
-		{Small_Rat{127, 254}, Small_Rat{1, 2}, Small_Rat{1, 1}, true},
-		{Small_Rat{-128, 255}, Small_Rat{1, 1}, Small_Rat{-128, 255}, true},
-		{Small_Rat{-1, 1}, Small_Rat{-1, 2}, Small_Rat{2, 1}, true},
-		{Small_Rat{-11, 12}, Small_Rat{1, 7}, Small_Rat{-77, 12}, true},
-		{Small_Rat{3, 7}, Small_Rat{127, 254}, Small_Rat{6, 7}, true},
-		{Small_Rat{-3, 1}, Small_Rat{3, 5}, Small_Rat{-5, 1}, true},
-		{Small_Rat{1, 1}, Small_Rat{-2, 7}, Small_Rat{-7, 2}, true},
-		{Small_Rat{13, 17}, Small_Rat{-7, 8}, Small_Rat{-104, 119}, true},
-		{Small_Rat{-2, 7}, Small_Rat{5, 6}, Small_Rat{-12, 35}, true},
-		{Small_Rat{-1, 7}, Small_Rat{-7, 1}, Small_Rat{1, 49}, true},
-		{Small_Rat{7, 8}, Small_Rat{127, 254}, Small_Rat{7, 4}, true},
-		{Small_Rat{1, 4}, Small_Rat{2, 1}, Small_Rat{1, 8}, true},
-		{Small_Rat{-2, 3}, Small_Rat{63, 127}, Small_Rat{}, false},
-		{Small_Rat{2, 5}, Small_Rat{1, 127}, Small_Rat{}, false},
-		{Small_Rat{31, 63}, Small_Rat{-2, 3}, Small_Rat{-31, 42}, true},
-		{Small_Rat{1, 251}, Small_Rat{-3, 4}, Small_Rat{}, false},
-		{Small_Rat{-7, 1}, Small_Rat{-100, 201}, Small_Rat{}, false},
-		{Small_Rat{-7, 10}, Small_Rat{-50, 251}, Small_Rat{}, false},
-		{Small_Rat{1, 200}, Small_Rat{-1, 4}, Small_Rat{-1, 50}, true},
-		{Small_Rat{1, 251}, Small_Rat{-3, 7}, Small_Rat{}, false},
-		{Small_Rat{1, 127}, Small_Rat{-1, 1}, Small_Rat{-1, 127}, true},
-		{Small_Rat{-11, 12}, Small_Rat{-1, 254}, Small_Rat{}, false},
-		{Small_Rat{0, 1}, Small_Rat{-2, 7}, Small_Rat{0, 1}, true},
-		{Small_Rat{7, 8}, Small_Rat{-2, 3}, Small_Rat{-21, 16}, true},
-		{Small_Rat{63, 127}, Small_Rat{-13, 17}, Small_Rat{}, false},
-		{Small_Rat{0, 1}, Small_Rat{0, 1}, Small_Rat{}, false},
-		{Small_Rat{-100, 201}, Small_Rat{-2, 1}, Small_Rat{50, 201}, true},
-		{Small_Rat{-63, 127}, Small_Rat{-7, 1}, Small_Rat{9, 127}, true},
-		{Small_Rat{-3, 4}, Small_Rat{5, 6}, Small_Rat{-9, 10}, true},
-		{Small_Rat{1, 4}, Small_Rat{11, 12}, Small_Rat{3, 11}, true},
-		{Small_Rat{-2, 3}, Small_Rat{4, 5}, Small_Rat{-5, 6}, true},
-		{Small_Rat{-31, 63}, Small_Rat{1, 200}, Small_Rat{}, false},
+		{{n = 1, d = 2}, {n = 1, d = 3}, {n = 3, d = 2}, true},
+		{{n = -1, d = 2}, {n = 1, d = 3}, {n = -3, d = 2}, true},
+		{{n = -1, d = 2}, {n = -1, d = 3}, {n = 3, d = 2}, true},
+		{{n = 0, d = 1}, {n = 7, d = 9}, {n = 0, d = 1}, true},
+		{{n = 1, d = 2}, {n = 0, d = 1}, {}, false}, // division by zero
+		{{n = 0, d = 1}, {n = 0, d = 1}, {}, false},
+		{{n = 1023, d = 1}, {n = 1, d = 1}, {n = 1023, d = 1}, true}, // maximum numerator
+		{{n = -1024, d = 1}, {n = 1, d = 1}, {n = -1024, d = 1}, true}, // minimum numerator
+		{{n = 1023, d = 1}, {n = 1, d = 2}, {}, false},
+		{{n = -1024, d = 1}, {n = -1, d = 1}, {}, false},
+		{{n = 1, d = 31}, {n = 1, d = 1}, {n = 1, d = 31}, true}, // maximum denominator
+		{{n = 1, d = 31}, {n = 2, d = 1}, {}, false}, // irreducible denominator overflow
+		{{n = 2, d = 31}, {n = 2, d = 1}, {n = 1, d = 31}, true}, // oversized denominator reduces
+		{{n = 1023, d = 31}, {n = 33, d = 1}, {n = 1, d = 1}, true}, // cross-cancellation
+		{{n = 1000, d = 31}, {n = 25, d = 31}, {n = 40, d = 1}, true},
+		{{n = 31, d = 29}, {n = -3, d = 1}, {}, false},
+		{{n = -1024, d = 31}, {n = -32, d = 1}, {n = 32, d = 31}, true},
 	}
 
 	for tc, i in cases {

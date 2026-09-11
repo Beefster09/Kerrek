@@ -9,18 +9,23 @@ import "core:slice"
 
 import "../../common/exact"
 
-Small_Rat :: struct {
+NUMERATOR_BITS :: 11
+DENOMINATOR_BITS :: 5
+Small_Rat :: bit_field i16 {
 	// CONSIDER: bit field (which will break some tests)
-	numerator:   i8,
-	denominator: u8,
+	n: i16 | NUMERATOR_BITS,
+	d: u8  | DENOMINATOR_BITS,
 }
 
-RAT_ONE :: Small_Rat{1, 1}
+RAT_ONE :: Small_Rat {
+	n = 1,
+	d = 1,
+}
 
-MIN_NUM :: -1 << 7
-MAX_NUM :: 1 << 7 - 1
+MIN_NUM :: -1 << (NUMERATOR_BITS - 1)
+MAX_NUM :: 1 << (NUMERATOR_BITS - 1) - 1
 MIN_DEN :: 0
-MAX_DEN :: 1 << 8 - 1
+MAX_DEN :: 1 << DENOMINATOR_BITS - 1
 
 rat_from_exact :: proc(value: exact.Rat) -> (Small_Rat, bool) {
 	n, nsmall := value.numerator.(i128)
@@ -32,38 +37,38 @@ rat_from_exact :: proc(value: exact.Rat) -> (Small_Rat, bool) {
 }
 
 add_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
-	l := i32(a.numerator) * i32(b.denominator)
-	r := i32(b.numerator) * i32(a.denominator)
+	l := i32(a.n) * i32(b.d)
+	r := i32(b.n) * i32(a.d)
 	n := l + r
-	d := i32(a.denominator) * i32(b.denominator)
+	d := i32(a.d) * i32(b.d)
 	return _reduce_to_rat(n, d)
 }
 
 sub_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
-	l := i32(a.numerator) * i32(b.denominator)
-	r := i32(b.numerator) * i32(a.denominator)
+	l := i32(a.n) * i32(b.d)
+	r := i32(b.n) * i32(a.d)
 	n := l - r
-	d := i32(a.denominator) * i32(b.denominator)
+	d := i32(a.d) * i32(b.d)
 	return _reduce_to_rat(n, d)
 }
 
 mul_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
-	n := i32(a.numerator) * i32(b.numerator)
-	d := i32(a.denominator) * i32(b.denominator)
+	n := i32(a.n) * i32(b.n)
+	d := i32(a.d) * i32(b.d)
 	return _reduce_to_rat(n, d)
 }
 
 div_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
-	n := i32(a.numerator) * i32(b.denominator)
-	d := i32(a.denominator) * i32(b.numerator)
+	n := i32(a.n) * i32(b.d)
+	d := i32(a.d) * i32(b.n)
 	return _reduce_to_rat(n, d)
 }
 
 cmp_rat :: proc "contextless" (a, b: Small_Rat) -> slice.Ordering {
 	// NOTE: undefined behavior if either denominator == 0
 	// the observed behavior should be infinity-ish, but we don't check
-	l := i32(a.numerator) * i32(b.denominator)
-	r := i32(b.numerator) * i32(a.denominator)
+	l := i32(a.n) * i32(b.d)
+	r := i32(b.n) * i32(a.d)
 	if l < r {
 		return .Less
 	}
@@ -97,7 +102,7 @@ _reduce_to_rat :: proc "contextless" (
 		return {}, false
 	}
 	if n == 0 {
-		return {0, 1}, true
+		return {n = 0, d = 1}, true
 	}
 	gcd := math.gcd(n, d)
 	n /= gcd
@@ -107,30 +112,29 @@ _reduce_to_rat :: proc "contextless" (
 		d = -d
 	}
 	if MIN_NUM <= n && n <= MAX_NUM && MIN_DEN < d && d <= MAX_DEN {
-		return {i8(n), u8(d)}, true
+		return {n = i16(n), d = u8(d)}, true
 	}
 	return {}, false
 }
 
 fmt_rat :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	assert(arg.id == Small_Rat)
+	r := (cast(^Small_Rat)arg.data)^
 	switch verb {
 	case 'v':
-		fmt.fmt_struct(
-			fi,
-			arg,
-			verb,
-			// insane incantation to get the type info of the struct itself
-			type_info_of(Small_Rat).variant.(runtime.Type_Info_Named).base.variant.(runtime.Type_Info_Struct),
-			type_info_of(Small_Rat).variant.(runtime.Type_Info_Named).name,
-		)
+		io.write_string(fi.writer, "Small_Rat(")
+		io.write_int(fi.writer, int(r.n))
+		if r.d != 0 {
+			io.write_rune(fi.writer, '/')
+			io.write_int(fi.writer, int(r.d))
+		}
+		io.write_rune(fi.writer, ')')
 		return true
 	case 's', 'r', 'd':
-		r := (cast(^Small_Rat)arg.data)^
-		io.write_int(fi.writer, int(r.numerator))
-		if r.denominator != 0 {
+		io.write_int(fi.writer, int(r.n))
+		if r.d != 0 {
 			io.write_rune(fi.writer, '/')
-			io.write_int(fi.writer, int(r.denominator))
+			io.write_int(fi.writer, int(r.d))
 		}
 	case:
 		return false

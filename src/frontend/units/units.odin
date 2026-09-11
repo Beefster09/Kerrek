@@ -63,7 +63,7 @@ get_component :: proc(unit: Compound_Unit, #any_int idx: int) -> Unit_Component 
 	case Heap_Compound_Unit:
 		return u.components[idx]
 	case:
-		return {0, {0, 1}}
+		return {0, {n = 0, d = 1}}
 	}
 }
 
@@ -183,14 +183,14 @@ fmt_compound_unit :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 				io.write_int(fi.writer, int(comp.unit))
 			}
 
-			if comp.exp.denominator == 1 {
+			if comp.exp.d == 1 {
 				sup_digits: [dynamic; 3]rune
-				x := abs(i16(comp.exp.numerator))
+				x := abs(i16(comp.exp.n))
 				for x > 0 {
 					append(&sup_digits, SUPERSCRIPT_DIGITS[x % 10])
 					x /= 10
 				}
-				if comp.exp.numerator < 0 {
+				if comp.exp.n < 0 {
 					io.write_rune(fi.writer, SUPERSCRIPT_NEGATIVE)
 				}
 				#reverse for digit in sup_digits {
@@ -198,9 +198,9 @@ fmt_compound_unit :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 				}
 			} else {
 				io.write_string(fi.writer, "^(")
-				io.write_int(fi.writer, int(comp.exp.numerator))
+				io.write_int(fi.writer, int(comp.exp.n))
 				io.write_rune(fi.writer, '/')
-				io.write_int(fi.writer, int(comp.exp.denominator))
+				io.write_int(fi.writer, int(comp.exp.d))
 				io.write_rune(fi.writer, ')')
 			}
 		}
