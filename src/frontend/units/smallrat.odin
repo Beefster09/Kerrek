@@ -5,20 +5,22 @@ import "base:runtime"
 import "core:fmt"
 import "core:io"
 import "core:math"
+import "core:slice"
 
 import "../../common/exact"
 
 Small_Rat :: struct {
+	// CONSIDER: bit field (which will break some tests)
 	numerator:   i8,
 	denominator: u8,
 }
 
 RAT_ONE :: Small_Rat{1, 1}
 
-MIN_I8 :: -1 << 7
-MAX_I8 :: 1 << 7 - 1
-MIN_U8 :: 0
-MAX_U8 :: 1 << 8 - 1
+MIN_NUM :: -1 << 7
+MAX_NUM :: 1 << 7 - 1
+MIN_DEN :: 0
+MAX_DEN :: 1 << 8 - 1
 
 rat_from_exact :: proc(value: exact.Rat) -> (Small_Rat, bool) {
 	n, nsmall := value.numerator.(i128)
@@ -57,29 +59,30 @@ div_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	return _reduce_to_rat(n, d)
 }
 
-cmp_rat :: proc "contextless" (a, b: Small_Rat) -> int {
+cmp_rat :: proc "contextless" (a, b: Small_Rat) -> slice.Ordering {
 	// NOTE: undefined behavior if either denominator == 0
+	// the observed behavior should be infinity-ish, but we don't check
 	l := i32(a.numerator) * i32(b.denominator)
 	r := i32(b.numerator) * i32(a.denominator)
 	if l < r {
-		return -1
+		return .Less
 	}
 	if l > r {
-		return 1
+		return .Greater
 	}
-	return 0
+	return .Equal
 }
 
 lt_rat :: proc "contextless" (a, b: Small_Rat) -> bool {
-	return #force_inline cmp_rat(a, b) < 0
+	return #force_inline cmp_rat(a, b) == .Less
 }
 
 eq_rat :: proc "contextless" (a, b: Small_Rat) -> bool {
-	return #force_inline cmp_rat(a, b) == 0
+	return #force_inline cmp_rat(a, b) == .Equal
 }
 
 gt_rat :: proc "contextless" (a, b: Small_Rat) -> bool {
-	return #force_inline cmp_rat(a, b) > 0
+	return #force_inline cmp_rat(a, b) == .Greater
 }
 
 _reduce_to_rat :: proc "contextless" (
@@ -103,7 +106,7 @@ _reduce_to_rat :: proc "contextless" (
 		n = -n
 		d = -d
 	}
-	if MIN_I8 <= n && n <= MAX_I8 && MIN_U8 < d && d <= MAX_U8 {
+	if MIN_NUM <= n && n <= MAX_NUM && MIN_DEN < d && d <= MAX_DEN {
 		return {i8(n), u8(d)}, true
 	}
 	return {}, false

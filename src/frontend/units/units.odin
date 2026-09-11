@@ -2,6 +2,7 @@ package units
 
 import "core:fmt"
 import "core:io"
+import "core:slice"
 
 import "../../common"
 
@@ -11,7 +12,7 @@ register_unit_name :: proc(id: common.Symbol_ID, name: common.Identifier) {
 	_compound_unit_names[id] = name
 }
 
-Compound_Unit :: union #no_nil {
+Compound_Unit :: union {
 	Inline_Compound_Unit,
 	Heap_Compound_Unit,
 }
@@ -35,14 +36,21 @@ Unit_Component :: struct {
 	exp:  Small_Rat,
 }
 
+Unit_Error :: enum {
+	OK,
+	Unrepresentable_Exponent,
+	Absolute_Relative_Mismatch,
+}
+
 num_components :: proc(unit: Compound_Unit) -> int {
 	switch u in unit {
 	case Inline_Compound_Unit:
 		return int(u.count)
 	case Heap_Compound_Unit:
 		return len(u.components)
+	case:
+		return 0
 	}
-	panic("unreachable")
 }
 
 get_component :: proc(unit: Compound_Unit, #any_int idx: int) -> Unit_Component {
@@ -54,8 +62,100 @@ get_component :: proc(unit: Compound_Unit, #any_int idx: int) -> Unit_Component 
 		return u.components[idx]
 	case Heap_Compound_Unit:
 		return u.components[idx]
+	case:
+		return {0, {0, 1}}
 	}
-	panic("unreachable")
+}
+
+is_absolute :: proc(unit: Compound_Unit) -> bool {
+	switch u in unit {
+	case Inline_Compound_Unit:
+		return u.absolute
+	case Heap_Compound_Unit:
+		return u.absolute
+	case:
+		return false
+	}
+}
+
+// arbitrary sort function: order by descending exponent, ascending symbol id
+// symbol id should roughly correlate with declaration order
+_cmp_components :: proc(a, b: Unit_Component) -> slice.Ordering {
+	exp_cmp := cmp_rat(a.exp, b.exp)
+	if exp_cmp != .Equal {
+		return -exp_cmp
+	}
+
+	if a.unit < b.unit {
+		return .Less
+	}
+	if a.unit > b.unit {
+		return .Greater
+	}
+
+	return .Equal
+}
+
+combine_units :: proc(
+	a: Compound_Unit,
+	a_exp: Small_Rat,
+	b: Compound_Unit,
+	b_exp: Small_Rat,
+) -> (
+	result: Compound_Unit,
+	err: Unit_Error,
+) {
+	if is_absolute(a) != is_absolute(b) {
+		return nil, .Absolute_Relative_Mismatch
+	}
+
+	cmp_out := make([dynamic]Unit_Component, 0, num_components(a) + num_components(b))
+	defer if _, is_inline := result.(Inline_Compound_Unit); err != .OK || is_inline {
+		delete(cmp_out)
+	}
+
+	for cu in ([]Compound_Unit{a, b}) {
+		for i in 0 ..< num_components(cu) {
+			comp := get_component(cu, i)
+			new_exp, ok := mul_rat(comp.exp, a_exp)
+			if !ok {
+				return nil, .Unrepresentable_Exponent
+			}
+
+			found := false
+			for &existing in cmp_out {
+
+				if comp.unit == existing.unit {
+					existing.exp, ok = add_rat(existing.exp, new_exp)
+					if !ok {
+						return nil, .Unrepresentable_Exponent
+					}
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				append(&cmp_out, Unit_Component{comp.unit, new_exp})
+			}
+		}
+	}
+
+	slice.sort_by_cmp(cmp_out[:], _cmp_components)
+
+	if len(cmp_out) <= MAX_INLINE_UNITS {
+		res := Inline_Compound_Unit {
+			count    = u8(len(cmp_out)),
+			absolute = is_absolute(a),
+		}
+		for cmp, i in cmp_out {
+			res.components[i] = cmp
+		}
+		return res, .OK
+	} else {
+		shrink(&cmp_out)
+		return Heap_Compound_Unit{components = cmp_out[:], absolute = is_absolute(a)}, .OK
+	}
 }
 
 
