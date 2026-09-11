@@ -19,13 +19,13 @@ Small_Rat :: bit_field i16 {
 
 RAT_ONE :: Small_Rat {
 	n = 1,
-	d = 1,
+	d = 0,
 }
 
 MIN_NUM :: -1 << (NUMERATOR_BITS - 1)
 MAX_NUM :: 1 << (NUMERATOR_BITS - 1) - 1
-MIN_DEN :: 0
-MAX_DEN :: 1 << DENOMINATOR_BITS - 1
+MIN_DEN :: 1
+MAX_DEN :: 1 << DENOMINATOR_BITS
 
 rat_from_exact :: proc(value: exact.Rat) -> (Small_Rat, bool) {
 	n, nsmall := value.numerator.(i128)
@@ -37,38 +37,36 @@ rat_from_exact :: proc(value: exact.Rat) -> (Small_Rat, bool) {
 }
 
 add_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
-	l := i32(a.n) * i32(b.d)
-	r := i32(b.n) * i32(a.d)
+	l := i32(a.n) * i32(b.d + 1)
+	r := i32(b.n) * i32(a.d + 1)
 	n := l + r
-	d := i32(a.d) * i32(b.d)
+	d := i32(a.d + 1) * i32(b.d + 1)
 	return _reduce_to_rat(n, d)
 }
 
 sub_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
-	l := i32(a.n) * i32(b.d)
-	r := i32(b.n) * i32(a.d)
+	l := i32(a.n) * i32(b.d + 1)
+	r := i32(b.n) * i32(a.d + 1)
 	n := l - r
-	d := i32(a.d) * i32(b.d)
+	d := i32(a.d + 1) * i32(b.d + 1)
 	return _reduce_to_rat(n, d)
 }
 
 mul_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	n := i32(a.n) * i32(b.n)
-	d := i32(a.d) * i32(b.d)
+	d := i32(a.d + 1) * i32(b.d + 1)
 	return _reduce_to_rat(n, d)
 }
 
 div_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
-	n := i32(a.n) * i32(b.d)
-	d := i32(a.d) * i32(b.n)
+	n := i32(a.n) * i32(b.d + 1)
+	d := i32(a.d + 1) * i32(b.n)
 	return _reduce_to_rat(n, d)
 }
 
 cmp_rat :: proc "contextless" (a, b: Small_Rat) -> slice.Ordering {
-	// NOTE: undefined behavior if either denominator == 0
-	// the observed behavior should be infinity-ish, but we don't check
-	l := i32(a.n) * i32(b.d)
-	r := i32(b.n) * i32(a.d)
+	l := i32(a.n) * i32(b.d + 1)
+	r := i32(b.n) * i32(a.d + 1)
 	if l < r {
 		return .Less
 	}
@@ -102,7 +100,7 @@ _reduce_to_rat :: proc "contextless" (
 		return {}, false
 	}
 	if n == 0 {
-		return {n = 0, d = 1}, true
+		return {n = 0, d = 0}, true
 	}
 	gcd := math.gcd(n, d)
 	n /= gcd
@@ -111,8 +109,8 @@ _reduce_to_rat :: proc "contextless" (
 		n = -n
 		d = -d
 	}
-	if MIN_NUM <= n && n <= MAX_NUM && MIN_DEN < d && d <= MAX_DEN {
-		return {n = i16(n), d = u8(d)}, true
+	if MIN_NUM <= n && n <= MAX_NUM && MIN_DEN <= d && d <= MAX_DEN {
+		return {n = i16(n), d = u8(d - 1)}, true
 	}
 	return {}, false
 }
@@ -124,18 +122,14 @@ fmt_rat :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	case 'v':
 		io.write_string(fi.writer, "Small_Rat(")
 		io.write_int(fi.writer, int(r.n))
-		if r.d != 0 {
-			io.write_rune(fi.writer, '/')
-			io.write_int(fi.writer, int(r.d))
-		}
+		io.write_rune(fi.writer, '/')
+		io.write_int(fi.writer, int(r.d + 1))
 		io.write_rune(fi.writer, ')')
 		return true
 	case 's', 'r', 'd':
 		io.write_int(fi.writer, int(r.n))
-		if r.d != 0 {
-			io.write_rune(fi.writer, '/')
-			io.write_int(fi.writer, int(r.d))
-		}
+		io.write_rune(fi.writer, '/')
+		io.write_int(fi.writer, int(r.d + 1))
 	case:
 		return false
 	}

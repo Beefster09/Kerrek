@@ -16,24 +16,29 @@ Rat_Comparison_Case :: struct {
 	expected: slice.Ordering,
 }
 
+rat :: proc(n: i16, d: u8) -> Small_Rat {
+	assert(MIN_DEN <= d && d <= MAX_DEN)
+	return {n = n, d = d - 1}
+}
+
 @(test)
 test_cmp_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Comparison_Case {
-		{{n = 1, d = 3}, {n = 1, d = 2}, .Less},
-		{{n = 1, d = 2}, {n = 1, d = 3}, .Greater},
-		{{n = 1, d = 2}, {n = 1, d = 2}, .Equal},
-		{{n = 2, d = 4}, {n = 1, d = 2}, .Equal}, // unreduced values
-		{{n = 0, d = 31}, {n = 0, d = 1}, .Equal},
-		{{n = -1, d = 2}, {n = -1, d = 3}, .Less},
-		{{n = -1, d = 3}, {n = -1, d = 2}, .Greater},
-		{{n = -1, d = 31}, {n = 0, d = 1}, .Less},
-		{{n = 1, d = 31}, {n = 0, d = 1}, .Greater},
-		{{n = -1024, d = 1}, {n = 1023, d = 1}, .Less}, // numerator boundaries
-		{{n = 1023, d = 31}, {n = 33, d = 1}, .Equal},
-		{{n = 1023, d = 31}, {n = 1022, d = 31}, .Greater},
-		{{n = -1024, d = 31}, {n = -1023, d = 31}, .Less},
-		{{n = 1, d = 31}, {n = 1, d = 30}, .Less}, // denominator boundary
-		{{n = 30, d = 31}, {n = 29, d = 30}, .Greater}, // adjacent cross-products
+		{rat(1, 3), rat(1, 2), .Less},
+		{rat(1, 2), rat(1, 3), .Greater},
+		{rat(1, 2), rat(1, 2), .Equal},
+		{rat(2, 4), rat(1, 2), .Equal}, // unreduced values
+		{rat(0, 32), rat(0, 1), .Equal},
+		{rat(-1, 2), rat(-1, 3), .Less},
+		{rat(-1, 3), rat(-1, 2), .Greater},
+		{rat(-1, 32), rat(0, 1), .Less},
+		{rat(1, 32), rat(0, 1), .Greater},
+		{rat(-1024, 1), rat(1023, 1), .Less}, // numerator boundaries
+		{rat(1023, 31), rat(33, 1), .Equal},
+		{rat(1023, 31), rat(1022, 31), .Greater},
+		{rat(-1024, 31), rat(-1023, 31), .Less},
+		{rat(1, 32), rat(1, 31), .Less}, // denominator boundary
+		{rat(31, 32), rat(30, 31), .Greater}, // adjacent cross-products
 	}
 
 	for tc, i in cases {
@@ -54,24 +59,24 @@ test_cmp_rat :: proc(t: ^testing.T) {
 @(test)
 test_add_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{{n = 1, d = 2}, {n = 1, d = 3}, {n = 5, d = 6}, true},
-		{{n = -1, d = 2}, {n = 1, d = 2}, {n = 0, d = 1}, true},
-		{{n = 0, d = 1}, {n = 7, d = 9}, {n = 7, d = 9}, true},
-		{{n = 7, d = 9}, {n = 0, d = 1}, {n = 7, d = 9}, true},
-		{{n = 5, d = 6}, {n = -1, d = 2}, {n = 1, d = 3}, true},
-		{{n = -5, d = 6}, {n = 1, d = 2}, {n = -1, d = 3}, true},
-		{{n = 1022, d = 1}, {n = 1, d = 1}, {n = 1023, d = 1}, true}, // maximum numerator
-		{{n = 1023, d = 1}, {n = 1, d = 1}, {}, false},
-		{{n = -1023, d = 1}, {n = -1, d = 1}, {n = -1024, d = 1}, true}, // minimum numerator
-		{{n = -1024, d = 1}, {n = -1, d = 1}, {}, false},
-		{{n = 1, d = 31}, {n = 0, d = 1}, {n = 1, d = 31}, true}, // maximum denominator
-		{{n = -1, d = 31}, {n = 0, d = 1}, {n = -1, d = 31}, true},
-		{{n = 1, d = 30}, {n = 1, d = 30}, {n = 1, d = 15}, true}, // oversized intermediate reduces
-		{{n = 1, d = 31}, {n = 1, d = 30}, {}, false}, // irreducible denominator overflow
-		{{n = 511, d = 31}, {n = 512, d = 31}, {n = 33, d = 1}, true},
-		{{n = 1000, d = 31}, {n = 23, d = 31}, {n = 33, d = 1}, true},
-		{{n = -1000, d = 31}, {n = -23, d = 31}, {n = -33, d = 1}, true},
-		{{n = 17, d = 29}, {n = -13, d = 23}, {}, false},
+		{rat(1, 2), rat(1, 3), rat(5, 6), true},
+		{rat(-1, 2), rat(1, 2), rat(0, 1), true},
+		{rat(0, 1), rat(7, 9), rat(7, 9), true},
+		{rat(7, 9), rat(0, 1), rat(7, 9), true},
+		{rat(5, 6), rat(-1, 2), rat(1, 3), true},
+		{rat(-5, 6), rat(1, 2), rat(-1, 3), true},
+		{rat(1022, 1), rat(1, 1), rat(1023, 1), true}, // maximum numerator
+		{rat(1023, 1), rat(1, 1), {}, false},
+		{rat(-1023, 1), rat(-1, 1), rat(-1024, 1), true}, // minimum numerator
+		{rat(-1024, 1), rat(-1, 1), {}, false},
+		{rat(1, 32), rat(0, 1), rat(1, 32), true}, // maximum denominator
+		{rat(-1, 32), rat(0, 1), rat(-1, 32), true},
+		{rat(1, 32), rat(1, 32), rat(1, 16), true}, // oversized intermediate reduces
+		{rat(1, 32), rat(1, 31), {}, false}, // irreducible denominator overflow
+		{rat(511, 31), rat(512, 31), rat(33, 1), true},
+		{rat(1000, 31), rat(23, 31), rat(33, 1), true},
+		{rat(-1000, 31), rat(-23, 31), rat(-33, 1), true},
+		{rat(17, 29), rat(-13, 23), {}, false},
 	}
 
 	for tc, i in cases {
@@ -104,22 +109,22 @@ test_add_rat :: proc(t: ^testing.T) {
 @(test)
 test_sub_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{{n = 1, d = 2}, {n = 1, d = 3}, {n = 1, d = 6}, true},
-		{{n = 1, d = 2}, {n = 1, d = 2}, {n = 0, d = 1}, true},
-		{{n = 0, d = 1}, {n = 7, d = 9}, {n = -7, d = 9}, true},
-		{{n = 7, d = 9}, {n = 0, d = 1}, {n = 7, d = 9}, true},
-		{{n = 5, d = 6}, {n = -1, d = 2}, {n = 4, d = 3}, true},
-		{{n = -5, d = 6}, {n = 1, d = 2}, {n = -4, d = 3}, true},
-		{{n = 1023, d = 1}, {n = 0, d = 1}, {n = 1023, d = 1}, true}, // maximum numerator
-		{{n = 1023, d = 1}, {n = -1, d = 1}, {}, false},
-		{{n = -1024, d = 1}, {n = 0, d = 1}, {n = -1024, d = 1}, true}, // minimum numerator
-		{{n = -1024, d = 1}, {n = 1, d = 1}, {}, false},
-		{{n = 1, d = 31}, {n = 0, d = 1}, {n = 1, d = 31}, true}, // maximum denominator
-		{{n = 1, d = 30}, {n = -1, d = 30}, {n = 1, d = 15}, true}, // oversized intermediate reduces
-		{{n = 1, d = 31}, {n = -1, d = 30}, {}, false}, // irreducible denominator overflow
-		{{n = 512, d = 31}, {n = -511, d = 31}, {n = 33, d = 1}, true},
-		{{n = -512, d = 31}, {n = 511, d = 31}, {n = -33, d = 1}, true},
-		{{n = 17, d = 29}, {n = 13, d = 23}, {}, false},
+		{rat(1, 2), rat(1, 3), rat(1, 6), true},
+		{rat(1, 2), rat(1, 2), rat(0, 1), true},
+		{rat(0, 1), rat(7, 9), rat(-7, 9), true},
+		{rat(7, 9), rat(0, 1), rat(7, 9), true},
+		{rat(5, 6), rat(-1, 2), rat(4, 3), true},
+		{rat(-5, 6), rat(1, 2), rat(-4, 3), true},
+		{rat(1023, 1), rat(0, 1), rat(1023, 1), true}, // maximum numerator
+		{rat(1023, 1), rat(-1, 1), {}, false},
+		{rat(-1024, 1), rat(0, 1), rat(-1024, 1), true}, // minimum numerator
+		{rat(-1024, 1), rat(1, 1), {}, false},
+		{rat(1, 32), rat(0, 1), rat(1, 32), true}, // maximum denominator
+		{rat(1, 32), rat(-1, 32), rat(1, 16), true}, // oversized intermediate reduces
+		{rat(1, 32), rat(-1, 31), {}, false}, // irreducible denominator overflow
+		{rat(512, 31), rat(-511, 31), rat(33, 1), true},
+		{rat(-512, 31), rat(511, 31), rat(-33, 1), true},
+		{rat(17, 29), rat(13, 23), {}, false},
 	}
 
 	for tc, i in cases {
@@ -152,22 +157,22 @@ test_sub_rat :: proc(t: ^testing.T) {
 @(test)
 test_mul_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{{n = 1, d = 2}, {n = 1, d = 3}, {n = 1, d = 6}, true},
-		{{n = -1, d = 2}, {n = 1, d = 3}, {n = -1, d = 6}, true},
-		{{n = -1, d = 2}, {n = -1, d = 3}, {n = 1, d = 6}, true},
-		{{n = 0, d = 1}, {n = 1023, d = 1}, {n = 0, d = 1}, true},
-		{{n = 1023, d = 1}, {n = 1, d = 1}, {n = 1023, d = 1}, true}, // maximum numerator
-		{{n = -1024, d = 1}, {n = 1, d = 1}, {n = -1024, d = 1}, true}, // minimum numerator
-		{{n = 512, d = 1}, {n = 2, d = 1}, {}, false},
-		{{n = -1024, d = 1}, {n = -1, d = 1}, {}, false},
-		{{n = 1, d = 31}, {n = 1, d = 1}, {n = 1, d = 31}, true}, // maximum denominator
-		{{n = 1, d = 31}, {n = 1, d = 2}, {}, false}, // irreducible denominator overflow
-		{{n = 2, d = 31}, {n = 1, d = 2}, {n = 1, d = 31}, true}, // oversized denominator reduces
-		{{n = 1023, d = 31}, {n = 31, d = 3}, {n = 341, d = 1}, true}, // cross-cancellation
-		{{n = 1000, d = 31}, {n = 31, d = 25}, {n = 40, d = 1}, true},
-		{{n = 33, d = 29}, {n = 31, d = 3}, {n = 341, d = 29}, true},
-		{{n = -33, d = 29}, {n = 31, d = 3}, {n = -341, d = 29}, true},
-		{{n = 100, d = 29}, {n = 31, d = 3}, {}, false}, // numerator overflow after reduction
+		{rat(1, 2), rat(1, 3), rat(1, 6), true},
+		{rat(-1, 2), rat(1, 3), rat(-1, 6), true},
+		{rat(-1, 2), rat(-1, 3), rat(1, 6), true},
+		{rat(0, 1), rat(1023, 1), rat(0, 1), true},
+		{rat(1023, 1), rat(1, 1), rat(1023, 1), true}, // maximum numerator
+		{rat(-1024, 1), rat(1, 1), rat(-1024, 1), true}, // minimum numerator
+		{rat(512, 1), rat(2, 1), {}, false},
+		{rat(-1024, 1), rat(-1, 1), {}, false},
+		{rat(1, 32), rat(1, 1), rat(1, 32), true}, // maximum denominator
+		{rat(1, 32), rat(1, 2), {}, false}, // irreducible denominator overflow
+		{rat(2, 32), rat(1, 2), rat(1, 32), true}, // oversized denominator reduces
+		{rat(1023, 31), rat(31, 3), rat(341, 1), true}, // cross-cancellation
+		{rat(1000, 31), rat(31, 25), rat(40, 1), true},
+		{rat(33, 29), rat(31, 3), rat(341, 29), true},
+		{rat(-33, 29), rat(31, 3), rat(-341, 29), true},
+		{rat(100, 29), rat(31, 3), {}, false}, // numerator overflow after reduction
 	}
 
 	for tc, i in cases {
@@ -200,23 +205,23 @@ test_mul_rat :: proc(t: ^testing.T) {
 @(test)
 test_div_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{{n = 1, d = 2}, {n = 1, d = 3}, {n = 3, d = 2}, true},
-		{{n = -1, d = 2}, {n = 1, d = 3}, {n = -3, d = 2}, true},
-		{{n = -1, d = 2}, {n = -1, d = 3}, {n = 3, d = 2}, true},
-		{{n = 0, d = 1}, {n = 7, d = 9}, {n = 0, d = 1}, true},
-		{{n = 1, d = 2}, {n = 0, d = 1}, {}, false}, // division by zero
-		{{n = 0, d = 1}, {n = 0, d = 1}, {}, false},
-		{{n = 1023, d = 1}, {n = 1, d = 1}, {n = 1023, d = 1}, true}, // maximum numerator
-		{{n = -1024, d = 1}, {n = 1, d = 1}, {n = -1024, d = 1}, true}, // minimum numerator
-		{{n = 1023, d = 1}, {n = 1, d = 2}, {}, false},
-		{{n = -1024, d = 1}, {n = -1, d = 1}, {}, false},
-		{{n = 1, d = 31}, {n = 1, d = 1}, {n = 1, d = 31}, true}, // maximum denominator
-		{{n = 1, d = 31}, {n = 2, d = 1}, {}, false}, // irreducible denominator overflow
-		{{n = 2, d = 31}, {n = 2, d = 1}, {n = 1, d = 31}, true}, // oversized denominator reduces
-		{{n = 1023, d = 31}, {n = 33, d = 1}, {n = 1, d = 1}, true}, // cross-cancellation
-		{{n = 1000, d = 31}, {n = 25, d = 31}, {n = 40, d = 1}, true},
-		{{n = 31, d = 29}, {n = -3, d = 1}, {}, false},
-		{{n = -1024, d = 31}, {n = -32, d = 1}, {n = 32, d = 31}, true},
+		{rat(1, 2), rat(1, 3), rat(3, 2), true},
+		{rat(-1, 2), rat(1, 3), rat(-3, 2), true},
+		{rat(-1, 2), rat(-1, 3), rat(3, 2), true},
+		{rat(0, 1), rat(7, 9), rat(0, 1), true},
+		{rat(1, 2), rat(0, 1), {}, false}, // division by zero
+		{rat(0, 1), rat(0, 1), {}, false},
+		{rat(1023, 1), rat(1, 1), rat(1023, 1), true}, // maximum numerator
+		{rat(-1024, 1), rat(1, 1), rat(-1024, 1), true}, // minimum numerator
+		{rat(1023, 1), rat(1, 2), {}, false},
+		{rat(-1024, 1), rat(-1, 1), {}, false},
+		{rat(1, 32), rat(1, 1), rat(1, 32), true}, // maximum denominator
+		{rat(1, 32), rat(2, 1), {}, false}, // irreducible denominator overflow
+		{rat(2, 32), rat(2, 1), rat(1, 32), true}, // oversized denominator reduces
+		{rat(1023, 31), rat(33, 1), rat(1, 1), true}, // cross-cancellation
+		{rat(1000, 31), rat(25, 31), rat(40, 1), true},
+		{rat(31, 29), rat(-3, 1), {}, false},
+		{rat(-1024, 31), rat(-32, 1), rat(32, 31), true},
 	}
 
 	for tc, i in cases {

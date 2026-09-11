@@ -24,11 +24,12 @@ Heap_Compound_Unit :: struct {
 }
 
 #assert(size_of(Inline_Compound_Unit) <= 32)
-MAX_INLINE_UNITS :: 4
+MAX_INLINE_UNITS :: 5
 Inline_Compound_Unit :: struct {
-	components: #soa[MAX_INLINE_UNITS]Unit_Component, // soa to pack better
-	count:      u8,
-	absolute:   bool,
+	comp_base: [MAX_INLINE_UNITS]common.Symbol_ID,
+	comp_exp:  [MAX_INLINE_UNITS]Small_Rat,
+	count:     u8,
+	absolute:  bool,
 }
 
 Unit_Component :: struct {
@@ -59,11 +60,11 @@ get_component :: proc(unit: Compound_Unit, #any_int idx: int) -> Unit_Component 
 		when !ODIN_NO_BOUNDS_CHECK {
 			assert(idx >= 0 && idx < int(u.count))
 		}
-		return u.components[idx]
+		return {u.comp_base[idx], u.comp_exp[idx]}
 	case Heap_Compound_Unit:
 		return u.components[idx]
 	case:
-		return {0, {n = 0, d = 1}}
+		return {}
 	}
 }
 
@@ -149,7 +150,8 @@ combine_units :: proc(
 			absolute = is_absolute(a),
 		}
 		for cmp, i in cmp_out {
-			res.components[i] = cmp
+			res.comp_base[i] = cmp.unit
+			res.comp_exp[i] = cmp.exp
 		}
 		return res, .OK
 	} else {
@@ -183,7 +185,7 @@ fmt_compound_unit :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 				io.write_int(fi.writer, int(comp.unit))
 			}
 
-			if comp.exp.d == 1 {
+			if comp.exp.d == 0 {
 				sup_digits: [dynamic; 3]rune
 				x := abs(i16(comp.exp.n))
 				for x > 0 {
@@ -200,7 +202,7 @@ fmt_compound_unit :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 				io.write_string(fi.writer, "^(")
 				io.write_int(fi.writer, int(comp.exp.n))
 				io.write_rune(fi.writer, '/')
-				io.write_int(fi.writer, int(comp.exp.d))
+				io.write_int(fi.writer, int(comp.exp.d + 1))
 				io.write_rune(fi.writer, ')')
 			}
 		}
