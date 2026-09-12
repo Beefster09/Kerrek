@@ -3,13 +3,34 @@ package resolver
 import "core:fmt"
 
 
+Builtin :: struct {
+	id:        Symbol_ID,
+	name:      Identifier,
+	kind:      Builtin_Kind,
+	namespace: Builtin_Namespace,
+}
+
+Builtin_Kind :: enum {
+	Primitive_Type,
+	Function,
+	Annotation,
+}
+
+Builtin_Namespace :: enum {
+	Prelude,
+	Floats,
+	RTTI,
+	SIMD,
+}
+
+
 FIRST_USER_SYMBOL_ID :: 10_000
 
 // Builtin symbol IDs are assigned from declaration order by initialize. This
 // keeps them deterministic without requiring each builtin to maintain its own
 // ID, and makes adding a builtin unable to collide with an existing ID.
 BUILTINS := [?]Builtin {
-	// Types. Binary floats intentionally live in the intrinsics collection.
+	// Types.
 	{name = "Integer", kind = .Primitive_Type},
 	{name = "Int64", kind = .Primitive_Type},
 	{name = "Int32", kind = .Primitive_Type},
@@ -22,10 +43,14 @@ BUILTINS := [?]Builtin {
 	{name = "Decimal", kind = .Primitive_Type},
 	{name = "Dec64", kind = .Primitive_Type},
 	{name = "Dec32", kind = .Primitive_Type},
+	{name = "Float64", kind = .Primitive_Type, namespace = .Floats},
+	{name = "Float32", kind = .Primitive_Type, namespace = .Floats},
+	{name = "Float16", kind = .Primitive_Type, namespace = .Floats},
 	{name = "Boolean", kind = .Primitive_Type},
 	{name = "String", kind = .Primitive_Type},
 	{name = "Rune", kind = .Primitive_Type},
 	{name = "Byte", kind = .Primitive_Type},
+	{name = "Any", kind = .Primitive_Type, namespace = .RTTI},
 	{name = "Opaque", kind = .Primitive_Type},
 	{name = "Opaque8", kind = .Primitive_Type},
 	{name = "Opaque16", kind = .Primitive_Type},
@@ -33,7 +58,6 @@ BUILTINS := [?]Builtin {
 	{name = "Opaque64", kind = .Primitive_Type},
 	// Annotations.
 	{name = "deprecated", kind = .Annotation},
-	{name = "forward", kind = .Annotation},
 	{name = "pure", kind = .Annotation},
 	{name = "layout", kind = .Annotation},
 	{name = "calling_convention", kind = .Annotation},
@@ -47,26 +71,28 @@ BUILTINS := [?]Builtin {
 	{name = "shared_deep_clone", kind = .Function},
 }
 
-_builtins_by_name: map[Identifier]Builtin
+_builtins_prelude: map[Identifier]Builtin
 
 initialize :: proc() {
-	_builtins_by_name = make(map[Identifier]Builtin)
+	_builtins_prelude = make(map[Identifier]Builtin)
 
 	for &builtin, index in BUILTINS {
 		builtin.id = Symbol_ID(index + 1)
-		assert(
+		fmt.assertf(
 			builtin.id != 0 && builtin.id < FIRST_USER_SYMBOL_ID,
-			fmt.tprintf("builtin %q has symbol ID %d outside the builtin range", builtin.name, builtin.id),
+			"builtin %q has symbol ID %d outside the builtin range",
+			builtin.name,
+			builtin.id,
 		)
 
-		_, duplicate_name := _builtins_by_name[builtin.name]
-		assert(!duplicate_name, fmt.tprintf("duplicate builtin name %q", builtin.name))
-		_builtins_by_name[builtin.name] = builtin
+		_, duplicate_name := _builtins_prelude[builtin.name]
+		fmt.assertf(!duplicate_name, "duplicate builtin name %q", builtin.name)
+		_builtins_prelude[builtin.name] = builtin
 	}
 }
 
 builtin_lookup :: proc(name: Identifier) -> Named {
-	if builtin, ok := _builtins_by_name[name]; ok {
+	if builtin, ok := _builtins_prelude[name]; ok {
 		return builtin
 	}
 	return nil

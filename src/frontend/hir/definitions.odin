@@ -32,7 +32,7 @@ Func_Overload_Group :: struct {
 
 Struct_Field :: struct {
 	span:        Span,
-	name:        Identifier,
+	name:        Name,
 	type:        Type,
 	requires:    ^Capability_Expression,
 	annotations: []^Annotation,
@@ -49,7 +49,7 @@ Struct_Type :: struct {
 
 Interface_Method :: struct {
 	span:         Span,
-	name:         Identifier,
+	name:         Name,
 	params:       []^Formal_Parameter,
 	return_types: []Type,
 	error_type:   Type,
@@ -83,7 +83,7 @@ Interface_Impl :: struct {
 
 Enum_Variant :: struct {
 	span:    Span,
-	name:    Maybe(Identifier),
+	name:    Maybe(Name),
 	payload: Type,
 	slot:    int,
 }

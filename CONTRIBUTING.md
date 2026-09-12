@@ -8,14 +8,15 @@ Be civil. This is not a place for personal attacks or hostility. Do not call for
 
 Constructive criticism is welcome and encouraged. The goal is to be respectful and help people learn to be better programmers, not just to be right.
 
-## AI Contribution Policy
+# AI Contribution Policy
 
 AI-generated code is allowed, provided the following conditions are met:
 
 1. Disclose use. Every commit assisted by AI agents must be accompanied by a statement of which harness you used (e.g. Claude, Codex, Cursor) and ideally also which models generated code.
 2. You understand the code. Show evidence that you have read and understood every line of your contribution and that you can explain your changes without consulting AI. If you can't bother to put in the effort for a detailed code review, why should I?
 3. Contribution volume is kept reasonable. Flooding the PR queue with AI slop wastes everyone's time and hurts the reputation of the project.
-4. Do not write comments (including PR descriptions) with AI. When you post a comment written by AI, it shows everyone that you do not value everyone else's time; it's just plain disrespectful.
+4. Discussions, posts, PR comments, messages, etc... should be written primarily by you. Translation services are fine if English is not your first language, but don't be a meat proxy for your LLM. Messages intended to be read by humans should be written by humans.
+    - Code comments written by AI are fine. We'll sort out the overly verbose and redundant comments that LLMs like to write during code reviews.
 
 Blatant and repeated failure to comply will likely result in a permanent ban from the project.
 

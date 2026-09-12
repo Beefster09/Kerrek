@@ -17,7 +17,7 @@ Type :: union {
 	^Map_Type,
 	^Optional_Type,
 	^Pointer_Type,
-	^Type_With_Tags,
+	^Tagged_Type,
 }
 
 Primitive_Type :: enum {
@@ -35,6 +35,7 @@ Primitive_Type :: enum {
 	Dec32,
 	Float64,
 	Float32,
+	Float16,
 	Boolean,
 	String,
 	Rune,
@@ -86,7 +87,7 @@ Pointer_Type :: struct {
 	nullable:  bool,
 }
 
-Type_With_Tags :: struct {
+Tagged_Type :: struct {
 	base: Type,
 	tags: []Symbol_ID,
 }

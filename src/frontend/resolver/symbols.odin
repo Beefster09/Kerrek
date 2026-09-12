@@ -150,16 +150,6 @@ Partial_Symbol :: union {
 	^Named_Return,
 }
 
-Builtin :: struct {
-	id:   Symbol_ID,
-	name: Identifier,
-	kind: enum {
-		Primitive_Type,
-		Function,
-		Annotation,
-	},
-}
-
 Named :: intrinsics.type_merge(union {
 		^Package,
 		Builtin,
