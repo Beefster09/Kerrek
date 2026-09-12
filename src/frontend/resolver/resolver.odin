@@ -15,48 +15,7 @@ import "../parser"
 import "../units"
 
 
-FIRST_USER_SYMBOL_ID :: 10_000
 KERREK_FILE_EXTENSION :: ".krk"
-
-@(rodata)
-BUILTIN_NAMES := [?]string {
-	// Types. Binary floats intentionally live in the intrinsics collection.
-	"Integer",
-	"Int64",
-	"Int32",
-	"Int16",
-	"Int8",
-	"UInt64",
-	"UInt32",
-	"UInt16",
-	"UInt8",
-	"Decimal",
-	"Dec64",
-	"Dec32",
-	"Boolean",
-	"String",
-	"Rune",
-	"Byte",
-	"Opaque",
-	"Opaque8",
-	"Opaque16",
-	"Opaque32",
-	"Opaque64",
-	// Annotations.
-	"deprecated",
-	"forward",
-	"pure",
-	"layout",
-	"calling_convention",
-	// Functions.
-	"len",
-	"cap",
-	"append",
-	"owned_shallow_clone",
-	"owned_deep_clone",
-	"shared_shallow_clone",
-	"shared_deep_clone",
-}
 
 Resolver :: struct {
 	project_root:   string,
@@ -281,13 +240,6 @@ scope_lookup :: proc(scope: ^Scope, name: Identifier) -> Named {
 			return nil
 		}
 	}
-}
-
-builtin_lookup :: proc(name: Identifier) -> Named {
-	for builtin_name in BUILTIN_NAMES {
-		if string(name) == builtin_name do return Builtin{0, name, .Primitive_Type} // TODO: better table
-	}
-	return nil
 }
 
 partial_resolve :: proc {
