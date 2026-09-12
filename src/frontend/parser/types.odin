@@ -27,7 +27,7 @@ _type_expr :: proc(ps: ^Parser_State, allow_generics := false) -> ast.Type_Expre
 			diagnostics.emit(.Syntax_Error, tok.span, "generic types are not allowed here")
 		}
 
-	case Punctuation.Caret, Keyword.Owned, Keyword.Shared, Keyword.Weak, Keyword.Unsafe_Ptr:
+	case Punctuation.Caret, Keyword.Owned, Keyword.Shared, Keyword.Weak:
 		typ = _pointer_type(ps)
 
 	case Punctuation.LSquare:
@@ -123,8 +123,6 @@ _pointer_type :: proc(ps: ^Parser_State) -> ast.Type_Expression {
 		ownership = .Shared
 	case Keyword.Weak:
 		ownership = .Weak
-	case Keyword.Unsafe_Ptr:
-		ownership = .Unsafe
 	case:
 		diagnostics.emit(.Syntax_Error, prefix.span, "invalid prefix of pointer type")
 		return nil

@@ -4,6 +4,7 @@ import "base:intrinsics"
 
 import "../../common"
 import "../ast"
+import "../hir"
 import "../units"
 
 
@@ -21,13 +22,13 @@ _Symbol_Header :: struct {
 Function :: struct {
 	using _: _Symbol_Header,
 	ast:     ^ast.Func_Definition,
-	hir:     rawptr, // TODO: replace when the HIR is ported
+	hir:     ^hir.Func_Definition,
 }
 
 Type_Alias :: struct {
 	using _: _Symbol_Header,
 	ast:     ^ast.Type_Alias,
-	hir:     rawptr, // TODO: replace when the HIR is ported
+	hir:     hir.Type,
 }
 
 // These type variants are not produced by the parser yet, but keeping the
@@ -35,19 +36,19 @@ Type_Alias :: struct {
 Distinct_Type :: struct {
 	using _: _Symbol_Header,
 	ast:     rawptr,
-	hir:     rawptr,
+	hir:     ^hir.Distinct_Type,
 }
 
 Struct_Type :: struct {
 	using _: _Symbol_Header,
 	ast:     rawptr,
-	hir:     rawptr,
+	hir:     ^hir.Struct_Type,
 }
 
 Enum_Type :: struct {
 	using _: _Symbol_Header,
 	ast:     rawptr,
-	hir:     rawptr,
+	hir:     ^hir.Enum_Type,
 }
 
 Type_Definition :: union {
@@ -66,25 +67,25 @@ Constant :: struct {
 Global_Variable :: struct {
 	using _: _Symbol_Header,
 	ast:     ^ast.Global_Variable,
-	hir:     rawptr, // TODO: replace when the HIR is ported
+	hir:     ^hir.Global_Variable,
 }
 
 Local_Variable :: struct {
 	using _: _Symbol_Header,
 	ast:     ^ast.Local_Variable,
-	hir:     rawptr, // TODO: replace when the HIR is ported
+	hir:     ^hir.Local_Variable,
 }
 
 Unit_Type :: struct {
 	using _: _Symbol_Header,
 	ast:     ^ast.Unit_Type_Decl,
-	hir:     rawptr, // TODO: replace when the HIR is ported
+	hir:     ^hir.Unit_Type,
 }
 
 Base_Unit :: struct {
 	using _: _Symbol_Header,
 	ast:     ^ast.Unit_Decl,
-	hir:     rawptr, // TODO: replace when the HIR is ported
+	hir:     ^hir.Base_Unit,
 }
 
 Unit_Type_Alias :: struct {
@@ -104,25 +105,25 @@ Unit_Alias :: struct {
 Capability :: struct {
 	using _: _Symbol_Header,
 	ast:     ^ast.Capability_Decl,
-	hir:     rawptr, // TODO: replace when the HIR is ported
+	hir:     ^hir.Capability,
 }
 
 Annotation :: struct {
 	using _: _Symbol_Header,
 	ast:     ^ast.Annotation_Def,
-	hir:     rawptr, // TODO: replace when the HIR is ported
+	hir:     ^hir.Annotation_Def,
 }
 
 Formal_Parameter :: struct {
 	using _: _Symbol_Header,
 	ast:     ^ast.Formal_Parameter,
-	hir:     rawptr, // TODO: replace when the HIR is ported
+	hir:     ^hir.Formal_Parameter,
 }
 
 Named_Return :: struct {
 	using _: _Symbol_Header,
 	ast:     ^ast.Func_Return,
-	hir:     rawptr, // TODO: replace when the HIR is ported
+	hir:     ^hir.Func_Return,
 }
 
 Partial_Symbol :: union {
