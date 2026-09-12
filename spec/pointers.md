@@ -28,13 +28,15 @@ Weak pointers do not keep shared or owned values alive and become semantically `
 
 Weak pointers make no guarantees about validity across concurrency boundaries; it is theoretically possible for a race condition to exist between checking the validity of a weak pointer and dereferencing it. In practice, creating a situation where this could happen would require deliberate subversion of the async/await concurrency model.
 
-## Borrow pointer `^`
+## Borrow pointer (`^`)
 
 Borrow pointers may be assigned from `owned`, `shared`, or `weak` pointers or any interior values thereof.
 
 Borrow pointers may not outlive the scope they were assigned from.
 
-## `unsafe_ptr`
+## `unsafe.Pointer`
+
+Unsafe pointers are exposed via the package `intrinsics:unsafe` and are fully parameterized types so that they can point to any concrete type. That package additionally exposes RawPtr, which is roughly equivalent to a `void*` in C.
 
 These pointers primarily exist for C interop and make no promises about lifetime or validity.
 

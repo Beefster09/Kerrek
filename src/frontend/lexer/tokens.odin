@@ -204,8 +204,9 @@ Keyword :: enum {
 	Owned,
 	Shared,
 	Weak,
-	Unsafe_Ptr,
 	Foreign,
+	// note to Codex for purposes of porting: unsafe_ptr was intentionally removed
+	// unsafe pointers are going to be exposed via package intrinsics:unsafe
 }
 
 @(rodata)
@@ -264,6 +265,5 @@ KEYWORD_STRINGS := [Keyword]string {
 	.Owned       = "owned",
 	.Shared      = "shared",
 	.Weak        = "weak",
-	.Unsafe_Ptr  = "unsafe_ptr",
 	.Foreign     = "foreign",
 }

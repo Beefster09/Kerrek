@@ -76,7 +76,7 @@ enum Bar {
 
 Each variant with an assigned slot must be assigned a different integer slot. Numeric slots may be negative. The tag stored to identify which variant the value is *must* be large enough to hold the largest explicit slot number
 
-All other variants are assigned arbitrary unique positive slots. Programmers should not depend on variants having specific slot numbers unless they are explicitly assigned.
+All other variants are assigned arbitrary unique positive slots. Users should not depend on variants having specific slot numbers unless they are explicitly assigned.
 
 Enums support equality if and only if all of its variants with payloads are types supporting equality
 
