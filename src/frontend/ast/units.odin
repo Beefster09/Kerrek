@@ -79,11 +79,11 @@ Unit_Exponent :: union {
 
 Integer_Unit_Exponent :: struct {
 	span: Span,
-	exp:  i8,
+	exp:  int,
 }
 
 Rational_Unit_Exponent :: struct {
 	span: Span,
-	num:  i8,
-	den:  u8,
+	num:  int,
+	den:  int,
 }

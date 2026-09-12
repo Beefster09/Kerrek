@@ -1,3 +1,4 @@
+#+test
 package units
 
 import "core:slice"
@@ -16,7 +17,7 @@ Rat_Comparison_Case :: struct {
 	expected: slice.Ordering,
 }
 
-rat :: proc(n: i16, d: u8) -> Small_Rat {
+_rat :: proc(n: i16, d: u8) -> Small_Rat {
 	assert(MIN_DEN <= d && d <= MAX_DEN)
 	return {n = n, d = d - 1}
 }
@@ -24,21 +25,21 @@ rat :: proc(n: i16, d: u8) -> Small_Rat {
 @(test)
 test_cmp_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Comparison_Case {
-		{rat(1, 3), rat(1, 2), .Less},
-		{rat(1, 2), rat(1, 3), .Greater},
-		{rat(1, 2), rat(1, 2), .Equal},
-		{rat(2, 4), rat(1, 2), .Equal}, // unreduced values
-		{rat(0, 32), rat(0, 1), .Equal},
-		{rat(-1, 2), rat(-1, 3), .Less},
-		{rat(-1, 3), rat(-1, 2), .Greater},
-		{rat(-1, 32), rat(0, 1), .Less},
-		{rat(1, 32), rat(0, 1), .Greater},
-		{rat(-1024, 1), rat(1023, 1), .Less}, // numerator boundaries
-		{rat(1023, 31), rat(33, 1), .Equal},
-		{rat(1023, 31), rat(1022, 31), .Greater},
-		{rat(-1024, 31), rat(-1023, 31), .Less},
-		{rat(1, 32), rat(1, 31), .Less}, // denominator boundary
-		{rat(31, 32), rat(30, 31), .Greater}, // adjacent cross-products
+		{_rat(1, 3), _rat(1, 2), .Less},
+		{_rat(1, 2), _rat(1, 3), .Greater},
+		{_rat(1, 2), _rat(1, 2), .Equal},
+		{_rat(2, 4), _rat(1, 2), .Equal}, // unreduced values
+		{_rat(0, 32), _rat(0, 1), .Equal},
+		{_rat(-1, 2), _rat(-1, 3), .Less},
+		{_rat(-1, 3), _rat(-1, 2), .Greater},
+		{_rat(-1, 32), _rat(0, 1), .Less},
+		{_rat(1, 32), _rat(0, 1), .Greater},
+		{_rat(-1024, 1), _rat(1023, 1), .Less}, // numerator boundaries
+		{_rat(1023, 31), _rat(33, 1), .Equal},
+		{_rat(1023, 31), _rat(1022, 31), .Greater},
+		{_rat(-1024, 31), _rat(-1023, 31), .Less},
+		{_rat(1, 32), _rat(1, 31), .Less}, // denominator boundary
+		{_rat(31, 32), _rat(30, 31), .Greater}, // adjacent cross-products
 	}
 
 	for tc, i in cases {
@@ -59,24 +60,24 @@ test_cmp_rat :: proc(t: ^testing.T) {
 @(test)
 test_add_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{rat(1, 2), rat(1, 3), rat(5, 6), true},
-		{rat(-1, 2), rat(1, 2), rat(0, 1), true},
-		{rat(0, 1), rat(7, 9), rat(7, 9), true},
-		{rat(7, 9), rat(0, 1), rat(7, 9), true},
-		{rat(5, 6), rat(-1, 2), rat(1, 3), true},
-		{rat(-5, 6), rat(1, 2), rat(-1, 3), true},
-		{rat(1022, 1), rat(1, 1), rat(1023, 1), true}, // maximum numerator
-		{rat(1023, 1), rat(1, 1), {}, false},
-		{rat(-1023, 1), rat(-1, 1), rat(-1024, 1), true}, // minimum numerator
-		{rat(-1024, 1), rat(-1, 1), {}, false},
-		{rat(1, 32), rat(0, 1), rat(1, 32), true}, // maximum denominator
-		{rat(-1, 32), rat(0, 1), rat(-1, 32), true},
-		{rat(1, 32), rat(1, 32), rat(1, 16), true}, // oversized intermediate reduces
-		{rat(1, 32), rat(1, 31), {}, false}, // irreducible denominator overflow
-		{rat(511, 31), rat(512, 31), rat(33, 1), true},
-		{rat(1000, 31), rat(23, 31), rat(33, 1), true},
-		{rat(-1000, 31), rat(-23, 31), rat(-33, 1), true},
-		{rat(17, 29), rat(-13, 23), {}, false},
+		{_rat(1, 2), _rat(1, 3), _rat(5, 6), true},
+		{_rat(-1, 2), _rat(1, 2), _rat(0, 1), true},
+		{_rat(0, 1), _rat(7, 9), _rat(7, 9), true},
+		{_rat(7, 9), _rat(0, 1), _rat(7, 9), true},
+		{_rat(5, 6), _rat(-1, 2), _rat(1, 3), true},
+		{_rat(-5, 6), _rat(1, 2), _rat(-1, 3), true},
+		{_rat(1022, 1), _rat(1, 1), _rat(1023, 1), true}, // maximum numerator
+		{_rat(1023, 1), _rat(1, 1), {}, false},
+		{_rat(-1023, 1), _rat(-1, 1), _rat(-1024, 1), true}, // minimum numerator
+		{_rat(-1024, 1), _rat(-1, 1), {}, false},
+		{_rat(1, 32), _rat(0, 1), _rat(1, 32), true}, // maximum denominator
+		{_rat(-1, 32), _rat(0, 1), _rat(-1, 32), true},
+		{_rat(1, 32), _rat(1, 32), _rat(1, 16), true}, // oversized intermediate reduces
+		{_rat(1, 32), _rat(1, 31), {}, false}, // irreducible denominator overflow
+		{_rat(511, 31), _rat(512, 31), _rat(33, 1), true},
+		{_rat(1000, 31), _rat(23, 31), _rat(33, 1), true},
+		{_rat(-1000, 31), _rat(-23, 31), _rat(-33, 1), true},
+		{_rat(17, 29), _rat(-13, 23), {}, false},
 	}
 
 	for tc, i in cases {
@@ -109,22 +110,22 @@ test_add_rat :: proc(t: ^testing.T) {
 @(test)
 test_sub_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{rat(1, 2), rat(1, 3), rat(1, 6), true},
-		{rat(1, 2), rat(1, 2), rat(0, 1), true},
-		{rat(0, 1), rat(7, 9), rat(-7, 9), true},
-		{rat(7, 9), rat(0, 1), rat(7, 9), true},
-		{rat(5, 6), rat(-1, 2), rat(4, 3), true},
-		{rat(-5, 6), rat(1, 2), rat(-4, 3), true},
-		{rat(1023, 1), rat(0, 1), rat(1023, 1), true}, // maximum numerator
-		{rat(1023, 1), rat(-1, 1), {}, false},
-		{rat(-1024, 1), rat(0, 1), rat(-1024, 1), true}, // minimum numerator
-		{rat(-1024, 1), rat(1, 1), {}, false},
-		{rat(1, 32), rat(0, 1), rat(1, 32), true}, // maximum denominator
-		{rat(1, 32), rat(-1, 32), rat(1, 16), true}, // oversized intermediate reduces
-		{rat(1, 32), rat(-1, 31), {}, false}, // irreducible denominator overflow
-		{rat(512, 31), rat(-511, 31), rat(33, 1), true},
-		{rat(-512, 31), rat(511, 31), rat(-33, 1), true},
-		{rat(17, 29), rat(13, 23), {}, false},
+		{_rat(1, 2), _rat(1, 3), _rat(1, 6), true},
+		{_rat(1, 2), _rat(1, 2), _rat(0, 1), true},
+		{_rat(0, 1), _rat(7, 9), _rat(-7, 9), true},
+		{_rat(7, 9), _rat(0, 1), _rat(7, 9), true},
+		{_rat(5, 6), _rat(-1, 2), _rat(4, 3), true},
+		{_rat(-5, 6), _rat(1, 2), _rat(-4, 3), true},
+		{_rat(1023, 1), _rat(0, 1), _rat(1023, 1), true}, // maximum numerator
+		{_rat(1023, 1), _rat(-1, 1), {}, false},
+		{_rat(-1024, 1), _rat(0, 1), _rat(-1024, 1), true}, // minimum numerator
+		{_rat(-1024, 1), _rat(1, 1), {}, false},
+		{_rat(1, 32), _rat(0, 1), _rat(1, 32), true}, // maximum denominator
+		{_rat(1, 32), _rat(-1, 32), _rat(1, 16), true}, // oversized intermediate reduces
+		{_rat(1, 32), _rat(-1, 31), {}, false}, // irreducible denominator overflow
+		{_rat(512, 31), _rat(-511, 31), _rat(33, 1), true},
+		{_rat(-512, 31), _rat(511, 31), _rat(-33, 1), true},
+		{_rat(17, 29), _rat(13, 23), {}, false},
 	}
 
 	for tc, i in cases {
@@ -157,22 +158,22 @@ test_sub_rat :: proc(t: ^testing.T) {
 @(test)
 test_mul_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{rat(1, 2), rat(1, 3), rat(1, 6), true},
-		{rat(-1, 2), rat(1, 3), rat(-1, 6), true},
-		{rat(-1, 2), rat(-1, 3), rat(1, 6), true},
-		{rat(0, 1), rat(1023, 1), rat(0, 1), true},
-		{rat(1023, 1), rat(1, 1), rat(1023, 1), true}, // maximum numerator
-		{rat(-1024, 1), rat(1, 1), rat(-1024, 1), true}, // minimum numerator
-		{rat(512, 1), rat(2, 1), {}, false},
-		{rat(-1024, 1), rat(-1, 1), {}, false},
-		{rat(1, 32), rat(1, 1), rat(1, 32), true}, // maximum denominator
-		{rat(1, 32), rat(1, 2), {}, false}, // irreducible denominator overflow
-		{rat(2, 32), rat(1, 2), rat(1, 32), true}, // oversized denominator reduces
-		{rat(1023, 31), rat(31, 3), rat(341, 1), true}, // cross-cancellation
-		{rat(1000, 31), rat(31, 25), rat(40, 1), true},
-		{rat(33, 29), rat(31, 3), rat(341, 29), true},
-		{rat(-33, 29), rat(31, 3), rat(-341, 29), true},
-		{rat(100, 29), rat(31, 3), {}, false}, // numerator overflow after reduction
+		{_rat(1, 2), _rat(1, 3), _rat(1, 6), true},
+		{_rat(-1, 2), _rat(1, 3), _rat(-1, 6), true},
+		{_rat(-1, 2), _rat(-1, 3), _rat(1, 6), true},
+		{_rat(0, 1), _rat(1023, 1), _rat(0, 1), true},
+		{_rat(1023, 1), _rat(1, 1), _rat(1023, 1), true}, // maximum numerator
+		{_rat(-1024, 1), _rat(1, 1), _rat(-1024, 1), true}, // minimum numerator
+		{_rat(512, 1), _rat(2, 1), {}, false},
+		{_rat(-1024, 1), _rat(-1, 1), {}, false},
+		{_rat(1, 32), _rat(1, 1), _rat(1, 32), true}, // maximum denominator
+		{_rat(1, 32), _rat(1, 2), {}, false}, // irreducible denominator overflow
+		{_rat(2, 32), _rat(1, 2), _rat(1, 32), true}, // oversized denominator reduces
+		{_rat(1023, 31), _rat(31, 3), _rat(341, 1), true}, // cross-cancellation
+		{_rat(1000, 31), _rat(31, 25), _rat(40, 1), true},
+		{_rat(33, 29), _rat(31, 3), _rat(341, 29), true},
+		{_rat(-33, 29), _rat(31, 3), _rat(-341, 29), true},
+		{_rat(100, 29), _rat(31, 3), {}, false}, // numerator overflow after reduction
 	}
 
 	for tc, i in cases {
@@ -205,23 +206,23 @@ test_mul_rat :: proc(t: ^testing.T) {
 @(test)
 test_div_rat :: proc(t: ^testing.T) {
 	cases := [?]Rat_Binary_Case {
-		{rat(1, 2), rat(1, 3), rat(3, 2), true},
-		{rat(-1, 2), rat(1, 3), rat(-3, 2), true},
-		{rat(-1, 2), rat(-1, 3), rat(3, 2), true},
-		{rat(0, 1), rat(7, 9), rat(0, 1), true},
-		{rat(1, 2), rat(0, 1), {}, false}, // division by zero
-		{rat(0, 1), rat(0, 1), {}, false},
-		{rat(1023, 1), rat(1, 1), rat(1023, 1), true}, // maximum numerator
-		{rat(-1024, 1), rat(1, 1), rat(-1024, 1), true}, // minimum numerator
-		{rat(1023, 1), rat(1, 2), {}, false},
-		{rat(-1024, 1), rat(-1, 1), {}, false},
-		{rat(1, 32), rat(1, 1), rat(1, 32), true}, // maximum denominator
-		{rat(1, 32), rat(2, 1), {}, false}, // irreducible denominator overflow
-		{rat(2, 32), rat(2, 1), rat(1, 32), true}, // oversized denominator reduces
-		{rat(1023, 31), rat(33, 1), rat(1, 1), true}, // cross-cancellation
-		{rat(1000, 31), rat(25, 31), rat(40, 1), true},
-		{rat(31, 29), rat(-3, 1), {}, false},
-		{rat(-1024, 31), rat(-32, 1), rat(32, 31), true},
+		{_rat(1, 2), _rat(1, 3), _rat(3, 2), true},
+		{_rat(-1, 2), _rat(1, 3), _rat(-3, 2), true},
+		{_rat(-1, 2), _rat(-1, 3), _rat(3, 2), true},
+		{_rat(0, 1), _rat(7, 9), _rat(0, 1), true},
+		{_rat(1, 2), _rat(0, 1), {}, false}, // division by zero
+		{_rat(0, 1), _rat(0, 1), {}, false},
+		{_rat(1023, 1), _rat(1, 1), _rat(1023, 1), true}, // maximum numerator
+		{_rat(-1024, 1), _rat(1, 1), _rat(-1024, 1), true}, // minimum numerator
+		{_rat(1023, 1), _rat(1, 2), {}, false},
+		{_rat(-1024, 1), _rat(-1, 1), {}, false},
+		{_rat(1, 32), _rat(1, 1), _rat(1, 32), true}, // maximum denominator
+		{_rat(1, 32), _rat(2, 1), {}, false}, // irreducible denominator overflow
+		{_rat(2, 32), _rat(2, 1), _rat(1, 32), true}, // oversized denominator reduces
+		{_rat(1023, 31), _rat(33, 1), _rat(1, 1), true}, // cross-cancellation
+		{_rat(1000, 31), _rat(25, 31), _rat(40, 1), true},
+		{_rat(31, 29), _rat(-3, 1), {}, false},
+		{_rat(-1024, 31), _rat(-32, 1), _rat(32, 31), true},
 	}
 
 	for tc, i in cases {

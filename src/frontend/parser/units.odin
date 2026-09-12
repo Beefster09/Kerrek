@@ -33,7 +33,7 @@ _compound_unit :: proc(ps: ^Parser_State, required := false) -> ^ast.Compound_Un
 			if exp.format == .DecimalInteger {
 				if exp128, ok := exp.value.numerator.(i128);
 				   ok && -128 <= exp128 && exp128 <= 127 {
-					exponent = ast.Integer_Unit_Exponent{m[1].span, i8(exp128)}
+					exponent = ast.Integer_Unit_Exponent{m[1].span, int(exp128)}
 				} else {
 					diagnostics.emit(
 						.Syntax_Error,
@@ -62,13 +62,13 @@ _compound_unit :: proc(ps: ^Parser_State, required := false) -> ^ast.Compound_Un
 			den := m[4].what.(Numeric)
 
 			if num.format == .DecimalInteger && den.format == .DecimalInteger {
-				num8: i8
-				den8: u8
+				small_num: int
+				small_den: int
 				in_range := true
 
 				if num128, ok := num.value.numerator.(i128);
-				   ok && -128 <= num128 && num128 <= 127 {
-					num8 = i8(num128)
+				   ok && -1 << 63 <= num128 && num128 <= 1 << 63 - 1 {
+					small_num = int(num128)
 				} else {
 					in_range = false
 					diagnostics.emit(
@@ -78,8 +78,9 @@ _compound_unit :: proc(ps: ^Parser_State, required := false) -> ^ast.Compound_Un
 					)
 				}
 
-				if den128, ok := den.value.numerator.(i128); ok && 0 <= den128 && den128 <= 255 {
-					den8 = u8(den128)
+				if den128, ok := den.value.numerator.(i128);
+				   ok && 1 < den128 && den128 <= 1 << 63 - 1 {
+					small_den = int(den128)
 				} else {
 					in_range = false
 					diagnostics.emit(
@@ -92,8 +93,8 @@ _compound_unit :: proc(ps: ^Parser_State, required := false) -> ^ast.Compound_Un
 				if in_range {
 					exponent = ast.Rational_Unit_Exponent {
 						common.merge_spans(m[2].span, m[4].span),
-						num8,
-						den8,
+						small_num,
+						small_den,
 					}
 				}
 

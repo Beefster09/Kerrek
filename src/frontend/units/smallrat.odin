@@ -33,11 +33,16 @@ MAX_NUM :: 1 << (NUMERATOR_BITS - 1) - 1
 MIN_DEN :: 1
 MAX_DEN :: 1 << DENOMINATOR_BITS
 
+rat :: proc {
+	rat_from_exact,
+	rat_from_ints,
+}
+
 rat_from_exact :: proc(value: exact.Rat) -> (Small_Rat, bool) {
 	n, nsmall := value.numerator.(i128)
 	d, dsmall := value.denominator.(i128)
 	if nsmall && dsmall {
-		return _reduce_to_rat(n, d)
+		return #force_inline rat_from_ints(n, d)
 	}
 	return {}, false
 }
@@ -47,7 +52,7 @@ add_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	r := i32(b.n) * i32(a.d + 1)
 	n := l + r
 	d := i32(a.d + 1) * i32(b.d + 1)
-	return _reduce_to_rat(n, d)
+	return #force_inline rat_from_ints(n, d)
 }
 
 sub_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
@@ -55,19 +60,19 @@ sub_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	r := i32(b.n) * i32(a.d + 1)
 	n := l - r
 	d := i32(a.d + 1) * i32(b.d + 1)
-	return _reduce_to_rat(n, d)
+	return #force_inline rat_from_ints(n, d)
 }
 
 mul_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	n := i32(a.n) * i32(b.n)
 	d := i32(a.d + 1) * i32(b.d + 1)
-	return _reduce_to_rat(n, d)
+	return #force_inline rat_from_ints(n, d)
 }
 
 div_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	n := i32(a.n) * i32(b.d + 1)
 	d := i32(a.d + 1) * i32(b.n)
-	return _reduce_to_rat(n, d)
+	return #force_inline rat_from_ints(n, d)
 }
 
 cmp_rat :: proc "contextless" (a, b: Small_Rat) -> slice.Ordering {
@@ -94,7 +99,7 @@ gt_rat :: proc "contextless" (a, b: Small_Rat) -> bool {
 	return #force_inline cmp_rat(a, b) == .Greater
 }
 
-_reduce_to_rat :: proc "contextless" (
+rat_from_ints :: proc "contextless" (
 	n, d: $I,
 ) -> (
 	Small_Rat,
