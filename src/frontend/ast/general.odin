@@ -3,11 +3,7 @@ package ast
 import "../../common"
 
 Span :: common.Span
-
-Name :: struct {
-	span: Span,
-	id:   common.Identifier,
-}
+Name :: common.Name
 
 Qualified_Name :: struct {
 	span: Span,

@@ -147,7 +147,9 @@ load_package :: proc(
 		dir_iter := os.read_directory_iterator_create(fd)
 		defer os.read_directory_iterator_destroy(&dir_iter)
 
-		for entry, _ in os.read_directory_iterator(&dir_iter) {}
+		for entry, _ in os.read_directory_iterator(&dir_iter) {
+			// TODO
+		}
 	}
 
 	return pkg, .OK
@@ -460,13 +462,13 @@ _static_resolve_field :: proc(base: Named, field: ast.Name) -> Named {
 			return _to_named(sym)
 		}
 	case ^Base_Unit:
-		_emit_namespace_error(field, symbol.name, "Base_Unit")
+		_emit_namespace_error(field, symbol.name, "base unit")
 	case ^Unit_Type:
-		_emit_namespace_error(field, symbol.name, "Unit_Type")
+		_emit_namespace_error(field, symbol.name, "unit type")
 	case ^Function:
-		_emit_namespace_error(field, symbol.name, "Function")
+		_emit_namespace_error(field, symbol.name, "function")
 	case ^Capability:
-		_emit_namespace_error(field, symbol.name, "Capability")
+		_emit_namespace_error(field, symbol.name, "capability")
 	}
 	return nil
 }
@@ -645,46 +647,5 @@ _import_target :: proc(
 	namespace: Identifier,
 	ok: bool,
 ) {
-	if len(imp.path) == 0 {
-		diagnostics.emit(.Import_Not_Found, imp.span, "import path cannot be empty")
-		return "", "", false
-	}
-
-	parts := make(
-		[dynamic]string,
-		0,
-		len(imp.path) + max(imp.relative_up, 0) + 2,
-		context.temp_allocator,
-	)
-	if imp.collection != "" {
-		append(&parts, res.project_root, string(imp.collection))
-	} else if imp.relative_up == -1 {
-		append(&parts, fmt.tprintf("%c", filepath.SEPARATOR))
-	} else {
-		dir, _ := filepath.split(from.src.file)
-		append(&parts, dir)
-		for _ in 0 ..< imp.relative_up do append(&parts, "..")
-	}
-
-	for part, i in imp.path {
-		switch value in part {
-		case string:
-			append(&parts, value)
-			if i == len(imp.path) - 1 do namespace = Identifier(filepath.stem(value))
-		case Identifier:
-			append(&parts, string(value))
-			if i == len(imp.path) - 1 do namespace = value
-		}
-	}
-
-	last := len(parts) - 1
-	if filepath.ext(parts[last]) == "" {
-		parts[last] = fmt.tprintf("%s%s", parts[last], KERREK_FILE_EXTENSION)
-	}
-	joined, join_err := filepath.join(parts[:], context.temp_allocator)
-	if join_err != nil {
-		diagnostics.emit(.Import_Not_Found, imp.span, "cannot construct import path")
-		return "", "", false
-	}
-	return joined, namespace, true
+	panic("TODO")
 }

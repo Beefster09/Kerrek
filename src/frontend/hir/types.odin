@@ -4,7 +4,12 @@ import "../../common"
 
 
 Type :: union {
-	^Simple_Type,
+	Primitive_Type,
+	Fixed_Decimal,
+	^Struct_Type,
+	^Enum_Type,
+	^Distinct_Type,
+	^Interface,
 	^Generic_Type,
 	^Fixed_Array_Type,
 	^Dynamic_Array_Type,
@@ -13,19 +18,6 @@ Type :: union {
 	^Optional_Type,
 	^Pointer_Type,
 	^Type_With_Tags,
-}
-
-Simple_Type :: struct {
-	type: Simple_Type_Value,
-}
-
-Simple_Type_Value :: union {
-	Primitive_Type,
-	Fixed_Decimal,
-	^Struct_Type,
-	^Enum_Type,
-	^Distinct_Type,
-	^Interface,
 }
 
 Primitive_Type :: enum {
@@ -47,6 +39,7 @@ Primitive_Type :: enum {
 	String,
 	Rune,
 	Byte,
+	Any,
 	Opaque,
 	Opaque8,
 	Opaque16,

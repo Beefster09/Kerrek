@@ -1,6 +1,7 @@
 package hir
 
 import "base:runtime"
+import "core:mem"
 
 import "../../common"
 import "../units"
@@ -9,48 +10,36 @@ import "../units"
 Span :: common.Span
 Symbol_ID :: common.Symbol_ID
 Identifier :: common.Identifier
+Name :: common.Name
 
 
 Translation_Unit :: struct {
-	entry_point: ^Func_Definition,
-	types:        map[Symbol_ID]Type_Definition,
-	funcs:        map[Symbol_ID]^Func_Definition,
-	variables:    map[Symbol_ID]^Global_Variable,
-	unit_types:   map[Symbol_ID]^Unit_Type,
-	units:        map[Symbol_ID]^Base_Unit,
-	capabilities: map[Symbol_ID]^Capability,
-	annotations:  map[Symbol_ID]^Annotation_Def,
+	entry_point:  ^Func_Definition,
+	types:        []Type_Definition,
+	funcs:        []^Func_Definition,
+	variables:    []^Global_Variable,
+	unit_types:   []^Unit_Type,
+	units:        []^Base_Unit,
+	capabilities: []^Capability,
+	annotations:  []^Annotation_Def,
+	arena:        mem.Dynamic_Arena,
+	allocator:    runtime.Allocator,
 }
 
-init :: proc(tu: ^Translation_Unit, allocator: runtime.Allocator = context.allocator) {
-	tu.types = make(map[Symbol_ID]Type_Definition, allocator = allocator)
-	tu.funcs = make(map[Symbol_ID]^Func_Definition, allocator = allocator)
-	tu.variables = make(map[Symbol_ID]^Global_Variable, allocator = allocator)
-	tu.unit_types = make(map[Symbol_ID]^Unit_Type, allocator = allocator)
-	tu.units = make(map[Symbol_ID]^Base_Unit, allocator = allocator)
-	tu.capabilities = make(map[Symbol_ID]^Capability, allocator = allocator)
-	tu.annotations = make(map[Symbol_ID]^Annotation_Def, allocator = allocator)
+init :: proc(tu: ^Translation_Unit) {
+	mem.dynamic_arena_init(&tu.arena)
+	tu.allocator = mem.dynamic_arena_allocator(&tu.arena)
 }
 
 destroy :: proc(tu: ^Translation_Unit) {
-	delete(tu.types)
-	delete(tu.funcs)
-	delete(tu.variables)
-	delete(tu.unit_types)
-	delete(tu.units)
-	delete(tu.capabilities)
-	delete(tu.annotations)
+	mem.dynamic_arena_destroy(&tu.arena)
 	tu^ = {}
 }
 
 _Symbol_Header :: struct {
 	span: Span,
 	id:   Symbol_ID,
-}
-
-_Annotatable_Header :: struct {
-	using _:     _Symbol_Header,
-	annotations: []^Annotation,
+	name: Name,
 }
 
 Symbol :: union {
@@ -90,7 +79,6 @@ Type_Definition :: union {
 
 Annotation_Def :: struct {
 	using _: _Symbol_Header,
-	name:    Identifier,
 	params:  []^Formal_Parameter,
 }
 
@@ -101,21 +89,19 @@ Annotation :: struct {
 }
 
 Global_Variable :: struct {
-	using _: _Annotatable_Header,
-	name:    Identifier,
-	type:    Type,
-	unit:    Realized_Unit,
-	expr:    Expression,
+	using _:     _Symbol_Header,
+	type:        Type,
+	unit:        Realized_Unit,
+	expr:        Expression,
+	annotations: []^Annotation,
 }
 
 Unit_Type :: struct {
 	using _: _Symbol_Header,
-	name:    Identifier,
 }
 
 Base_Unit :: struct {
 	using _: _Symbol_Header,
-	name:    Identifier,
 	type:    ^Unit_Type,
 }
 
@@ -131,12 +117,8 @@ Indeterminate_Unit :: enum {
 
 Capability :: struct {
 	using _: _Symbol_Header,
-	name:    Identifier,
 }
 
-// Capability expressions are intentionally opaque until capability analysis is
-// ported. Keeping a source span and a distinct type avoids using rawptr at HIR
-// call sites while leaving room for the eventual all/any/named node union.
 Capability_Expression :: struct {
 	span: Span,
 }

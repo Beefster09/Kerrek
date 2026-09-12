@@ -10,13 +10,13 @@ Statement :: union {
 }
 
 Local_Variable :: struct {
-	using _: _Annotatable_Header,
-	name:    Identifier,
-	type:    Type,
-	unit:    Realized_Unit,
+	using _:     _Symbol_Header,
+	type:        Type,
+	unit:        Realized_Unit,
 	// A nil expression represents an explicitly unbound variable. Semantic
 	// analysis materializes an implicit default as a typed Zero_Of constant.
-	expr: Expression,
+	expr:        Expression,
+	annotations: []^Annotation,
 }
 
 Return_Statement :: struct {

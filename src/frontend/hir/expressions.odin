@@ -63,7 +63,7 @@ Zero_Of :: struct {
 	type: Type,
 }
 
-Value :: union #no_nil {
+Value :: union {
 	exact.Rat,
 	rune,
 	byte,
@@ -90,10 +90,10 @@ Field_Access_Expr :: struct {
 }
 
 Enum_Value :: struct {
-	using _:  _Single_Value_Expression_Header,
+	using _:   _Single_Value_Expression_Header,
 	enum_type: ^Enum_Type,
-	variant:  int,
-	payload:  Expression,
+	variant:   int,
+	payload:   Expression,
 }
 
 Move_Expr :: struct {
@@ -102,10 +102,10 @@ Move_Expr :: struct {
 }
 
 Condition_Expr :: struct {
-	using _:  _Single_Value_Expression_Header,
+	using _:   _Single_Value_Expression_Header,
 	condition: Expression,
-	if_true:  Expression,
-	if_false: Expression,
+	if_true:   Expression,
+	if_false:  Expression,
 }
 
 Binop_Expr :: struct {
@@ -149,7 +149,7 @@ Unit_Reinterpret_Expr :: struct {
 }
 
 Index_Expr :: struct {
-	using _:   _Single_Value_Expression_Header,
+	using _:    _Single_Value_Expression_Header,
 	collection: Expression,
 	args:       []Expression,
 }

@@ -15,7 +15,12 @@ Identifier :: common.Identifier
 _Symbol_Header :: struct {
 	id:         Symbol_ID,
 	name:       Identifier,
-	processed:  bool,
+	state:      enum {
+		Unprocessed,
+		Processing,
+		Done,
+		Error,
+	},
 	defined_in: ^File,
 }
 

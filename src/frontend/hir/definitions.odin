@@ -3,7 +3,6 @@ package hir
 
 Formal_Parameter :: struct {
 	using _: _Symbol_Header,
-	name:    Identifier,
 	type:    Type,
 	unit:    Realized_Unit,
 	default: ^Const_Expr,
@@ -16,19 +15,18 @@ Func_Return :: struct {
 }
 
 Func_Definition :: struct {
-	using _:  _Annotatable_Header,
-	name:     Identifier,
-	params:   []^Formal_Parameter,
-	returns:  []^Func_Return,
-	error_type: Type,
-	fallible: bool,
-	requires: ^Capability_Expression,
-	body:     ^Block,
+	using _:     _Symbol_Header,
+	params:      []^Formal_Parameter,
+	returns:     []^Func_Return,
+	error_type:  Type,
+	fallible:    bool,
+	requires:    ^Capability_Expression,
+	body:        ^Block,
+	annotations: []^Annotation,
 }
 
 Func_Overload_Group :: struct {
-	using _:  _Symbol_Header,
-	name:     Identifier,
+	using _:   _Symbol_Header,
 	overloads: []^Func_Definition,
 }
 
@@ -41,12 +39,12 @@ Struct_Field :: struct {
 }
 
 Struct_Type :: struct {
-	using _:           _Annotatable_Header,
-	name:              Identifier,
-	fields:            []^Struct_Field,
-	params:            []^Formal_Parameter,
-	capabilities:      []^Capability,
+	using _:            _Symbol_Header,
+	fields:             []^Struct_Field,
+	params:             []^Formal_Parameter,
+	capabilities:       []^Capability,
 	construct_requires: ^Capability_Expression,
+	annotations:        []^Annotation,
 }
 
 Interface_Method :: struct {
@@ -72,15 +70,15 @@ Interface_Item :: union {
 }
 
 Interface :: struct {
-	using _: _Annotatable_Header,
-	name:    Identifier,
-	methods: []Interface_Item,
+	using _:     _Symbol_Header,
+	methods:     []Interface_Item,
+	annotations: []^Annotation,
 }
 
 Interface_Impl :: struct {
-	using _: _Annotatable_Header,
-	name:    Identifier,
-	impls:   []^Func_Definition,
+	using _:     _Symbol_Header,
+	impls:       []^Func_Definition,
+	annotations: []^Annotation,
 }
 
 Enum_Variant :: struct {
@@ -91,13 +89,13 @@ Enum_Variant :: struct {
 }
 
 Enum_Type :: struct {
-	using _: _Annotatable_Header,
-	name:    Identifier,
-	variants: []^Enum_Variant,
+	using _:     _Symbol_Header,
+	variants:    []^Enum_Variant,
+	annotations: []^Annotation,
 }
 
 Distinct_Type :: struct {
-	using _:   _Annotatable_Header,
-	name:      Identifier,
-	underlying: Type,
+	using _:     _Symbol_Header,
+	underlying:  Type,
+	annotations: []^Annotation,
 }
