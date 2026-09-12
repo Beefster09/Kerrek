@@ -352,7 +352,7 @@ _match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
 					}
 				case .Exponent:
 					switch c {
-					case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
+					case '0' ..= '9':
 						exp_digits += 1
 						state = .Exponent_Digits
 					case '+', '-':
@@ -362,7 +362,7 @@ _match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
 					}
 				case .Exponent_Digits:
 					switch c {
-					case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
+					case '0' ..= '9':
 						exp_digits += 1
 					case:
 						return i, true, whole_digits > 0 && exp_digits > 0
@@ -467,7 +467,7 @@ _match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
 			}
 		}
 
-		return len(s), form, whole_digits > 0
+		return len(s), form, whole_digits > 0 && (form == .DecimalInteger || exp_digits > 0)
 	}
 	match_len, form, ok := _check_decimal(src)
 	if !ok {
