@@ -132,6 +132,7 @@ unload_source :: proc(sf: ^Source_File) {
 	defer sync.unlock(&sf._lock)
 
 	delete(sf.contents)
+	sf.contents = nil
 	// CONSIDER: put the file contents in a free list to be freed later
 }
 

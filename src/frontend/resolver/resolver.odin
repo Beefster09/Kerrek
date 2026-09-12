@@ -124,7 +124,7 @@ load_package :: proc(
 				"unable to intern package name",
 			),
 		)
-		file, err := load_file(res, path)
+		file, err := _load_file(res, pkg, path)
 		if err != nil {
 			return nil, err
 		}
@@ -153,7 +153,7 @@ load_package :: proc(
 	return pkg, .OK
 }
 
-load_file :: proc(res: ^Resolver, path: string) -> (^File, Load_Error) {
+_load_file :: proc(res: ^Resolver, pkg: ^Package, path: string) -> (^File, Load_Error) {
 	abs_path, path_err := filepath.abs(path, context.temp_allocator)
 	if path_err != nil {
 		return nil, .Other_OS_Error
@@ -169,6 +169,7 @@ load_file :: proc(res: ^Resolver, path: string) -> (^File, Load_Error) {
 	}
 
 	file := new(File, res.allocator)
+	file.own_package = pkg
 
 	// Source_File owns a stable copy of the absolute path.
 	res.files[file_ast.source.file] = file
@@ -241,11 +242,6 @@ load_file :: proc(res: ^Resolver, path: string) -> (^File, Load_Error) {
 	}
 
 	return file, .OK
-}
-
-finish_imports :: proc() {
-	// Import diagnostics are accumulated with lexer/parser diagnostics and are
-	// reported by the compiler driver. This hook mirrors the Python API.
 }
 
 file_lookup :: proc(file: ^File, name: Identifier) -> Named {

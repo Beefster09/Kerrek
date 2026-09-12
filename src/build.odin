@@ -11,11 +11,10 @@ build :: proc(entry_point: string, backend_id: string = "c99") {
 	resolver.init(&res)
 	defer resolver.destroy(&res)
 
-	_, err := resolver.require(&res, entry_point)
+	entry_pkg, err := resolver.load_package(&res, entry_point, file_as_package = true)
 	if err != .OK {
 		fmt.eprintln("loading source failed:", err)
 	}
-	resolver.finish_imports()
 	diagnostics.report_and_exit()
 
 

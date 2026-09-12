@@ -229,7 +229,7 @@ _render_span :: proc(sf: ^common.Source_File, span: common.Span) {
 			int(common.tab_width),
 			context.temp_allocator,
 		)
-		trimmed := strings.trim_space(expanded)
+		trimmed := strings.trim_left_space(expanded)
 		_render_gutter(span.start.line, gutter_width)
 		fmt.eprintfln(" %s", trimmed)
 		_render_gutter("", gutter_width)
