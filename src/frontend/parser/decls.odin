@@ -10,14 +10,10 @@ import "../lexer"
 _const_or_var :: proc(
 	ps: ^Parser_State,
 	$T: typeid,
-) -> ^T where T == ast.Global_Variable ||
-	T == ast.Global_Constant ||
+) -> ^T where T == ast.Constant_Def ||
 	T == ast.Local_Variable ||
-	T == ast.Local_Constant {
-	GLOBAL :: T == ast.Global_Variable || T == ast.Global_Constant
-	LOCAL :: !GLOBAL
-	CONST :: T == ast.Global_Constant || T == ast.Local_Constant
-	VAR :: !CONST
+	T == ast.Global_Variable {
+	CONST :: T == ast.Constant_Def
 
 	keyword, has_keyword := _match(ps, Keyword.Const when CONST else Keyword.Let)
 	if !has_keyword {
@@ -93,29 +89,17 @@ _const_or_var :: proc(
 			diagnostics.emit(.Syntax_Error, name_tok.span, "constants must be given a value")
 			return nil
 		}
-		when LOCAL {
-			decl := new(ast.Local_Constant)
-			decl^ = {
-				span = span,
-				name = _name(name_tok),
-				type = type_expr,
-				unit = unit,
-				expr = expr,
-			}
-			return decl
-		} else {
-			decl := new(ast.Global_Constant)
-			decl^ = {
-				span = span,
-				name = _name(name_tok),
-				type = type_expr,
-				unit = unit,
-				expr = expr,
-			}
-			return decl
+		decl := new(ast.Constant_Def)
+		decl^ = {
+			span = span,
+			name = _name(name_tok),
+			type = type_expr,
+			unit = unit,
+			expr = expr,
 		}
+		return decl
 	} else {
-		when LOCAL {
+		when T == ast.Local_Variable {
 			decl := new(ast.Local_Variable)
 			decl^ = {
 				span = span,

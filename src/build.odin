@@ -4,14 +4,18 @@ import "core:fmt"
 import "core:os"
 
 import "frontend/diagnostics"
-import "frontend/parser"
+import "frontend/resolver"
 
 build :: proc(entry_point: string, backend_id: string = "c99") {
+	res: resolver.Resolver
+	resolver.init(&res)
+	defer resolver.destroy(&res)
 
-	ast_file, err := parser.parse(entry_point)
+	_, err := resolver.require(&res, entry_point)
 	if err != .OK {
-		fmt.eprintln("parsing failed")
+		fmt.eprintln("loading source failed:", err)
 	}
+	resolver.finish_imports()
 	diagnostics.report_and_exit()
 
 

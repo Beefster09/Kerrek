@@ -16,10 +16,19 @@ Kind :: enum {
 	// Parser diagnostics
 	Syntax_Error,
 	Empty_Statement,
+	// Resolver diagnostics
+	Unresolved_Name,
+	Incomplete_Resolution,
+	Invalid_Namespace_Access,
+	Builtin_Shadowing,
+	Duplicate_Definition,
+	Import_Conflict,
+	Import_Not_Found,
 }
 
 @(rodata)
 CODE_METADATA := [Kind]Diagnostic_Metadata {
+	// Lexer diagnostics
 	.Invalid_Number_Literal = {origin = .Lexer, default_level = .Error, code = "L01"},
 	.Invalid_Escape = {origin = .Lexer, default_level = .Error, code = "L10"},
 	.Empty_Rune = {origin = .Lexer, default_level = .Error, code = "L11"},
@@ -31,8 +40,17 @@ CODE_METADATA := [Kind]Diagnostic_Metadata {
 		default_level = .Warning,
 		code = "L20",
 	},
+	// Parser diagnostics
 	.Syntax_Error = {origin = .Parser, default_level = .Error, code = "P00"},
 	.Empty_Statement = {origin = .Parser, default_level = .Notice, code = "P10"},
+	// Resolver diagnostics
+	.Unresolved_Name = {origin = .Resolver, default_level = .Error, code = "R00"},
+	.Incomplete_Resolution = {origin = .Resolver, default_level = .Error, code = "R01"},
+	.Invalid_Namespace_Access = {origin = .Resolver, default_level = .Error, code = "R02"},
+	.Builtin_Shadowing = {origin = .Resolver, default_level = .Notice, code = "R10"},
+	.Duplicate_Definition = {origin = .Resolver, default_level = .Error, code = "R11"},
+	.Import_Conflict = {origin = .Resolver, default_level = .Error, code = "R20"},
+	.Import_Not_Found = {origin = .Resolver, default_level = .Error, code = "R21"},
 }
 
 

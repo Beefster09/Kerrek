@@ -89,7 +89,7 @@ _parse :: proc(ps: ^Parser_State, file: ^ast.File) -> Parse_Error {
 			append(&imports, node)
 			_attach_annotations(node, &annotations)
 
-		case ^ast.Global_Constant:
+		case ^ast.Constant_Def:
 			append(&declarations, node)
 			_attach_annotations(node, &annotations)
 
@@ -161,7 +161,7 @@ _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: 
 			return decl, true
 		}
 	case Keyword.Const:
-		decl := _const_or_var(ps, ast.Global_Constant)
+		decl := _const_or_var(ps, ast.Constant_Def)
 		_end_of_statement(ps)
 		if decl != nil {
 			return decl, true

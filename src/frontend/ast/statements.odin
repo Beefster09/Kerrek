@@ -5,7 +5,7 @@ Statement :: union {
 	^Expr_Statement,
 	^Assign_Statement,
 	^Local_Variable,
-	^Local_Constant,
+	^Constant_Def,
 	^Block,
 }
 
@@ -38,14 +38,6 @@ Local_Variable :: struct {
 
 Unbound_Var :: struct {
 	span: Span,
-}
-
-Local_Constant :: struct {
-	span: Span,
-	name: Name,
-	type: Type_Expression,
-	unit: Declared_Unit,
-	expr: Expression,
 }
 
 Block :: struct {

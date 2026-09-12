@@ -76,7 +76,7 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 	case Keyword.Let:
 		stmt = _const_or_var(ps, ast.Local_Variable)
 	case Keyword.Const:
-		stmt = _const_or_var(ps, ast.Local_Constant)
+		stmt = _const_or_var(ps, ast.Constant_Def)
 
 	case:
 		expr := _expr(ps)

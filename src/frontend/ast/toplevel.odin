@@ -18,7 +18,7 @@ Top_Level_Item :: intrinsics.type_merge(Top_Level_Declaration, union {
 	})
 
 Top_Level_Declaration :: union {
-	^Global_Constant,
+	^Constant_Def,
 	^Global_Variable,
 	^Type_Alias,
 	^Annotation_Def,
@@ -48,7 +48,7 @@ Import_Path_Element :: union #no_nil {
 	common.Identifier,
 }
 
-Global_Constant :: struct {
+Constant_Def :: struct {
 	span:        Span,
 	name:        Name,
 	type:        Type_Expression,
