@@ -218,7 +218,7 @@ _report_pretty :: proc() {
 								diag.span,
 								_report_theme.clear,
 							)
-							_render_span(ref_sf, a.span)
+							_render_span(ref_sf, a.span, indent = 1)
 						}
 					}
 				}
@@ -258,7 +258,7 @@ MULTILINE_SPAN_BOTTOM_POINTER :: "┚"
 
 SINGLE_LINE_SPAN_POINTER :: '^'
 
-_render_span :: proc(sf: ^common.Source_File, span: common.Span) {
+_render_span :: proc(sf: ^common.Source_File, span: common.Span, indent := 0) {
 	_line_arena: mem.Dynamic_Arena
 	mem.dynamic_arena_init(&_line_arena)
 	defer mem.dynamic_arena_destroy(&_line_arena)
@@ -278,9 +278,9 @@ _render_span :: proc(sf: ^common.Source_File, span: common.Span) {
 			context.temp_allocator,
 		)
 		trimmed := strings.trim_left_space(expanded)
-		_render_gutter(span.start.line, gutter_width)
+		_render_gutter(span.start.line, gutter_width, indent)
 		fmt.eprintfln(" %s", trimmed)
-		_render_gutter(' ', gutter_width)
+		_render_gutter(' ', gutter_width, indent)
 		for _ in len(expanded) - len(trimmed) ..< int(span.start.col) {
 			os.write_rune(os.stderr, ' ')
 		}
@@ -327,7 +327,7 @@ _render_span :: proc(sf: ^common.Source_File, span: common.Span) {
 
 		w := os.to_writer(os.stderr)
 
-		_render_gutter(' ', gutter_width)
+		_render_gutter(' ', gutter_width, indent)
 
 		io.write_string(w, _report_theme.span)
 		io.write_rune(w, MULTILINE_SPAN_TOP)
@@ -341,14 +341,14 @@ _render_span :: proc(sf: ^common.Source_File, span: common.Span) {
 		for i in 0 ..< l {
 			trimmed: string
 			if n_lines_snipped > 0 && i == CONTEXT_LINES {
-				_render_gutter('⋮', gutter_width)
+				_render_gutter('⋮', gutter_width, indent)
 				trimmed = "\\\\ ... snipped ..."
 			} else {
 				line_no := span.start.line + i
 				if i > CONTEXT_LINES {
 					line_no += u32(n_lines_snipped)
 				}
-				_render_gutter(line_no, gutter_width)
+				_render_gutter(line_no, gutter_width, indent)
 				trimmed = lines[i][min_indent:] if len(lines[i]) > min_indent else ""
 			}
 
@@ -361,7 +361,7 @@ _render_span :: proc(sf: ^common.Source_File, span: common.Span) {
 			)
 		}
 
-		_render_gutter(' ', gutter_width)
+		_render_gutter(' ', gutter_width, indent)
 		io.write_string(w, _report_theme.span)
 		io.write_rune(w, MULTILINE_SPAN_BOTTOM)
 		for _ in 1 ..< span.end.col {
@@ -374,8 +374,16 @@ _render_span :: proc(sf: ^common.Source_File, span: common.Span) {
 }
 
 GUTTER_SEP :: '║'
-_render_gutter :: proc(prefix: $T, width: int) where intrinsics.type_is_integer(T) || T == rune {
+_render_gutter :: proc(
+	prefix: $T,
+	width: int,
+	indent: int,
+) where intrinsics.type_is_integer(T) ||
+	T == rune {
 	w := os.to_writer(os.stderr)
+	for _ in 0 ..< indent {
+		io.write_rune(w, '\t')
+	}
 	io.write_string(w, _report_theme.gutter)
 
 	when T == rune {
