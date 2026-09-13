@@ -2,6 +2,7 @@ package ast
 
 import "../../common"
 import "../../common/exact"
+import "../lexer"
 
 Expression :: union {
 	^Name_Expr,
@@ -40,9 +41,10 @@ FieldAccess_Expr :: struct {
 }
 
 Scalar_Literal_Expr :: struct {
-	span:  Span,
-	value: exact.Rat,
-	unit:  ^Compound_Unit,
+	span:   Span,
+	value:  exact.Rat,
+	format: lexer.Number_Format,
+	unit:   ^Compound_Unit,
 }
 
 Simple_Literal_Expr :: struct {

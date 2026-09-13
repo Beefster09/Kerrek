@@ -43,7 +43,7 @@ test_cmp_rat :: proc(t: ^testing.T) {
 	}
 
 	for tc, i in cases {
-		actual := cmp_rat(tc.a, tc.b)
+		actual := rat_cmp(tc.a, tc.b)
 		testing.expectf(
 			t,
 			actual == tc.expected,
@@ -81,7 +81,7 @@ test_add_rat :: proc(t: ^testing.T) {
 	}
 
 	for tc, i in cases {
-		actual, ok := add_rat(tc.a, tc.b)
+		actual, ok := rat_add(tc.a, tc.b)
 		testing.expectf(
 			t,
 			ok == tc.ok,
@@ -129,7 +129,7 @@ test_sub_rat :: proc(t: ^testing.T) {
 	}
 
 	for tc, i in cases {
-		actual, ok := sub_rat(tc.a, tc.b)
+		actual, ok := rat_sub(tc.a, tc.b)
 		testing.expectf(
 			t,
 			ok == tc.ok,
@@ -177,7 +177,7 @@ test_mul_rat :: proc(t: ^testing.T) {
 	}
 
 	for tc, i in cases {
-		actual, ok := mul_rat(tc.a, tc.b)
+		actual, ok := rat_mul(tc.a, tc.b)
 		testing.expectf(
 			t,
 			ok == tc.ok,
@@ -226,7 +226,7 @@ test_div_rat :: proc(t: ^testing.T) {
 	}
 
 	for tc, i in cases {
-		actual, ok := div_rat(tc.a, tc.b)
+		actual, ok := rat_div(tc.a, tc.b)
 		testing.expectf(
 			t,
 			ok == tc.ok,

@@ -344,7 +344,7 @@ _check_hex_numeric :: proc(s: string) -> (length: int, is_float: bool, ok: bool)
 			case 'p', 'P':
 				state = .Exponent
 			case:
-				return i, true, false
+				return i, true, true
 			}
 		case .Exponent:
 			switch c {

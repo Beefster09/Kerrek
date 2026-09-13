@@ -47,7 +47,7 @@ rat_from_exact :: proc(value: exact.Rat) -> (Small_Rat, bool) {
 	return {}, false
 }
 
-add_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
+rat_add :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	l := i32(a.n) * i32(b.d + 1)
 	r := i32(b.n) * i32(a.d + 1)
 	n := l + r
@@ -55,7 +55,7 @@ add_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	return #force_inline rat_from_ints(n, d)
 }
 
-sub_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
+rat_sub :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	l := i32(a.n) * i32(b.d + 1)
 	r := i32(b.n) * i32(a.d + 1)
 	n := l - r
@@ -63,19 +63,19 @@ sub_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	return #force_inline rat_from_ints(n, d)
 }
 
-mul_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
+rat_mul :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	n := i32(a.n) * i32(b.n)
 	d := i32(a.d + 1) * i32(b.d + 1)
 	return #force_inline rat_from_ints(n, d)
 }
 
-div_rat :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
+rat_div :: proc "contextless" (a, b: Small_Rat) -> (Small_Rat, bool) {
 	n := i32(a.n) * i32(b.d + 1)
 	d := i32(a.d + 1) * i32(b.n)
 	return #force_inline rat_from_ints(n, d)
 }
 
-cmp_rat :: proc "contextless" (a, b: Small_Rat) -> slice.Ordering {
+rat_cmp :: proc "contextless" (a, b: Small_Rat) -> slice.Ordering {
 	l := i32(a.n) * i32(b.d + 1)
 	r := i32(b.n) * i32(a.d + 1)
 	if l < r {
@@ -87,16 +87,36 @@ cmp_rat :: proc "contextless" (a, b: Small_Rat) -> slice.Ordering {
 	return .Equal
 }
 
-lt_rat :: proc "contextless" (a, b: Small_Rat) -> bool {
-	return #force_inline cmp_rat(a, b) == .Less
+rat_lt :: proc "contextless" (a, b: Small_Rat) -> bool {
+	return rat_cmp(a, b) == .Less
 }
 
-eq_rat :: proc "contextless" (a, b: Small_Rat) -> bool {
-	return #force_inline cmp_rat(a, b) == .Equal
+rat_eq :: proc "contextless" (a, b: Small_Rat) -> bool {
+	return rat_cmp(a, b) == .Equal
 }
 
-gt_rat :: proc "contextless" (a, b: Small_Rat) -> bool {
-	return #force_inline cmp_rat(a, b) == .Greater
+rat_gt :: proc "contextless" (a, b: Small_Rat) -> bool {
+	return rat_cmp(a, b) == .Greater
+}
+
+rat_le :: proc "contextless" (a, b: Small_Rat) -> bool {
+	return rat_cmp(a, b) != .Greater
+}
+
+rat_ne :: proc "contextless" (a, b: Small_Rat) -> bool {
+	return rat_cmp(a, b) != .Equal
+}
+
+rat_ge :: proc "contextless" (a, b: Small_Rat) -> bool {
+	return rat_cmp(a, b) != .Less
+}
+
+rat_is_zero :: proc "contextless" (r: Small_Rat) -> bool {
+	return r.n == 0
+}
+
+rat_is_one :: proc "contextless" (r: Small_Rat) -> bool {
+	return r.n == i16(r.d) + 1
 }
 
 rat_from_ints :: proc "contextless" (

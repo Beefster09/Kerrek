@@ -29,13 +29,14 @@ _report_format: Report_Format
 _report_theme: Color_Scheme
 
 Color_Scheme :: struct #all_or_none {
-	levels:     [Level]string,
-	message:    string,
-	location:   string,
-	gutter:     string,
-	span:       string,
-	suggestion: string,
-	reference:  string,
+	levels:     [Level]string, // the color of the level and error code of each diagnostic
+	message:    string, // the base message
+	location:   string, // the file path + numeric span
+	gutter:     string, // the line number gutter for showing files
+	span:       string, // the color of the pointer of the span
+	addendum:   string, // each addendum message
+	suggestion: string, // the color of 'suggestion' in suggestion addendum messages
+	reference:  string, // the color of 'note' in reference addendum messages
 	clear:      string,
 }
 
@@ -47,6 +48,7 @@ DEFAULT_THEME_3BIT := Color_Scheme {
 		.Notice = ansi.CSI + ansi.FG_CYAN + ansi.SGR,
 	},
 	message = (ansi.CSI + ansi.FG_DEFAULT + ansi.SGR),
+	addendum = (ansi.CSI + ansi.FG_DEFAULT + ansi.SGR),
 	location = (ansi.CSI + ansi.FG_DEFAULT + ansi.SGR),
 	gutter = (ansi.CSI + ansi.FG_BLUE + ansi.SGR),
 	span = (ansi.CSI + ansi.FG_YELLOW + ansi.SGR),
@@ -63,6 +65,7 @@ DEFAULT_THEME_4BIT := Color_Scheme {
 		.Notice = ansi.CSI + ansi.FG_CYAN + ansi.SGR,
 	},
 	message = (ansi.CSI + ansi.BOLD + ";" + ansi.FG_DEFAULT + ansi.SGR),
+	addendum = (ansi.CSI + ansi.FG_DEFAULT + ansi.SGR),
 	location = (ansi.CSI + ansi.FAINT + ";" + ansi.FG_DEFAULT + ansi.SGR),
 	gutter = (ansi.CSI + ansi.FG_BLUE + ansi.SGR),
 	span = (ansi.CSI + ansi.BOLD + ";" + ansi.FG_BRIGHT_YELLOW + ansi.SGR),
@@ -185,6 +188,39 @@ _report_pretty :: proc() {
 			if sf != nil {
 				fmt.eprintfln("\t%s@ %s%s", _report_theme.location, diag.span, _report_theme.clear)
 				_render_span(sf, diag.span)
+
+				for addendum in diag.extra {
+					switch a in addendum {
+					case Suggestion:
+						fmt.eprintfln(
+							"\t%ssuggestion%s: %s%s%s",
+							_report_theme.suggestion,
+							_report_theme.clear,
+							_report_theme.addendum,
+							a,
+							_report_theme.clear,
+						)
+					case Reference:
+						fmt.eprintfln(
+							"\t%snote%s: %s%s%s",
+							_report_theme.reference,
+							_report_theme.clear,
+							_report_theme.addendum,
+							a.message,
+							_report_theme.clear,
+						)
+						ref_sf, _ := common.load_source(a.span.file)
+						if ref_sf != nil {
+							fmt.eprintfln(
+								"\t\t%s@ %s%s",
+								_report_theme.location,
+								diag.span,
+								_report_theme.clear,
+							)
+							_render_span(ref_sf, a.span)
+						}
+					}
+				}
 			}
 		}
 	}

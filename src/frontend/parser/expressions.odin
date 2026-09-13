@@ -102,9 +102,10 @@ _literal_expr :: proc(ps: ^Parser_State) -> ast.Expression {
 		unit := _compound_unit(ps)
 		literal := new(ast.Scalar_Literal_Expr)
 		literal^ = {
-			span  = common.merge_spans(tok.span, unit.span) if unit != nil else tok.span,
-			value = value.value,
-			unit  = unit,
+			span   = common.merge_spans(tok.span, unit.span) if unit != nil else tok.span,
+			value  = value.value,
+			format = value.format,
+			unit   = unit,
 		}
 		return literal
 

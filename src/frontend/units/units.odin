@@ -82,7 +82,7 @@ is_absolute :: proc(unit: Compound_Unit) -> bool {
 // arbitrary sort function: order by descending exponent, ascending symbol id
 // symbol id should roughly correlate with declaration order
 _cmp_components :: proc(a, b: Unit_Component) -> slice.Ordering {
-	exp_cmp := cmp_rat(a.exp, b.exp)
+	exp_cmp := rat_cmp(a.exp, b.exp)
 	if exp_cmp != .Equal {
 		return -exp_cmp
 	}
@@ -116,10 +116,13 @@ combine_units :: proc(
 		delete(cmp_out)
 	}
 
-	for cu in ([]Compound_Unit{a, b}) {
-		next_component: for i in 0 ..< num_components(cu) {
-			comp := get_component(cu, i)
-			new_exp, ok := mul_rat(comp.exp, a_exp)
+	#unroll for x in ([?]struct {
+			cu:  Compound_Unit,
+			exp: Small_Rat,
+		}{{a, a_exp}, {b, b_exp}}) {
+		next_component: for i in 0 ..< num_components(x.cu) {
+			comp := get_component(x.cu, i)
+			new_exp, ok := rat_mul(comp.exp, x.exp)
 			if !ok {
 				return nil, .Unrepresentable_Exponent
 			}
@@ -127,7 +130,7 @@ combine_units :: proc(
 			for &existing, i in cmp_out {
 
 				if comp.unit == existing.unit {
-					existing.exp, ok = add_rat(existing.exp, new_exp)
+					existing.exp, ok = rat_add(existing.exp, new_exp)
 					if !ok {
 						return nil, .Unrepresentable_Exponent
 					}
@@ -179,7 +182,7 @@ compound_units_equal :: proc(a, b: Compound_Unit) -> bool {
 		for j in 0 ..< b_len {
 			cmp_b := get_component(b, j)
 			if cmp_a.unit == cmp_b.unit {
-				if eq_rat(cmp_a.exp, cmp_b.exp) {
+				if rat_eq(cmp_a.exp, cmp_b.exp) {
 					continue outer
 				} else {
 					return false
