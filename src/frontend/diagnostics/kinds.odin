@@ -24,13 +24,14 @@ Kind :: enum {
 	Duplicate_Definition,
 	Import_Conflict,
 	Import_Not_Found,
+	// TEST
 	Test,
 }
 
 @(rodata)
 CODE_METADATA := [Kind]Diagnostic_Metadata {
 	// Lexer diagnostics
-	.Invalid_Number_Literal = {origin = .Lexer, default_level = .Error, code = "L01"},
+	.Invalid_Number_Literal = {origin = .Lexer, default_level = .Error, code = "L00"},
 	.Invalid_Escape = {origin = .Lexer, default_level = .Error, code = "L10"},
 	.Empty_Rune = {origin = .Lexer, default_level = .Error, code = "L11"},
 	.Unclosed_Rune = {origin = .Lexer, default_level = .Error, code = "L12"},

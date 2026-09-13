@@ -41,6 +41,7 @@ init :: proc(res: ^Resolver, project_root := "") {
 	mem.dynamic_arena_init(&res.arena)
 	res.allocator = mem.dynamic_arena_allocator(&res.arena)
 	res.packages = make(map[string]^Package)
+	res.files = make(map[string]^File)
 	res.next_symbol_id = FIRST_USER_SYMBOL_ID
 
 	if project_root != "" {

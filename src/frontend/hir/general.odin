@@ -122,3 +122,8 @@ Capability :: struct {
 Capability_Expression :: struct {
 	span: Span,
 }
+
+// Poison nodes are used to mark translation failure points in an effort to avoid duplicate diagnostics
+Poison :: struct {
+	span: Span,
+}
