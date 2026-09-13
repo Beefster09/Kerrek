@@ -10,6 +10,7 @@ import "core:os"
 import "core:strings"
 import "core:terminal"
 import "core:terminal/ansi"
+import "core:unicode"
 
 import "../../common"
 
@@ -246,6 +247,17 @@ _report_json :: proc() {
 }
 
 CONTEXT_LINES :: 5
+
+MULTILINE_SPAN_TOP :: '╭'
+MULTILINE_SPAN_MIDDLE :: '│'
+MULTILINE_SPAN_BOTTOM :: '╰'
+MULTILINE_SPAN_TOP_RUNNER :: '┄'
+MULTILINE_SPAN_TOP_POINTER :: "┰──┄┄>"
+MULTILINE_SPAN_BOTTOM_RUNNER :: '─'
+MULTILINE_SPAN_BOTTOM_POINTER :: "┚"
+
+SINGLE_LINE_SPAN_POINTER :: '^'
+
 _render_span :: proc(sf: ^common.Source_File, span: common.Span) {
 	_line_arena: mem.Dynamic_Arena
 	mem.dynamic_arena_init(&_line_arena)
@@ -268,7 +280,7 @@ _render_span :: proc(sf: ^common.Source_File, span: common.Span) {
 		trimmed := strings.trim_left_space(expanded)
 		_render_gutter(span.start.line, gutter_width)
 		fmt.eprintfln(" %s", trimmed)
-		_render_gutter("", gutter_width)
+		_render_gutter(' ', gutter_width)
 		for _ in len(expanded) - len(trimmed) ..< int(span.start.col) {
 			os.write_rune(os.stderr, ' ')
 		}
@@ -278,25 +290,104 @@ _render_span :: proc(sf: ^common.Source_File, span: common.Span) {
 		}
 		fmt.eprintln(_report_theme.clear)
 	} else {
-		//
+		lines: [CONTEXT_LINES * 2 + 1]string
+		n_lines_snipped := max(int(n_lines) - len(lines), 0)
+		if n_lines_snipped == 0 {
+			common.get_source_lines(lines[:n_lines], sf, span.start.line)
+		} else {
+			common.get_source_lines(lines[:CONTEXT_LINES], sf, span.start.line)
+			common.get_source_lines(
+				lines[CONTEXT_LINES + 1:],
+				sf,
+				span.end.line - CONTEXT_LINES + 1,
+			)
+		}
+
+		l := min(n_lines, len(lines))
+		min_indent := 999_999_999_999
+		for i in 0 ..< l {
+			expanded := strings.expand_tabs(
+				strings.trim_right_space(lines[i]),
+				int(common.tab_width),
+				context.temp_allocator,
+			)
+			lines[i] = expanded
+			leading_space := -1
+			for c, i in expanded {
+				if c != ' ' {
+					leading_space = i
+					break
+				}
+			}
+
+			if leading_space >= 0 && leading_space < min_indent {
+				min_indent = leading_space
+			}
+		}
+
+		w := os.to_writer(os.stderr)
+
+		_render_gutter(' ', gutter_width)
+
+		io.write_string(w, _report_theme.span)
+		io.write_rune(w, MULTILINE_SPAN_TOP)
+		for _ in 1 ..< span.start.col {
+			io.write_rune(w, MULTILINE_SPAN_TOP_RUNNER)
+		}
+		io.write_rune(w, MULTILINE_SPAN_TOP_RUNNER)
+		io.write_string(w, MULTILINE_SPAN_TOP_POINTER)
+		fmt.eprintln(_report_theme.clear)
+
+		for i in 0 ..< l {
+			trimmed: string
+			if n_lines_snipped > 0 && i == CONTEXT_LINES {
+				_render_gutter('⋮', gutter_width)
+				trimmed = "\\\\ ... snipped ..."
+			} else {
+				line_no := span.start.line + i
+				if i > CONTEXT_LINES {
+					line_no += u32(n_lines_snipped)
+				}
+				_render_gutter(line_no, gutter_width)
+				trimmed = lines[i][min_indent:] if len(lines[i]) > min_indent else ""
+			}
+
+			fmt.eprintfln(
+				"%s%c%s %s",
+				_report_theme.span,
+				MULTILINE_SPAN_MIDDLE,
+				_report_theme.clear,
+				trimmed,
+			)
+		}
+
+		_render_gutter(' ', gutter_width)
+		io.write_string(w, _report_theme.span)
+		io.write_rune(w, MULTILINE_SPAN_BOTTOM)
+		for _ in 1 ..< span.end.col {
+			io.write_rune(w, MULTILINE_SPAN_BOTTOM_RUNNER)
+		}
+		io.write_rune(w, MULTILINE_SPAN_BOTTOM_RUNNER)
+		io.write_string(w, MULTILINE_SPAN_BOTTOM_POINTER)
+		fmt.eprintln(_report_theme.clear)
 	}
 }
 
-GUTTER_SEP :: '│'
-_render_gutter :: proc(prefix: $T, width: int) where intrinsics.type_is_integer(T) || T == string {
+GUTTER_SEP :: '║'
+_render_gutter :: proc(prefix: $T, width: int) where intrinsics.type_is_integer(T) || T == rune {
 	w := os.to_writer(os.stderr)
 	io.write_string(w, _report_theme.gutter)
 
-	when intrinsics.type_is_integer(T) {
+	when T == rune {
+		for _ in 0 ..< width - unicode.normalized_east_asian_width(prefix) {
+			io.write_rune(w, ' ')
+		}
+		io.write_rune(w, prefix)
+	} else {
 		for _ in 0 ..< width - math.count_digits_of_base(prefix, 10) {
 			io.write_rune(w, ' ')
 		}
 		io.write_int(w, int(prefix))
-	} else {
-		for _ in 0 ..< width - len(prefix) {
-			io.write_rune(w, ' ')
-		}
-		io.write_string(w, prefix)
 	}
 
 	io.write_rune(w, GUTTER_SEP)

@@ -24,6 +24,7 @@ Kind :: enum {
 	Duplicate_Definition,
 	Import_Conflict,
 	Import_Not_Found,
+	Test,
 }
 
 @(rodata)
@@ -51,6 +52,8 @@ CODE_METADATA := [Kind]Diagnostic_Metadata {
 	.Duplicate_Definition = {origin = .Resolver, default_level = .Error, code = "R11"},
 	.Import_Conflict = {origin = .Resolver, default_level = .Error, code = "R20"},
 	.Import_Not_Found = {origin = .Resolver, default_level = .Error, code = "R21"},
+	// TEST
+	.Test = {origin = .Resolver, default_level = .Notice, code = "TEST"},
 }
 
 
