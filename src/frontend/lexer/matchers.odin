@@ -314,177 +314,231 @@ _is_hex :: proc(s: string) -> bool {
 	return true
 }
 
-_match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
-	if strings.starts_with(src, "0x") {
-		_check_hexfloat :: proc(s: string) -> (length: int, is_float: bool, ok: bool) {
-			state: enum {
-				Whole,
-				Fractional,
-				Exponent,
-				Exponent_Digits,
+_check_hex_numeric :: proc(s: string) -> (length: int, is_float: bool, ok: bool) {
+	state: enum {
+		Whole,
+		Fractional,
+		Exponent,
+		Exponent_Digits,
+	}
+	whole_digits := 0
+	exp_digits := 0
+	for c, i in s {
+		switch state {
+		case .Whole:
+			switch c {
+			case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
+				whole_digits += 1
+			case '.':
+				is_float = true
+				state = .Fractional
+			case 'p', 'P':
+				is_float = true
+				state = .Exponent
+			case:
+				return i, false, whole_digits > 0
 			}
-			whole_digits := 0
-			frac_digits := 0
-			exp_digits := 0
-			for c, i in s {
-				switch state {
-				case .Whole:
-					switch c {
-					case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
-						whole_digits += 1
-					case '.':
-						is_float = true
-						state = .Fractional
-					case 'p':
-						is_float = true
-						state = .Exponent
-					case:
-						return i, false, whole_digits > 0
-					}
-				case .Fractional:
-					switch c {
-					case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
-						frac_digits += 1
-					case 'p':
-						state = .Exponent
-					case:
-						return i, true, whole_digits > 0
-					}
-				case .Exponent:
-					switch c {
-					case '0' ..= '9':
-						exp_digits += 1
-						state = .Exponent_Digits
-					case '+', '-':
-						state = .Exponent_Digits
-					case:
-						return 0, true, false
-					}
-				case .Exponent_Digits:
-					switch c {
-					case '0' ..= '9':
-						exp_digits += 1
-					case:
-						return i, true, whole_digits > 0 && exp_digits > 0
-					}
-				}
+		case .Fractional:
+			switch c {
+			case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
+			case 'p', 'P':
+				state = .Exponent
+			case:
+				return i, true, false
 			}
-
-			return len(s), is_float, whole_digits > 0 && (!is_float || exp_digits > 0)
+		case .Exponent:
+			switch c {
+			case '0' ..= '9':
+				exp_digits += 1
+				state = .Exponent_Digits
+			case '+', '-':
+				state = .Exponent_Digits
+			case:
+				return 0, true, false
+			}
+		case .Exponent_Digits:
+			switch c {
+			case '0' ..= '9':
+				exp_digits += 1
+			case:
+				return i, true, whole_digits > 0 && exp_digits > 0
+			}
 		}
-		match_len, is_float, ok := _check_hexfloat(src[2:])
-		full_match_len := match_len + 2
+	}
 
-		if !ok {
+	return len(s), is_float, whole_digits > 0 && (!is_float || exp_digits > 0)
+}
+
+_match_hex_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
+	match_len, is_float, ok := _check_hex_numeric(src[2:])
+	full_match_len := match_len + 2
+	if !ok {
+		diagnostics.emit(
+			.Invalid_Number_Literal,
+			common.cursor_to_span(cursor, full_match_len),
+			"invalid hex literal",
+		)
+		return {}, 0
+	}
+
+	if is_float {
+		value, parsed := exact.parse_hexfloat(src[2:full_match_len])
+		if !parsed {
 			diagnostics.emit(
 				.Invalid_Number_Literal,
 				common.cursor_to_span(cursor, full_match_len),
-				"invalid hex literal",
+				"invalid hex float literal",
 			)
 			return {}, 0
-		} else if is_float {
-			floatval, ok := exact.parse_hexfloat(src[2:2 + match_len])
-			if !ok {
-				diagnostics.emit(
-					.Invalid_Number_Literal,
-					common.cursor_to_span(cursor, full_match_len),
-					"invalid hex float literal",
-				)
-				return {}, 0
-			}
-			return {raw = src[:full_match_len], value = floatval, format = .HexFloat},
-				full_match_len
+		}
+		return {raw = src[:full_match_len], value = value, format = .HexFloat}, full_match_len
+	}
+
+	value, parsed := exact.parse_int(src[2:full_match_len], 16)
+	if !parsed {
+		return {}, 0
+	}
+	return {raw = src[:full_match_len], value = exact.int_to_rat(value), format = .HexInteger},
+		full_match_len
+}
+
+_match_radix_integer :: proc(
+	cursor: common.Cursor,
+	src: string,
+	$RADIX: int,
+	$FORMAT: Number_Format,
+	$NAME: string,
+) -> (
+	Numeric,
+	int,
+) where RADIX == 2 ||
+	RADIX == 8 {
+	digit_count := 0
+	digits_valid := true
+	for c in src[2:] {
+		if c < '0' || c > '9' {
+			break
+		}
+		digit_count += 1
+		when RADIX == 2 {
+			digits_valid = digits_valid && (c == '0' || c == '1')
 		} else {
-			value, ok := exact.parse_int(src[2:2 + match_len], 16)
-			if !ok {
-				return {}, 0
-			}
-			length := 2 + match_len
-			return {raw = src[:length], value = exact.int_to_rat(value), format = .HexInteger},
-				length
+			digits_valid = digits_valid && c <= '7'
 		}
-
-	} else if strings.starts_with(src, "0o") {
-		panic("TODO")
-
-	} else if strings.starts_with(src, "0b") {
-		panic("TODO")
 	}
 
-	_check_decimal :: proc(s: string) -> (length: int, form: Number_Format, ok: bool) {
-		state: enum {
-			Whole,
-			Fractional,
-			Exponent,
-			Exponent_Digits,
-		}
-		form = .DecimalInteger
-		whole_digits := 0
-		frac_digits := 0
-		exp_digits := 0
-		for c, i in s {
-			switch state {
-			case .Whole:
-				switch c {
-				case '0' ..= '9':
-					whole_digits += 1
-				case '.':
-					form = .Decimal
-					state = .Fractional
-				case 'e':
-					form = .Decimal
-					state = .Exponent
-				case:
-					return i, .DecimalInteger, whole_digits > 0
-				}
-			case .Fractional:
-				switch c {
-				case '0' ..= '9':
-					frac_digits += 1
-				case 'e':
-					form = .Decimal
-					state = .Exponent
-				case:
-					return i, .Decimal, whole_digits > 0
-				}
-			case .Exponent:
-				switch c {
-				case '0' ..= '9':
-					exp_digits += 1
-					state = .Exponent_Digits
-				case '+', '-':
-					state = .Exponent_Digits
-				case:
-					return 0, .Decimal, false
-				}
-			case .Exponent_Digits:
-				switch c {
-				case '0' ..= '9':
-					exp_digits += 1
-				case:
-					return i, .Decimal, whole_digits > 0 && exp_digits > 0
-				}
+	full_match_len := digit_count + 2
+	if digit_count == 0 || !digits_valid {
+		diagnostics.emit(
+			.Invalid_Number_Literal,
+			common.cursor_to_span(cursor, full_match_len),
+			"invalid %s literal",
+			NAME,
+		)
+		return {}, 0
+	}
+
+	value, parsed := exact.parse_int(src[2:full_match_len], RADIX)
+	if !parsed {
+		return {}, 0
+	}
+	return {raw = src[:full_match_len], value = exact.int_to_rat(value), format = FORMAT},
+		full_match_len
+}
+
+_match_octal_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
+	return #force_inline _match_radix_integer(cursor, src, 8, .OctalInteger, "octal")
+}
+
+_match_binary_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
+	return #force_inline _match_radix_integer(cursor, src, 2, .BinaryInteger, "binary")
+}
+
+_check_decimal_numeric :: proc(s: string) -> (length: int, form: Number_Format, ok: bool) {
+	state: enum {
+		Whole,
+		Fractional,
+		Exponent,
+		Exponent_Digits,
+	}
+	form = .DecimalInteger
+	whole_digits := 0
+	exp_digits := 0
+	for c, i in s {
+		switch state {
+		case .Whole:
+			switch c {
+			case '0' ..= '9':
+				whole_digits += 1
+			case '.':
+				form = .Decimal
+				state = .Fractional
+			case 'e', 'E':
+				form = .Decimal
+				state = .Exponent
+			case:
+				return i, .DecimalInteger, whole_digits > 0
+			}
+		case .Fractional:
+			switch c {
+			case '0' ..= '9':
+			case 'e', 'E':
+				state = .Exponent
+			case:
+				return i, .Decimal, whole_digits > 0
+			}
+		case .Exponent:
+			switch c {
+			case '0' ..= '9':
+				exp_digits += 1
+				state = .Exponent_Digits
+			case '+', '-':
+				state = .Exponent_Digits
+			case:
+				return 0, .Decimal, false
+			}
+		case .Exponent_Digits:
+			switch c {
+			case '0' ..= '9':
+				exp_digits += 1
+			case:
+				return i, .Decimal, whole_digits > 0 && exp_digits > 0
 			}
 		}
-
-		return len(s), form, whole_digits > 0 && (form == .DecimalInteger || exp_digits > 0)
 	}
-	match_len, form, ok := _check_decimal(src)
+
+	return len(s), form, whole_digits > 0 && (form == .DecimalInteger || exp_digits > 0)
+}
+
+_match_decimal_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
+	match_len, form, ok := _check_decimal_numeric(src)
 	if !ok {
 		return {}, 0
 	}
 
 	#partial switch form {
 	case .DecimalInteger:
-		value, ok := exact.parse_int(src[:match_len], 10)
-		assert(ok)
+		value, parsed := exact.parse_int(src[:match_len], 10)
+		assert(parsed)
 		return {raw = src[:match_len], value = exact.int_to_rat(value), format = .DecimalInteger},
 			match_len
 	case .Decimal:
-		value, ok := exact.parse_decimal(src[:match_len])
-		assert(ok)
+		value, parsed := exact.parse_decimal(src[:match_len])
+		assert(parsed)
 		return {raw = src[:match_len], value = value, format = .Decimal}, match_len
 	}
-
 	return {}, 0
+}
+
+_match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
+	switch {
+	case strings.starts_with(src, "0x"):
+		return #force_inline _match_hex_numeric(cursor, src)
+	case strings.starts_with(src, "0o"):
+		return #force_inline _match_octal_numeric(cursor, src)
+	case strings.starts_with(src, "0b"):
+		return #force_inline _match_binary_numeric(cursor, src)
+	case:
+		return #force_inline _match_decimal_numeric(cursor, src)
+	}
 }

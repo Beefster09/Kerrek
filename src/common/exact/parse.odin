@@ -173,7 +173,7 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 			if sign < 0 {
 				inplace_negate_int(&num)
 			}
-			return {num, den}, true
+			return rat_reduce({num, den}), true
 		} else {
 			den := new(big.Int, bigint_allocator)
 			err := big.exp(den, EXP_RADIX, denominator_scale, bigint_allocator)
@@ -182,7 +182,7 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 				if sign < 0 {
 					inplace_negate_int(&num)
 				}
-				return {num, den}, true
+				return rat_reduce({num, den}), true
 			}
 		}
 	} else {
@@ -194,7 +194,7 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 			}
 			result, overflow := intrinsics.overflow_mul(base_as_i128, mul)
 			if !overflow {
-				return {result, 1}, true
+				return rat_reduce({result, 1}), true
 			}
 		}
 
@@ -227,7 +227,7 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 		if sign < 0 {
 			result.sign = .Negative
 		}
-		return {result, 1}, true
+		return rat_reduce({result, 1}), true
 	}
 
 	return {}, false

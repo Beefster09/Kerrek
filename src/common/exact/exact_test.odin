@@ -3,6 +3,7 @@ package exact
 
 import "core:math/big"
 import "core:mem"
+import "core:slice"
 import "core:testing"
 
 _ints_equal :: proc(a, b: Int) -> bool {
@@ -57,16 +58,95 @@ _expect_rat :: proc(t: ^testing.T, actual: Rat, numerator, denominator: string) 
 		return
 	}
 
-	left := int_mul(actual.numerator, expected_den)
-	right := int_mul(expected_num, actual.denominator)
 	testing.expectf(
 		t,
-		_ints_equal(left, right),
+		_ints_equal(actual.numerator, expected_num) &&
+		_ints_equal(actual.denominator, expected_den),
 		"expected %s/%s, got %r",
 		numerator,
 		denominator,
 		actual,
 	)
+}
+
+_expect_int_ordering :: proc(t: ^testing.T, a, b: Int, expected: slice.Ordering) {
+	actual := cmp(a, b)
+	testing.expectf(
+		t,
+		actual == expected,
+		"expected integer ordering %v, got %v",
+		expected,
+		actual,
+	)
+	testing.expect(t, eq(a, b) == (expected == .Equal))
+	testing.expect(t, ne(a, b) == (expected != .Equal))
+	testing.expect(t, lt(a, b) == (expected == .Less))
+	testing.expect(t, le(a, b) == (expected != .Greater))
+	testing.expect(t, gt(a, b) == (expected == .Greater))
+	testing.expect(t, ge(a, b) == (expected != .Less))
+}
+
+_expect_rat_ordering :: proc(t: ^testing.T, a, b: Rat, expected: slice.Ordering) {
+	actual := cmp(a, b)
+	testing.expectf(
+		t,
+		actual == expected,
+		"expected rational ordering %v, got %v",
+		expected,
+		actual,
+	)
+	testing.expect(t, eq(a, b) == (expected == .Equal))
+	testing.expect(t, ne(a, b) == (expected != .Equal))
+	testing.expect(t, lt(a, b) == (expected == .Less))
+	testing.expect(t, le(a, b) == (expected != .Greater))
+	testing.expect(t, gt(a, b) == (expected == .Greater))
+	testing.expect(t, ge(a, b) == (expected != .Less))
+}
+
+_test_comparisons :: proc(t: ^testing.T) {
+	_expect_int_ordering(t, Int(-3), Int(-2), .Less)
+	_expect_int_ordering(t, Int(5), Int(5), .Equal)
+	_expect_int_ordering(t, Int(8), Int(5), .Greater)
+
+	large, large_ok := parse_int("170141183460469231731687303715884105728")
+	large_copy, large_copy_ok := parse_int("170141183460469231731687303715884105728")
+	negative_large, negative_large_ok := parse_int("-170141183460469231731687303715884105729")
+	testing.expect(t, large_ok && large_copy_ok && negative_large_ok)
+	if large_ok && large_copy_ok && negative_large_ok {
+		I128_MAX :: (1 << 127) - 1
+		_expect_int_ordering(t, Int(I128_MAX), large, .Less)
+		_expect_int_ordering(t, large, Int(I128_MAX), .Greater)
+		_expect_int_ordering(t, large, large_copy, .Equal)
+		_expect_int_ordering(t, negative_large, Int(I128_MIN), .Less)
+
+		_expect_rat_ordering(t, Rat{large, 2}, Rat{Int(I128_MAX), 1}, .Less)
+	}
+
+	_expect_rat_ordering(t, Rat{1, 3}, Rat{1, 2}, .Less)
+	_expect_rat_ordering(t, Rat{2, 4}, Rat{1, 2}, .Equal)
+	_expect_rat_ordering(t, Rat{-1, 2}, Rat{-1, 3}, .Less)
+	_expect_rat_ordering(t, Rat{1, -2}, Rat{-1, 3}, .Less)
+	_expect_rat_ordering(t, Rat{-1, -2}, Rat{1, 2}, .Equal)
+	_expect_rat_ordering(t, Rat{0, -7}, Rat{0, 1}, .Equal)
+}
+
+_test_gcd_and_reduction :: proc(t: ^testing.T) {
+	_expect_int(t, gcd(Int(54), Int(24)), "6")
+	_expect_int(t, gcd(Int(-54), Int(24)), "6")
+	_expect_int(t, gcd(Int(0), Int(24)), "24")
+	_expect_int(t, gcd(Int(I128_MIN), Int(0)), "170141183460469231731687303715884105728")
+
+	large, large_ok := parse_int("170141183460469231731687303715884105728")
+	half, half_ok := parse_int("85070591730234615865843651857942052864")
+	testing.expect(t, large_ok && half_ok)
+	if large_ok && half_ok {
+		_expect_int(t, gcd(large, half), "85070591730234615865843651857942052864")
+	}
+
+	_expect_rat(t, reduce(Rat{6, 8}), "3", "4")
+	_expect_rat(t, reduce(Rat{-6, -8}), "3", "4")
+	_expect_rat(t, reduce(Rat{6, -8}), "-3", "4")
+	_expect_rat(t, reduce(Rat{0, -8}), "0", "1")
 }
 
 _test_int_arithmetic :: proc(t: ^testing.T) {
@@ -154,10 +234,11 @@ _test_parsing :: proc(t: ^testing.T) {
 		numerator:   string,
 		denominator: string,
 	} {
-		{"12.34", "1234", "100"},
-		{"-1.25", "-125", "100"},
+		{"12.34", "617", "50"},
+		{"-1.25", "-5", "4"},
 		{"1e3", "1000", "1"},
-		{"1.5e-2", "15", "1000"},
+		{"1.5e-2", "3", "200"},
+		{"0.00", "0", "1"},
 	}
 	for tc in decimal_cases {
 		actual, parsed := parse_decimal(tc.source)
@@ -207,6 +288,8 @@ test_exact :: proc(t: ^testing.T) {
 	defer {bigint_allocator = previous_allocator}
 
 	_test_int_arithmetic(t)
+	_test_gcd_and_reduction(t)
 	_test_rat_arithmetic(t)
+	_test_comparisons(t)
 	_test_parsing(t)
 }

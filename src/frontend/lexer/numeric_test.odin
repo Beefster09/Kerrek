@@ -59,29 +59,24 @@ _expect_numeric :: proc(t: ^testing.T, tc: Numeric_Case) {
 test_match_numeric :: proc(t: ^testing.T) {
 	cases := [?]Numeric_Case {
 		{"123tail", "123", .DecimalInteger, 123, 1},
-		{"12.50e-1tail", "12.50e-1", .Decimal, 1250, 1000},
+		{"12.50e-1tail", "12.50e-1", .Decimal, 5, 4},
 		{"0xdeadBEEF!", "0xdeadBEEF", .HexInteger, 3735928559, 1},
-		{"0x1.8p1tail", "0x1.8p1", .HexFloat, 24, 8},
+		{"0x1.8p1tail", "0x1.8p1", .HexFloat, 3, 1},
 		{"0x1p10tail", "0x1p10", .HexFloat, 1024, 1},
+		{"0x1P10tail", "0x1P10", .HexFloat, 1024, 1},
+		{"12.5E-1tail", "12.5E-1", .Decimal, 5, 4},
 	}
 	for tc in cases {
 		_expect_numeric(t, tc)
 	}
 }
 
-// These cases specify the intended result while their lexer branches remain TODO.
-RUN_PENDING_RADIX_LITERAL_TESTS :: #config(RUN_PENDING_RADIX_LITERAL_TESTS, false)
-
 @(test)
 test_match_octal_numeric :: proc(t: ^testing.T) {
-	when RUN_PENDING_RADIX_LITERAL_TESTS {
-		_expect_numeric(t, {"0o755tail", "0o755", .OctalInteger, 493, 1})
-	}
+	_expect_numeric(t, {"0o755tail", "0o755", .OctalInteger, 493, 1})
 }
 
 @(test)
 test_match_binary_numeric :: proc(t: ^testing.T) {
-	when RUN_PENDING_RADIX_LITERAL_TESTS {
-		_expect_numeric(t, {"0b101101tail", "0b101101", .BinaryInteger, 45, 1})
-	}
+	_expect_numeric(t, {"0b101101tail", "0b101101", .BinaryInteger, 45, 1})
 }
