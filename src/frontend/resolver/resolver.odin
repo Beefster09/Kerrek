@@ -76,6 +76,7 @@ load_package :: proc(
 
 	pkg := new(Package, res.allocator)
 	pkg.defined_symbols = make(map[Identifier]Partial_Symbol)
+	res.packages[abs_path] = pkg
 
 	if file_as_package {
 		pkg.name = Identifier(
@@ -130,8 +131,13 @@ _load_file :: proc(res: ^Resolver, pkg: ^Package, path: string) -> (^File, Load_
 	}
 
 	file := new(File, res.allocator)
-	file.own_package = pkg
-
+	file^ = {
+		src             = file_ast.source,
+		src_ast         = file_ast,
+		imports         = make(map[common.Identifier]Import),
+		defined_symbols = make([dynamic]Partial_Symbol),
+		own_package     = pkg,
+	}
 	// Source_File owns a stable copy of the absolute path.
 	res.files[file_ast.source.file] = file
 
@@ -224,9 +230,9 @@ file_lookup :: proc(file: ^File, name: Identifier) -> Named {
 	return nil
 }
 
-scope_lookup :: proc(scope: ^Scope, name: Identifier) -> Named {
+lookup :: proc(scope: ^Scope, name: Identifier) -> Named {
 	scope := scope
-	for {
+	outer: for {
 		if symbol, ok := scope.locals[name]; ok {
 			return _to_named(symbol)
 		}
@@ -237,9 +243,15 @@ scope_lookup :: proc(scope: ^Scope, name: Identifier) -> Named {
 		case ^File:
 			return file_lookup(parent, name)
 		case:
-			return nil
+			break outer
 		}
 	}
+
+	if builtin, ok := _builtins_prelude[name]; ok {
+		return builtin
+	}
+
+	return nil
 }
 
 partial_resolve :: proc {
@@ -260,7 +272,7 @@ partial_resolve_qualname :: proc(
 partial_resolve_expression :: proc(scope: ^Scope, expr: ast.Expression) -> (Named, []Identifier) {
 	#partial switch node in expr {
 	case ^ast.Name_Expr:
-		return scope_lookup(scope, node.name.id), nil
+		return lookup(scope, node.name.id), nil
 
 	case ^ast.FieldAccess_Expr:
 		base, rest := partial_resolve_expression(scope, node.base)
@@ -304,87 +316,65 @@ resolve_expression :: proc(scope: ^Scope, expr: ast.Expression) -> Named {
 	return named
 }
 
-_next_symbol_header :: proc(res: ^Resolver, name: Identifier) -> _Symbol_Header {
+_next_symbol_header :: proc(res: ^Resolver, file: ^File, name: Identifier) -> _Symbol_Header {
 	header := _Symbol_Header {
-		id   = res.next_symbol_id,
-		name = name,
+		id         = res.next_symbol_id,
+		name       = name,
+		defined_in = file,
 	}
 	res.next_symbol_id += 1
 	return header
 }
 
 _add_symbol :: proc(res: ^Resolver, file: ^File, decl: ast.Top_Level_Declaration) {
+	_real_add_symbol :: #force_inline proc(
+		res: ^Resolver,
+		file: ^File,
+		node: $N,
+		$S: typeid,
+	) -> ^S {
+		_check_shadowing(file, node.name)
+		symbol := new(S, res.allocator)
+		symbol^ = {
+			header = _next_symbol_header(res, file, node.name.id),
+			ast    = node,
+		}
+		file.own_package.defined_symbols[node.name.id] = symbol
+		append(&file.defined_symbols, symbol)
+		return symbol
+	}
+
 	switch node in decl {
 	case ^ast.Func_Definition:
-		_check_shadowing(file, node.name)
-		symbol := new(Function, res.allocator)
-		symbol^ = {_next_symbol_header(res, node.name.id), node, nil}
-		file.own_package.defined_symbols[node.name.id] = symbol
-		append(&file.defined_symbols, symbol)
+		_real_add_symbol(res, file, node, Function)
 
 	case ^ast.Type_Alias:
-		_check_shadowing(file, node.name)
-		symbol := new(Type_Alias, res.allocator)
-		symbol^ = {_next_symbol_header(res, node.name.id), node, nil}
-		file.own_package.defined_symbols[node.name.id] = symbol
-		append(&file.defined_symbols, symbol)
+		_real_add_symbol(res, file, node, Type_Alias)
 
 	case ^ast.Constant_Def:
-		_check_shadowing(file, node.name)
-		symbol := new(Constant, res.allocator)
-		symbol^ = {_next_symbol_header(res, node.name.id), node, nil}
-		file.own_package.defined_symbols[node.name.id] = symbol
-		append(&file.defined_symbols, symbol)
+		_real_add_symbol(res, file, node, Constant)
 
 	case ^ast.Global_Variable:
-		_check_shadowing(file, node.name)
-		symbol := new(Global_Variable, res.allocator)
-		symbol^ = {_next_symbol_header(res, node.name.id), node, nil}
-		file.own_package.defined_symbols[node.name.id] = symbol
-		append(&file.defined_symbols, symbol)
+		_real_add_symbol(res, file, node, Global_Variable)
 
 	case ^ast.Unit_Type_Decl:
-		_check_shadowing(file, node.name)
-		symbol := new(Unit_Type, res.allocator)
-		symbol^ = {_next_symbol_header(res, node.name.id), node, nil}
-		file.own_package.defined_symbols[node.name.id] = symbol
-		append(&file.defined_symbols, symbol)
+		_real_add_symbol(res, file, node, Unit_Type)
 
 	case ^ast.Unit_Type_Alias_Decl:
-		_check_shadowing(file, node.name)
-		symbol := new(Unit_Type_Alias, res.allocator)
-		symbol^ = {_next_symbol_header(res, node.name.id), node, nil}
-		file.own_package.defined_symbols[node.name.id] = symbol
-		append(&file.defined_symbols, symbol)
+		_real_add_symbol(res, file, node, Unit_Type_Alias)
 
 	case ^ast.Unit_Decl:
-		_check_shadowing(file, node.name)
-		symbol := new(Base_Unit, res.allocator)
-		symbol^ = {_next_symbol_header(res, node.name.id), node, nil}
-		file.own_package.defined_symbols[node.name.id] = symbol
-		append(&file.defined_symbols, symbol)
+		symbol := _real_add_symbol(res, file, node, Base_Unit)
 		units.register_unit_name(symbol.id, symbol.name)
 
 	case ^ast.Unit_Alias_Decl:
-		_check_shadowing(file, node.name)
-		symbol := new(Unit_Alias, res.allocator)
-		symbol^ = {_next_symbol_header(res, node.name.id), node, nil}
-		file.own_package.defined_symbols[node.name.id] = symbol
-		append(&file.defined_symbols, symbol)
+		_real_add_symbol(res, file, node, Unit_Alias)
 
 	case ^ast.Capability_Decl:
-		_check_shadowing(file, node.name)
-		symbol := new(Capability, res.allocator)
-		symbol^ = {_next_symbol_header(res, node.name.id), node, nil}
-		file.own_package.defined_symbols[node.name.id] = symbol
-		append(&file.defined_symbols, symbol)
+		_real_add_symbol(res, file, node, Capability)
 
 	case ^ast.Annotation_Def:
-		_check_shadowing(file, node.name)
-		symbol := new(Annotation, res.allocator)
-		symbol^ = {_next_symbol_header(res, node.name.id), node, nil}
-		file.own_package.defined_symbols[node.name.id] = symbol
-		append(&file.defined_symbols, symbol)
+		_real_add_symbol(res, file, node, Annotation)
 	}
 }
 
@@ -440,7 +430,7 @@ _resolve_qualname :: proc(scope: ^Scope, qualname: ast.Qualified_Name) -> Named 
 	if len(qualname.path) == 0 do return nil
 
 	base_name := qualname.path[0]
-	resolved := scope_lookup(scope, base_name.id)
+	resolved := lookup(scope, base_name.id)
 	if resolved == nil {
 		diagnostics.emit(.Unresolved_Name, base_name.span, "cannot resolve '%s'", base_name.id)
 		return nil

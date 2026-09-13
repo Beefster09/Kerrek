@@ -28,11 +28,17 @@ explicit.
 
 Points to settle while implementing scopes:
 
-- Decide whether parameters and named returns share the function scope. Sharing
+- ~~Decide whether parameters and named returns share the function scope. Sharing
   catches collisions directly; separate chained scopes can encode intentional
-  shadowing if the language permits it.
+  shadowing if the language permits it.~~
+    - named returns are only visible to `with defer` expressions (not yet defined in the function HIR or AST)
+    - parameters are in a separate scope from the main function body. Each enclosed block (except those within `\if`) produces a new scope. This is the same semantics as Odin itself, and I think is the overall correct design.
+    - shadowing symbols from outer scopes is always allowed and produces a warning diagnostic if it's not simply aliasing a symbol of the same name from an outer scope
+    - shadowing is allowed; duplicate symbols in the same scope are not
 - Define whether a local is visible in its own initializer and whether block
   declarations become visible sequentially or for the whole block.
+    - `let` and `const` declarations: the name is not visible until after the value evaluates. This allows them to shadow and copy values from outer scopes by the same name
+    - `func` declarations: the name is visible immediately so that recursion is possible
 - Allocate scope maps and scope nodes from the resolver/analysis arena. Never
   retain a pointer to a stack-created scope.
 - Add `push_scope(parent)` and `define_local(scope, symbol)` helpers so map
