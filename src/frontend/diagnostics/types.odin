@@ -35,17 +35,10 @@ Category :: enum u8 {
 
 Diagnostic :: struct {
 	level:   Level,
-	code:    Kind,
+	code:    Code,
 	message: string,
 	span:    common.Span,
 	extra:   [dynamic]Addendum `json:",omitempty"`,
-}
-
-Diagnostic_Metadata :: struct {
-	origin:        Origin,
-	category:      Category,
-	default_level: Level,
-	code:          string,
 }
 
 Addendum :: union {

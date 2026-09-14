@@ -12,6 +12,7 @@ Builtin :: struct {
 
 Builtin_Kind :: enum {
 	Primitive_Type,
+	Parameterized_Type,
 	Function,
 	Annotation,
 }
@@ -31,16 +32,19 @@ FIRST_USER_SYMBOL_ID :: 10_000
 // ID, and makes adding a builtin unable to collide with an existing ID.
 BUILTINS := [?]Builtin {
 	// Types.
-	{name = "Integer", kind = .Primitive_Type},
+	{name = "Integer", kind = .Parameterized_Type},
+	{name = "Int128", kind = .Primitive_Type},
 	{name = "Int64", kind = .Primitive_Type},
 	{name = "Int32", kind = .Primitive_Type},
 	{name = "Int16", kind = .Primitive_Type},
 	{name = "Int8", kind = .Primitive_Type},
+	{name = "UInt128", kind = .Primitive_Type},
 	{name = "UInt64", kind = .Primitive_Type},
 	{name = "UInt32", kind = .Primitive_Type},
 	{name = "UInt16", kind = .Primitive_Type},
 	{name = "UInt8", kind = .Primitive_Type},
-	{name = "Decimal", kind = .Primitive_Type},
+	{name = "Decimal", kind = .Parameterized_Type},
+	{name = "Dec128", kind = .Primitive_Type},
 	{name = "Dec64", kind = .Primitive_Type},
 	{name = "Dec32", kind = .Primitive_Type},
 	{name = "Float64", kind = .Primitive_Type, namespace = .Floats},
@@ -71,10 +75,12 @@ BUILTINS := [?]Builtin {
 	{name = "shared_deep_clone", kind = .Function},
 }
 
-_builtins_prelude: map[Identifier]Builtin
+_builtins_prelude: map[Identifier]^Builtin
+_builtins_other: map[Identifier]^Builtin
 
 initialize :: proc() {
-	_builtins_prelude = make(map[Identifier]Builtin)
+	_builtins_prelude = make(map[Identifier]^Builtin)
+	_builtins_other = make(map[Identifier]^Builtin)
 
 	for &builtin, index in BUILTINS {
 		builtin.id = Symbol_ID(index + 1)
@@ -85,9 +91,21 @@ initialize :: proc() {
 			builtin.id,
 		)
 
-		_, duplicate_name := _builtins_prelude[builtin.name]
-		fmt.assertf(!duplicate_name, "duplicate builtin name %q", builtin.name)
-		_builtins_prelude[builtin.name] = builtin
+		if builtin.namespace == .Prelude {
+			fmt.assertf(
+				builtin.name not_in _builtins_prelude,
+				"duplicate prelude builtin name %q",
+				builtin.name,
+			)
+			_builtins_prelude[builtin.name] = &builtin
+		} else {
+			fmt.assertf(
+				builtin.name not_in _builtins_other,
+				"duplicate non-prelude builtin name %q",
+				builtin.name,
+			)
+			_builtins_other[builtin.name] = &builtin
+		}
 	}
 }
 

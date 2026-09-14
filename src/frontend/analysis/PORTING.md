@@ -41,10 +41,13 @@ Points to settle while implementing scopes:
     - `func` declarations: the name is visible immediately so that recursion is possible
 - Allocate scope maps and scope nodes from the resolver/analysis arena. Never
   retain a pointer to a stack-created scope.
+    - agreed
 - Add `push_scope(parent)` and `define_local(scope, symbol)` helpers so map
   initialization, shadowing diagnostics, and parent wiring have one policy.
+    - done
 - Keep package/file lookup as the terminal parent operation. Builtin fallback
   should have one well-defined place rather than being repeated by analysis.
+    - `resolver.lookup` now handles builtin lookup
 
 ## Open representation choices
 

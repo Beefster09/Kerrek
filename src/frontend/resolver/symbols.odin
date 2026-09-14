@@ -151,19 +151,9 @@ Partial_Symbol :: union {
 }
 
 Named :: intrinsics.type_merge(union {
-		^Package,
-		Builtin,
+		^Import,
+		^Builtin,
 	}, Partial_Symbol)
-
-Scope :: struct {
-	locals: map[common.Identifier]Partial_Symbol,
-	parent: Scope_Parent,
-}
-
-Scope_Parent :: union {
-	^Scope,
-	^File,
-}
 
 Package :: struct {
 	name:            Identifier,
@@ -174,12 +164,13 @@ Package :: struct {
 File :: struct {
 	src:             ^common.Source_File,
 	src_ast:         ^ast.File,
-	imports:         map[Identifier]Import,
+	imports:         map[Identifier]^Import,
 	defined_symbols: [dynamic]Partial_Symbol,
 	own_package:     ^Package,
 }
 
 Import :: struct {
-	pkg:       ^Package,
-	use_names: []ast.Name,
+	local_name: common.Name,
+	pkg:        ^Package,
+	use_names:  []common.Name,
 }

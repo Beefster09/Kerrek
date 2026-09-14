@@ -59,17 +59,6 @@ Symbol :: union {
 	^Distinct_Type,
 }
 
-Annotatable :: union {
-	^Global_Variable,
-	^Local_Variable,
-	^Func_Definition,
-	^Struct_Type,
-	^Interface,
-	^Interface_Impl,
-	^Enum_Type,
-	^Distinct_Type,
-}
-
 Type_Definition :: union {
 	^Struct_Type,
 	^Interface,
@@ -119,8 +108,20 @@ Capability :: struct {
 	using _: _Symbol_Header,
 }
 
-Capability_Expression :: struct {
+Capability_Expression :: union {
+	^Capability,
+	^Capability_All_Of,
+	^Capability_Any_Of,
+}
+
+Capability_All_Of :: struct {
 	span: Span,
+	sub:  Capability_Expression,
+}
+
+Capability_Any_Of :: struct {
+	span: Span,
+	sub:  Capability_Expression,
 }
 
 // Poison nodes are used to mark translation failure points in an effort to avoid duplicate diagnostics

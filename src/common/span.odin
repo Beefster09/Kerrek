@@ -273,7 +273,7 @@ fmt_span :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 		if span.start.line > 0 && span.start.line < MAX_LINE {
 			io.write_uint(fi.writer, uint(span.start.line))
 		} else {
-			io.write_string(fi.writer, "???")
+			io.write_string(fi.writer, "??")
 		}
 		if span.start.col > 0 && span.start.col < MAX_COL {
 			io.write_rune(fi.writer, ':')
@@ -282,17 +282,19 @@ fmt_span :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	}
 	if span.end != span.start {
 		if show_start && show_end {
-			io.write_string(fi.writer, " .. ")
+			io.write_string(fi.writer, " … ")
 		}
 
-		if span.end.line > 0 && span.end.line < MAX_LINE {
-			io.write_uint(fi.writer, uint(span.end.line))
-		} else {
-			io.write_string(fi.writer, "???")
-		}
-		if span.end.col > 0 && span.end.col < MAX_COL {
-			io.write_rune(fi.writer, ':')
-			io.write_uint(fi.writer, uint(span.end.col))
+		if show_end {
+			if span.end.line > 0 && span.end.line < MAX_LINE {
+				io.write_uint(fi.writer, uint(span.end.line))
+			} else {
+				io.write_string(fi.writer, "??")
+			}
+			if span.end.col > 0 && span.end.col < MAX_COL {
+				io.write_rune(fi.writer, ':')
+				io.write_uint(fi.writer, uint(span.end.col))
+			}
 		}
 	}
 	if brackets {

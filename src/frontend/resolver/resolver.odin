@@ -135,7 +135,7 @@ _load_file :: proc(res: ^Resolver, pkg: ^Package, path: string) -> (^File, Load_
 	file^ = {
 		src             = file_ast.source,
 		src_ast         = file_ast,
-		imports         = make(map[common.Identifier]Import),
+		imports         = make(map[common.Identifier]^Import),
 		defined_symbols = make([dynamic]Partial_Symbol),
 		own_package     = pkg,
 	}
@@ -181,7 +181,7 @@ _load_file :: proc(res: ^Resolver, pkg: ^Package, path: string) -> (^File, Load_
 			if symbol := module_lookup_defined(imported, used_name.id); symbol != nil {
 				if previous := module_lookup(module, used_name.id); previous != nil {
 					diag := diagnostics.emit(
-						.Duplicate_Definition,
+						.Duplicate_Global,
 						used_name.span,
 						"imported name '%s' conflicts with an existing name",
 						used_name.id,
@@ -214,7 +214,7 @@ _load_file :: proc(res: ^Resolver, pkg: ^Package, path: string) -> (^File, Load_
 
 file_lookup :: proc(file: ^File, name: Identifier) -> Named {
 	if imp, ok := file.imports[name]; ok {
-		return imp.pkg
+		return imp
 	}
 	if defined, ok := file.own_package.defined_symbols[name]; ok {
 		return _to_named(defined)
@@ -248,8 +248,8 @@ lookup :: proc(scope: ^Scope, name: Identifier) -> Named {
 		}
 	}
 
-	if builtin, ok := _builtins_prelude[name]; ok {
-		return builtin
+	if name in _builtins_prelude {
+		return _builtins_prelude[name]
 	}
 
 	return nil
@@ -334,7 +334,10 @@ _add_symbol :: proc(res: ^Resolver, file: ^File, decl: ast.Top_Level_Declaration
 		node: $N,
 		$S: typeid,
 	) -> ^S {
-		_check_shadowing(file, node.name)
+		shadow := _check_shadowing(file, node.name)
+		if shadow == .Shadows_Global || shadow == .Shadows_Import {
+			return nil
+		}
 		symbol := new(S, res.allocator)
 		symbol^ = {
 			header = _next_symbol_header(res, file, node.name.id),
@@ -366,7 +369,9 @@ _add_symbol :: proc(res: ^Resolver, file: ^File, decl: ast.Top_Level_Declaration
 
 	case ^ast.Unit_Decl:
 		symbol := _real_add_symbol(res, file, node, Base_Unit)
-		units.register_unit_name(symbol.id, symbol.name)
+		if symbol != nil {
+			units.register_unit_name(symbol.id, symbol.name)
+		}
 
 	case ^ast.Unit_Alias_Decl:
 		_real_add_symbol(res, file, node, Unit_Alias)
@@ -379,29 +384,55 @@ _add_symbol :: proc(res: ^Resolver, file: ^File, decl: ast.Top_Level_Declaration
 	}
 }
 
-_check_shadowing :: proc(file: ^File, name: ast.Name) {
-	if builtin_lookup(name.id) != nil {
-		diagnostics.emit(.Builtin_Shadowing, name.span, "'%s' shadows a builtin name", name.id)
-		return
-	}
+_check_shadowing :: proc(file: ^File, name: ast.Name) -> enum {
+		No_Shadowing,
+		Shadows_Import,
+		Shadows_Global,
+		Shadows_Builtin,
+	} {
 
-	if previous := file_lookup(file, name.id); previous != nil {
-		diag := diagnostics.emit(
-			.Duplicate_Definition,
-			name.span,
-			"'%s' conflicts with a previously defined name in the package",
-			name.id,
-		)
-		if previous_span, ok := named_span(previous); ok {
-			diagnostics.reference(diag, previous_span, "'%s' was previously defined here", name.id)
+	if existing := file_lookup(file, name.id); existing != nil {
+		#partial switch ex in existing {
+		case ^Import:
+			diag := diagnostics.emit(
+				.Import_Conflict,
+				name.span,
+				"'%s' conflicts with an imported name in this file",
+				name.id,
+			)
+			diagnostics.reference(diag, ex.local_name.span, "'%s' was imported here")
+			return .Shadows_Import
+		case:
+			diag := diagnostics.emit(
+				.Duplicate_Global,
+				name.span,
+				"'%s' conflicts with a previously defined name in the package",
+				name.id,
+			)
+			if previous_span, ok := span_of_name(existing); ok {
+				diagnostics.reference(
+					diag,
+					previous_span,
+					"'%s' was previously defined here",
+					name.id,
+				)
+			}
+			return .Shadows_Global
 		}
 	}
+
+	if builtin_lookup(name.id) != nil {
+		diagnostics.emit(.Builtin_Shadowing, name.span, "'%s' shadows a builtin name", name.id)
+		return .Shadows_Builtin
+	}
+
+	return .No_Shadowing
 }
 
 _static_resolve_field :: proc(base: Named, field: ast.Name) -> Named {
 	#partial switch symbol in base {
-	case ^Package:
-		if sym, ok := symbol.defined_symbols[field.id]; ok {
+	case ^Import:
+		if sym, ok := symbol.pkg.defined_symbols[field.id]; ok {
 			return _to_named(sym)
 		}
 	case ^Base_Unit:
@@ -506,8 +537,14 @@ _type_definition_to_named :: proc(symbol: Type_Definition) -> Named {
 	}
 }
 
-named_span :: proc(named: Named) -> (common.Span, bool) {
-	#partial switch symbol in named {
+span_of_name :: proc {
+	_symbol_span,
+	_named_span,
+	_expression_span,
+}
+
+_symbol_span :: proc(named: Partial_Symbol) -> (common.Span, bool) {
+	switch symbol in named {
 	case ^Function:
 		return symbol.ast.name.span, true
 	case ^Type_Alias:
@@ -532,8 +569,66 @@ named_span :: proc(named: Named) -> (common.Span, bool) {
 		return symbol.ast.name.span, true
 	case ^Formal_Parameter:
 		return symbol.ast.name.span, true
+	case ^Distinct_Type:
+		return {}, false // TODO
+	// return symbol.ast.name.span, true
+	case ^Struct_Type:
+		return {}, false // TODO
+	// return symbol.ast.name.span, true
+	case ^Enum_Type:
+		return {}, false // TODO
+	// return symbol.ast.name.span, true
 	case ^Named_Return:
-		if symbol.ast.name != nil do return symbol.ast.name.?.span, true
+		if symbol.ast.name != nil {
+			return symbol.ast.name.?.span, true
+		}
+	}
+	return {}, false
+}
+
+_named_span :: proc(named: Named) -> (common.Span, bool) {
+	switch symbol in named {
+	case ^Import:
+		return symbol.local_name.span, true
+	case ^Builtin:
+		return {}, false
+	case ^Function:
+		return symbol.ast.name.span, true
+	case ^Type_Alias:
+		return symbol.ast.name.span, true
+	case ^Constant:
+		return symbol.ast.name.span, true
+	case ^Global_Variable:
+		return symbol.ast.name.span, true
+	case ^Local_Variable:
+		return symbol.ast.name.span, true
+	case ^Unit_Type:
+		return symbol.ast.name.span, true
+	case ^Base_Unit:
+		return symbol.ast.name.span, true
+	case ^Unit_Type_Alias:
+		return symbol.ast.name.span, true
+	case ^Unit_Alias:
+		return symbol.ast.name.span, true
+	case ^Capability:
+		return symbol.ast.name.span, true
+	case ^Annotation:
+		return symbol.ast.name.span, true
+	case ^Formal_Parameter:
+		return symbol.ast.name.span, true
+	case ^Distinct_Type:
+		return {}, false // TODO
+	// return symbol.ast.name.span, true
+	case ^Struct_Type:
+		return {}, false // TODO
+	// return symbol.ast.name.span, true
+	case ^Enum_Type:
+		return {}, false // TODO
+	// return symbol.ast.name.span, true
+	case ^Named_Return:
+		if symbol.ast.name != nil {
+			return symbol.ast.name.?.span, true
+		}
 	}
 	return {}, false
 }

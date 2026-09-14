@@ -7,6 +7,7 @@ Statement :: union {
 	^Expr_Statement,
 	^Assign_Statement,
 	^Block,
+	^Poison,
 }
 
 Local_Variable :: struct {

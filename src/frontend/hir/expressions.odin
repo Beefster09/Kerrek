@@ -53,6 +53,7 @@ Expression :: union {
 	^Unit_Reinterpret_Expr,
 	^Index_Expr,
 	^Func_Call_Expr,
+	^Poison,
 }
 
 Nil_Of :: struct {
