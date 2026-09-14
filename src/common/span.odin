@@ -1,6 +1,5 @@
 package common
 
-import "base:intrinsics"
 import "base:runtime"
 import "core:fmt"
 import "core:io"
@@ -18,8 +17,9 @@ Cursor :: struct {
 	using at: Location,
 }
 
-LINE_BITS :: 32 - COL_BITS
+LINE_BITS :: 22
 COL_BITS :: 10
+#assert(LINE_BITS + COL_BITS == 32)
 
 MAX_LINE :: 1 << LINE_BITS - 1
 MAX_COL :: 1 << COL_BITS - 1

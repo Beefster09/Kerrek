@@ -2,6 +2,7 @@ package common
 
 import "core:container/xar"
 import "core:encoding/json"
+import "core:fmt"
 import "core:io"
 import "core:os"
 import "core:strings"
@@ -14,6 +15,7 @@ Source_File :: struct {
 	file:            string, // location of file; owned
 	contents:        []u8, // contents of file; owned, may be purged when not in use
 	newline_offsets: []u32, // offsets where each newline character is; owned, treat as immutable after initialization
+	_immortal:       bool, // prevents the file contents from being unloaded
 	_lock:           sync.Mutex, // protects contents from being loaded twice by race condition
 }
 Load_Source_Error :: enum {
@@ -61,22 +63,13 @@ load_source_from_path :: proc(file: string) -> (sf: ^Source_File, ret_err: Load_
 		delete(contents)
 	}
 
-	line_offsets := make([dynamic]u32, 0, len(contents) / AVG_CHARS_PER_LINE + 16)
-	for c, i in contents {
-		if c == '\n' {
-			append(&line_offsets, u32(i))
-		}
-	}
-
-	shrink(&line_offsets)
-
 	_, xar_err := xar.append(
 		&_sources,
 		Source_File {
 			id = _next_id,
 			file = strings.clone(file),
 			contents = contents,
-			newline_offsets = line_offsets[:],
+			newline_offsets = _calc_line_offsets(contents),
 		},
 	)
 	assert(xar_err == nil)
@@ -111,6 +104,28 @@ load_source_by_id :: proc(id: Source_ID) -> (^Source_File, Load_Source_Error) {
 	return nil, .Not_Found
 }
 
+// primarily for testing: spawn a source file
+inject_source_file :: proc(name: string, contents: []u8) -> (sf: ^Source_File) {
+	_, xar_err := xar.append(
+		&_sources,
+		Source_File {
+			id = _next_id,
+			file = fmt.aprintf("<%s>", name),
+			contents = contents,
+			newline_offsets = _calc_line_offsets(contents),
+			_immortal = true,
+		},
+	)
+	assert(xar_err == nil)
+
+	sf = xar.get_ptr(&_sources, xar.len(_sources) - 1)
+
+	_next_id += 1
+	_sources_by_path[sf.file] = sf
+
+	return sf
+}
+
 _ensure_contents_loaded :: proc(sf: ^Source_File) -> bool {
 	sync.lock(&sf._lock)
 	defer sync.unlock(&sf._lock)
@@ -125,7 +140,23 @@ _ensure_contents_loaded :: proc(sf: ^Source_File) -> bool {
 	return true
 }
 
+_calc_line_offsets :: proc(contents: []u8) -> []u32 {
+	line_offsets := make([dynamic]u32, 0, len(contents) / AVG_CHARS_PER_LINE + 16)
+	for c, i in contents {
+		if c == '\n' {
+			append(&line_offsets, u32(i))
+		}
+	}
+
+	shrink(&line_offsets)
+	return line_offsets[:]
+}
+
 unload_source :: proc(sf: ^Source_File) {
+	if sf._immortal {
+		return
+	}
+
 	sync.lock(&_source_lock)
 	defer sync.unlock(&_source_lock)
 	sync.lock(&sf._lock)

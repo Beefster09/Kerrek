@@ -20,8 +20,12 @@ Parse_Error :: enum {
 	Other_OS_Error,
 }
 
+parse :: proc {
+	parse_path,
+	parse_source_file,
+}
 
-parse :: proc(src_path: string) -> (file: ^ast.File, err: Parse_Error) {
+parse_path :: proc(src_path: string) -> (file: ^ast.File, err: Parse_Error) {
 	sf, ldsrc_err := common.load_source(src_path)
 	switch ldsrc_err {
 	case .Not_Found:
@@ -34,7 +38,10 @@ parse :: proc(src_path: string) -> (file: ^ast.File, err: Parse_Error) {
 	// nothing to do; continue onward
 	}
 	defer common.unload_source(sf)
+	return parse_source_file(sf)
+}
 
+parse_source_file :: proc(sf: ^common.Source_File) -> (file: ^ast.File, err: Parse_Error) {
 	ps := Parser_State {
 		tokens = lexer.tokenize(sf),
 	}
