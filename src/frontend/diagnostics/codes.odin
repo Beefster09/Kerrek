@@ -27,6 +27,12 @@ Code :: enum {
 	Import_Not_Found,
 	// Semantic analysis diagnostics
 	Declaration_Cycle,
+	Invalid_Type,
+	Invalid_Unit,
+	Invalid_Capability,
+	Invalid_Annotation,
+	Invalid_Entry_Point,
+	Missing_Entry_Point,
 	// TEST
 	Test,
 }
@@ -66,6 +72,12 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Import_Not_Found = {origin = .Resolver, default_level = .Error, stable_id = "R21"},
 	// Semantic analysis diagnostics
 	.Declaration_Cycle = {origin = .TypeCheck, default_level = .Error, stable_id = "T00"},
+	.Invalid_Type = {origin = .TypeCheck, default_level = .Error, stable_id = "T01"},
+	.Invalid_Unit = {origin = .UnitCheck, default_level = .Error, stable_id = "U00"},
+	.Invalid_Capability = {origin = .CapCheck, default_level = .Error, stable_id = "C00"},
+	.Invalid_Annotation = {origin = .TypeCheck, default_level = .Error, stable_id = "T02"},
+	.Invalid_Entry_Point = {origin = .TypeCheck, default_level = .Error, stable_id = "T03"},
+	.Missing_Entry_Point = {origin = .TypeCheck, default_level = .Error, stable_id = "T04"},
 	// TEST
 	.Test = {origin = .Resolver, default_level = .Notice, stable_id = "TEST"},
 }

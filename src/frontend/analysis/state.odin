@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:mem"
 
 import "../../common"
+import "../ast"
 import "../hir"
 import "../resolver"
 
@@ -17,10 +18,13 @@ Translation_State :: struct {
 	output:            ^hir.Translation_Unit,
 	hir_items:         HIR_Accumulator,
 	symbols_by_id:     map[common.Symbol_ID]resolver.Partial_Symbol,
-	pending_bodies:    [dynamic]Pending_Function_Body,
-	processing_stack:  [dynamic]resolver.Partial_Symbol, // used to detect and emit diagnostics for dependency cycles
-	scratch_arena:     mem.Dynamic_Arena,
-	scratch_allocator: runtime.Allocator,
+	pending_bodies:      [dynamic]Pending_Function_Body,
+	pending_defaults:    [dynamic]Pending_Parameter_Default,
+	pending_annotations: [dynamic]Pending_Annotation_Arguments,
+	file_scopes:         map[^resolver.File]^resolver.Scope,
+	processing_stack:    [dynamic]resolver.Partial_Symbol, // used to detect and emit diagnostics for dependency cycles
+	scratch_arena:       mem.Dynamic_Arena,
+	scratch_allocator:   runtime.Allocator,
 }
 
 HIR_Accumulator :: struct {
@@ -38,6 +42,19 @@ HIR_Accumulator :: struct {
 Pending_Function_Body :: struct {
 	symbol:         ^resolver.Function,
 	function_scope: ^resolver.Scope,
+	named_returns:  ^resolver.Scope,
+}
+
+// Expression-valued signature details are completed by the compile-time-value
+// pass. The signature pass still resolves their destination declarations.
+Pending_Parameter_Default :: struct {
+	ast: ^ast.Formal_Parameter,
+	hir: ^hir.Formal_Parameter,
+}
+
+Pending_Annotation_Arguments :: struct {
+	ast: ^ast.Annotation,
+	hir: ^hir.Annotation,
 }
 
 
@@ -196,6 +213,9 @@ init_state :: proc(
 		context.allocator = state.scratch_allocator
 		state.symbols_by_id = make(map[common.Symbol_ID]resolver.Partial_Symbol)
 		state.pending_bodies = make([dynamic]Pending_Function_Body)
+		state.pending_defaults = make([dynamic]Pending_Parameter_Default)
+		state.pending_annotations = make([dynamic]Pending_Annotation_Arguments)
+		state.file_scopes = make(map[^resolver.File]^resolver.Scope)
 		state.processing_stack = make([dynamic]resolver.Partial_Symbol)
 	}
 }

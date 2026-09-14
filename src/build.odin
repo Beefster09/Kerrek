@@ -16,6 +16,7 @@ build :: proc(entry_point: string, backend_id: string = "c99") {
 	entry_pkg, err := resolver.load_package(&res, entry_point, file_as_package = true)
 	if err != .OK {
 		fmt.eprintln("loading source failed:", err)
+		os.exit(1)
 	}
 
 	if entry_pkg != nil {
@@ -23,11 +24,7 @@ build :: proc(entry_point: string, backend_id: string = "c99") {
 		hir.init(&tu)
 		defer hir.destroy(&tu)
 
-		translation: analysis.Translation_State
-		analysis.init_state(&translation, &res, entry_pkg, &tu)
-		defer analysis.destroy_state(&translation)
-		analysis.prepare_declaration_graph(&translation)
-		analysis.commit_hir_items(&translation)
+		analysis.build_hir(&res, entry_pkg, &tu)
 	}
 
 	diagnostics.report_and_exit()

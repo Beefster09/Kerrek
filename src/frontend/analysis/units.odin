@@ -6,146 +6,151 @@ import "../resolver"
 import "../units"
 
 
-_Seen_Unit_Alias :: struct {
-	alias: ^resolver.Unit_Alias,
-	ref:   ast.Qualified_Name,
-	prev:  ^_Seen_Unit_Alias,
+Unit_Domain :: enum {
+	Value,
+	Type,
 }
 
+
+// Canonical unit expansion participates in the declaration graph. Alias
+// recursion therefore uses the same Processing/Failed states as type aliases
+// and produces one stable dependency-cycle diagnostic per cycle.
 get_canonical_unit :: proc(
+	ctx: Declaration_Context,
 	unit: ^ast.Compound_Unit,
-	scope: ^resolver.Scope,
-	_orig_definition: ^ast.Compound_Unit = nil,
-	_seen_aliases: ^_Seen_Unit_Alias = nil,
-) -> units.Compound_Unit {
-	_has_seen_alias :: proc(seen: ^_Seen_Unit_Alias, alias: ^resolver.Unit_Alias) -> bool {
-		for node := seen; node != nil; node = node.prev {
-			if node.alias == alias {
-				return true
-			}
-		}
-		return false
-	}
-
+	domain := Unit_Domain.Value,
+) -> (
+	units.Compound_Unit,
+	bool,
+) {
 	if unit == nil {
-		return nil
+		return nil, false
 	}
 
+	context.allocator = ctx.translation.output.allocator
 	components := make([dynamic]units.Unit_Component, 0, len(unit.components))
-	components_owned := true
-	defer if components_owned {
-		delete(components)
-	}
 
 	for component in unit.components {
-		resolved := resolver.resolve_qualname(scope, component.base)
-		#partial switch symbol in resolved {
-		case ^resolver.Base_Unit:
-			exponent, ok := _canonical_exponent(component.exponent)
-			if !ok ||
-			   !_add_canonical_component(&components, units.Unit_Component{symbol.id, exponent}) {
-				diagnostics.emit(
-					.Incomplete_Resolution,
-					component.span,
-					"this unit exponent is outside representable range",
-				)
-				return nil
-			}
+		exponent, exponent_ok := _canonical_exponent(component.exponent)
+		if !exponent_ok {
+			_emit_unit_exponent_error(component.span)
+			return nil, false
+		}
 
-		case ^resolver.Unit_Alias:
-			if _has_seen_alias(_seen_aliases, symbol) {
-				assert(_orig_definition != nil)
-				diag := diagnostics.emit(
-					.Incomplete_Resolution,
-					_orig_definition.span,
-					"circular definition of unit aliases detected ...",
-				)
-				_reference_seen_aliases :: proc(
-					diag: ^diagnostics.Diagnostic,
-					seen: ^_Seen_Unit_Alias,
+		resolved := resolver.resolve_qualname(ctx.scope, component.base)
+		if resolved == nil {
+			return nil, false
+		}
+
+		switch domain {
+		case .Value:
+			#partial switch symbol in resolved {
+			case ^resolver.Base_Unit:
+				if !process_declaration_signature(ctx, symbol, component.base.span) {
+					return nil, false
+				}
+				if !_add_canonical_component(
+					&components,
+					units.Unit_Component{symbol.id, exponent},
 				) {
-					if seen == nil {
-						return
-					}
-					_reference_seen_aliases(diag, seen.prev)
-
-					name := seen.alias.name
-					if len(seen.ref.path) > 0 {
-						name = seen.ref.path[len(seen.ref.path) - 1].id
-					}
-					diagnostics.reference(
-						diag,
-						seen.ref.span,
-						"... '%s' references an alias ...",
-						name,
-					)
+					_emit_unit_exponent_error(component.span)
+					return nil, false
 				}
-				_reference_seen_aliases(diag, _seen_aliases)
-				diagnostics.reference(
-					diag,
-					_seen_aliases.alias.ast.span,
-					"... and ultimately loops back to this definition",
-				)
-				return nil
-			}
 
-			if symbol.canonical == nil {
-				seen := _Seen_Unit_Alias {
-					alias = symbol,
-					ref   = component.base,
-					prev  = _seen_aliases,
+			case ^resolver.Unit_Alias:
+				if !process_declaration_signature(ctx, symbol, component.base.span) {
+					return nil, false
 				}
-				symbol.canonical = get_canonical_unit(
-					symbol.ast.orig,
-					scope,
-					_orig_definition = _orig_definition if _orig_definition != nil else unit,
-					_seen_aliases = &seen,
-				)
-				if symbol.canonical == nil {
-					return nil
+				if !_append_alias_components(&components, symbol.canonical, exponent) {
+					_emit_unit_exponent_error(component.span)
+					return nil, false
 				}
-			}
 
-			exponent, ok := _canonical_exponent(component.exponent)
-			if !ok {
+			case:
 				diagnostics.emit(
-					.Incomplete_Resolution,
+					.Invalid_Unit,
 					component.span,
-					"this unit exponent is outside representable range",
+					"'%s' does not name a value unit",
+					_component_name(component).id,
 				)
-				return nil
+				return nil, false
 			}
 
-			for i in 0 ..< units.num_components(symbol.canonical) {
-				alias_component := units.get_component(symbol.canonical, i)
-				alias_component.exp, ok = units.rat_mul(alias_component.exp, exponent)
-				if !ok || !_add_canonical_component(&components, alias_component) {
-					diagnostics.emit(
-						.Incomplete_Resolution,
-						component.span,
-						"this unit exponent is outside representable range",
-					)
-					return nil
+		case .Type:
+			#partial switch symbol in resolved {
+			case ^resolver.Unit_Type:
+				if !process_declaration_signature(ctx, symbol, component.base.span) {
+					return nil, false
 				}
-			}
+				if !_add_canonical_component(
+					&components,
+					units.Unit_Component{symbol.id, exponent},
+				) {
+					_emit_unit_exponent_error(component.span)
+					return nil, false
+				}
 
-		case:
-			diagnostics.emit(
-				.Incomplete_Resolution,
-				component.span,
-				"this component does not resolve to a unit",
-			)
-			return nil
+			case ^resolver.Unit_Type_Alias:
+				if !process_declaration_signature(ctx, symbol, component.base.span) {
+					return nil, false
+				}
+				if !_append_alias_components(&components, symbol.canonical, exponent) {
+					_emit_unit_exponent_error(component.span)
+					return nil, false
+				}
+
+			case:
+				diagnostics.emit(
+					.Invalid_Unit,
+					component.span,
+					"'%s' does not name a unit type",
+					_component_name(component).id,
+				)
+				return nil, false
+			}
 		}
 	}
 
 	shrink(&components)
-	canonical := units.build_compound_unit(components[:], unit.is_absolute)
-	if _, is_heap := canonical.(units.Heap_Compound_Unit); is_heap {
-		components_owned = false
-	}
-	return canonical
+	return units.build_compound_unit(components[:], unit.is_absolute), true
 }
+
+
+_component_name :: proc(component: ast.Unit_Component) -> ast.Name {
+	if len(component.base.path) > 0 {
+		return component.base.path[len(component.base.path) - 1]
+	}
+	return {}
+}
+
+
+_emit_unit_exponent_error :: proc(span: ast.Span) {
+	diagnostics.emit(.Invalid_Unit, span, "this unit exponent is outside representable range")
+}
+
+
+_append_alias_components :: proc(
+	components: ^[dynamic]units.Unit_Component,
+	alias: units.Compound_Unit,
+	exponent: units.Small_Rat,
+) -> bool {
+	if alias == nil {
+		return false
+	}
+	for i in 0 ..< units.num_components(alias) {
+		alias_component := units.get_component(alias, i)
+		multiplied, ok := units.rat_mul(alias_component.exp, exponent)
+		if !ok {
+			return false
+		}
+		alias_component.exp = multiplied
+		if !_add_canonical_component(components, alias_component) {
+			return false
+		}
+	}
+	return true
+}
+
 
 _canonical_exponent :: proc(exponent: ast.Unit_Exponent) -> (units.Small_Rat, bool) {
 	switch exp in exponent {
@@ -158,6 +163,7 @@ _canonical_exponent :: proc(exponent: ast.Unit_Exponent) -> (units.Small_Rat, bo
 	}
 	return {}, false
 }
+
 
 _add_canonical_component :: proc(
 	components: ^[dynamic]units.Unit_Component,

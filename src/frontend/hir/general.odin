@@ -67,8 +67,9 @@ Type_Definition :: union {
 }
 
 Annotation_Def :: struct {
-	using _: _Symbol_Header,
-	params:  []^Formal_Parameter,
+	using _:     _Symbol_Header,
+	params:      []^Formal_Parameter,
+	annotations: []^Annotation,
 }
 
 Annotation :: struct {
@@ -86,12 +87,14 @@ Global_Variable :: struct {
 }
 
 Unit_Type :: struct {
-	using _: _Symbol_Header,
+	using _:     _Symbol_Header,
+	annotations: []^Annotation,
 }
 
 Base_Unit :: struct {
-	using _: _Symbol_Header,
-	type:    ^Unit_Type,
+	using _:     _Symbol_Header,
+	type:        ^Unit_Type,
+	annotations: []^Annotation,
 }
 
 Realized_Unit :: union {
@@ -105,7 +108,8 @@ Indeterminate_Unit :: enum {
 }
 
 Capability :: struct {
-	using _: _Symbol_Header,
+	using _:     _Symbol_Header,
+	annotations: []^Annotation,
 }
 
 Capability_Expression :: union {
@@ -116,12 +120,12 @@ Capability_Expression :: union {
 
 Capability_All_Of :: struct {
 	span: Span,
-	sub:  Capability_Expression,
+	subs: []Capability_Expression,
 }
 
 Capability_Any_Of :: struct {
 	span: Span,
-	sub:  Capability_Expression,
+	subs: []Capability_Expression,
 }
 
 // Poison nodes are used to mark translation failure points in an effort to avoid duplicate diagnostics

@@ -245,7 +245,10 @@ lookup :: proc(scope: ^Scope, name: Identifier) -> Named {
 		case ^Scope:
 			scope = parent
 		case ^File:
-			return file_lookup(parent, name)
+			if symbol := file_lookup(parent, name); symbol != nil {
+				return symbol
+			}
+			break outer
 		case:
 			break outer
 		}

@@ -36,7 +36,12 @@ define_local :: proc(
 	symbol: Partial_Symbol,
 ) -> Define_Local_Error {
 	if existing, exists := scope.locals[name.id]; exists {
-		diag := diagnostics.emit(.Duplicate_Local, name.span, "name '%s' is already defined")
+		diag := diagnostics.emit(
+			.Duplicate_Local,
+			name.span,
+			"name '%s' is already defined",
+			name.id,
+		)
 		if name_span, ok := span_of_name(existing); ok {
 			diagnostics.reference(diag, name_span, "'%s' was previously defined here", name.id)
 		}

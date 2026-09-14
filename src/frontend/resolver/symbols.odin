@@ -68,6 +68,8 @@ Type_Definition :: union {
 Constant :: struct {
 	using header: _Symbol_Header,
 	ast:          ^ast.Constant_Def,
+	type:         hir.Type,
+	unit:         hir.Realized_Unit,
 	value:        rawptr, // TODO: replace with the compile-time value type
 }
 

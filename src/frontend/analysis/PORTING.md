@@ -87,7 +87,7 @@ Create and cache stable HIR declaration nodes before descending when recursive
 references are legal. Fill their bodies/signatures afterward. Store all HIR
 nodes and their backing slices in a translation-unit arena.
 
-### 2. Declaration signatures
+### 2. Declaration signatures (DONE)
 
 Port unit types, base units, aliases, capabilities, annotations, type
 definitions, global signatures, and function signatures before function bodies.
@@ -97,7 +97,7 @@ This pass should:
 - canonicalize aliases while retaining source-facing names where reflection or
   diagnostics need them;
 - create parameter and named-return symbols in the function scope;
-- validate defaults and annotation arguments as compile-time expressions;
+- queue defaults and annotation arguments for compile-time validation in pass 3;
 - record, but not yet enforce, capability requirements; and
 - choose the entry point and validate its signature.
 
