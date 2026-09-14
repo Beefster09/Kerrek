@@ -18,16 +18,14 @@ Numbers at compile time should be stored as losslessly as possible (e.g. rationa
 
 ## Integers
 
-- `Integer`: High-range integer able to hold at least 35 decimal digits, positive or negative
-	- Its inline size must not be larger than 40 bytes even if the value itself is stored in heap memory
-	- A fully zeroed inline value must be semantically zero
-	- overflow/underflow may allocate an arbitrary-sized integer to hold the value
-	- if it does not, an `OverflowError` should be omitted, which will panic if not handled
-	- for all practical intents and purposes, an `Integer` has the semantics of an unbounded mathematical integer, but it is *not guaranteed* to be an arbitrary precision integer that never overflows (and technically BigInteger implementations have a limit too, it's just that you'll practically never reach it)
-		- If you need a type that is guaranteed to be arbitrary precision, for instance in cryptographic code, use `core:math/bigint`
-	- The compiler may use a smaller machine integer if it can prove that would never overflow
+- `Integer(digits)`: An signed integer able to hold exactly `digits` decimal digits
+	- stored in the smallest power-of-two sized machine integer that will fit that many digits
+		- if no standard machine integer will fit it, it overflows into a multi-word integer (e.g. Int128) with the smallest number of 64-bit legs that will hold the desired range
+		- requesting more digits than can fit in an Int128 (i.e. 34 digits) will emit a diagnostic warning to alert the user that operations on it may be slower than expected
+	- exceeding the defined decimal range will emit an `OverflowError` that must be handled
 - Sized integers (`Int64`, `UInt32`, etc...) behave as expected for machine integers
-	- overflow and underflow wrap by default for sized integers, as that is the behavior most commonly expected for machine integers
+	- overflow and underflow wrap by default for machine integers, as that is the behavior most commonly expected for machine integers
+	- you can set the overflow behavior to saturating arithmetic or to emit `OverflowError`
 
 ### Operator Semantics
 
@@ -38,51 +36,47 @@ Division by zero emits a `ZeroDivisionError` which panics by default
 ## Decimals
 
 The Decimal types are:
-- `Decimal(d, p)`: Signed fixed point decimal with enough storage for at least `d` significant  digits and exactly `p` of those digits after the decimal point
-	- Overflow and underflow outside the predetermined range must trigger an `OverflowError` even if the underlying storage could hold the new value.
-	- `d` must be a compile-time known positive integer
-	- `p` must be a compile-time known integer < `d` (negative is well-defined albeit not useful)
-	- The compiler must support up to 30 significant digits at minimum
-	- The overall size of the value may be no larger than the smallest multiple of whatever the pointer size is on the target hardware that can hold the number of requested digits
-	- The storage must be inline when applicable (e.g. structs, enums, stack if possible)
-	- When `p == 0`, the value may implicitly convert to `Integer`
-- `Decimal`: High-precision floating point decimal able to hold at least 30 significant decimal digits with an exponent able to represent at least +-100 orders of magnitude; plus NaN and +-Infinity
-	- Its inline size must not exceed 40 bytes even if the value itself is stored in heap memory or similar.
-	- A fully zeroed inline value must be semantically zero
-	- an IEEE decimal128 conforms to these requirements
-- `Dec64`: IEEE decimal64 or semantic equivalent that fits in 64 bits
-- `Dec32`: IEEE decimal32 or semantic equivalent that fits in 32 bits
+- `Decimal(digits, scale)`: Signed fixed point decimal with enough storage for at least `digits` significant  digits and exactly `scale` of those digits after the decimal point
+	- Follows the same size and storage rules of `Integer(digits)`, including diagnostic warning conditions.
+	- `digits` must be a compile-time known positive integer
+	- `scale` must be a compile-time known integer
+		- negative `scale` and `scale > digits` are both well-formed and allowed, but both cases will trigger diagnostic warnings unless silenced, as it may be surprising and unintended
+	- `Integer(d)` and `Decimal(d, 0)` are the same type, including the removal of the `/` operator
+
+Floating point decimal and arbitrary precision decimal are not primitive types, as they do not have widespread support on consumer hardware.
 
 ## Binary Floats
 
-Floats are inaccessible in the default namespace and exposed via `intrinsics:floats`. As useful as they are, they have some non-obvious subtleties to them which trip up many programmers and silently make programs incorrect. By placing them out of reach of the default namespace, it helps to add some friction so that programmers are more inclined to reach for the tools that are more likely to be correct. Use floats only when you know for sure you need them.
+Floats are inaccessible in the prelude namespace and exposed via `intrinsics:float`. As useful as they are, they have some non-obvious subtleties to them which trip up many programmers and silently make programs incorrect. By placing them out of reach of the prelude namespace, it helps to add some friction so that programmers are more inclined to reach for the tools that are more likely to be correct. Use floats only when you know for sure you need them.
 
-This exposes two types:
+The `intrinsics:float` backage exposes three types:
 
-- `Float64`
-- `Float32`
+- `Binary64`
+- `Binary32`
+- `Binary16`
 
-these may be renamed to `BinFloat64` and `BinFloat32` before version 1.0 to further reinforce the fact that they have some surprising semantics and point out that the floating point is, in fact, a binary point between binary digits rather than a decimal point as many might expect.
+Their unusual naming is intentional to highlight their somewhat surprising behavior and steer users toward using `Decimal(digits, scale)` types when that will suffice.
 
 ### Operator Semantics
 
-All mathematical binary operators are supported for floats except for `==` and `!=`. These have been known to surprise programmers for a variety of reasons: `0.1 + 0.2 != 0.3` is one of those classic examples but there's also `NaN != NaN` and some other nuances.
+All mathematical binary operators are supported for binary floats except for `==` and `!=`. These have been known to surprise programmers for a variety of reasons: `0.1 + 0.2 != 0.3` is one of those classic examples but there's also `NaN != NaN` and some other nuances.
 
 This additionally means that floats are not allowed to be the keys of a map.
 
-if you would like to opt into the conventional equality operator, with all of its sharp edges, it is available as the `ieee_equal` function in `intrinsics:floats`. Otherwise, you may prefer one of the approximate equality functions:
+if you would like to opt into the conventional equality operator, with all of its sharp edges, it is available as the `ieee_equal` function in `intrinsics:float`. Otherwise, you may prefer one of the approximate equality functions:
 
 ```kerrek
-floats.approx_equal(0.1f + 0.2f, 0.3f, 0.000001f);  \\ values are within 0.000001f of each other
-floats.approx_equal_ulp(0.1f + 0.2f, 0.3f, 3);  \\ values are within 3 ulps
-floats.round_equal(0.1f + 0.2f, 0.3f, 3);  \\ would round to the same decimal value with 3 digits after the decimal point
-floats.trunc_equal(0.1f + 0.2f, 0.3f, 3);  \\ would truncate to the same decimal value with 3 digits after the decimal point
+float.approx_equal(0.1f + 0.2f, 0.3f, 0.000001f);  \\ values are within 0.000001f of each other
+float.approx_equal_ulp(0.1f + 0.2f, 0.3f, 3);  \\ values are within 3 ulps
+float.round_equal(0.1f + 0.2f, 0.3f, 3);  \\ would round to the same decimal value with 3 digits after the decimal point
+float.trunc_equal(0.1f + 0.2f, 0.3f, 3);  \\ would truncate to the same decimal value with 3 digits after the decimal point
 ```
 
 Or possibly you may even want:
 
 ```kerrek
-floats.bits_equal(0.1f + 0.2f, 0.3f);  \\ the bit pattern is exactly the same; 0 != -0 in this case
+float.bits_equal(0.1f + 0.2f, 0.3f);  \\ the bit pattern is exactly the same; 0 != -0 in this case
+float.ieee_equal(0.1f + 0.2f, 0.3f);  \\ equality as defined by IEEE 754, including NaN != NaN
 ```
 
 # Non-Numeric Types
@@ -101,9 +95,9 @@ Booleans within structs may be no larger than 8 bits
 
 Booleans support the logic operators `and`, `or`, and `not`
 
-Booleans support equality operators, but not the other four comparison operators
+Booleans support equality operators `==` and `!=`, but not the other four comparison operators
 
-They also support multiplication with any other type with a well-defined and valid zero value:
+They also support multiplication with any other type that has a well-defined and valid zero value:
 
 - true \* x -> x
 - x \* true -> x
@@ -134,7 +128,7 @@ A rune represents a single unicode codepoint and must be able to represent, at m
 
 The zero value is U+0000
 
-Runes must not be larger than 32 bits
+Runes are stored in 32 bits i.e. 4 bytes
 
 ### Operator Semantics
 
