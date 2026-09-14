@@ -18,6 +18,7 @@ Translation_State :: struct {
 	hir_items:         HIR_Accumulator,
 	symbols_by_id:     map[common.Symbol_ID]resolver.Partial_Symbol,
 	pending_bodies:    [dynamic]Pending_Function_Body,
+	processing_stack:  [dynamic]resolver.Partial_Symbol, // used to detect and emit diagnostics for dependency cycles
 	scratch_arena:     mem.Dynamic_Arena,
 	scratch_allocator: runtime.Allocator,
 }
@@ -195,6 +196,7 @@ init_state :: proc(
 		context.allocator = state.scratch_allocator
 		state.symbols_by_id = make(map[common.Symbol_ID]resolver.Partial_Symbol)
 		state.pending_bodies = make([dynamic]Pending_Function_Body)
+		state.processing_stack = make([dynamic]resolver.Partial_Symbol)
 	}
 }
 

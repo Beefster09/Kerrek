@@ -15,13 +15,15 @@ Identifier :: common.Identifier
 _Symbol_Header :: struct {
 	id:         Symbol_ID,
 	name:       Identifier,
-	state:      enum {
-		Unprocessed,
-		Processing,
-		Done,
-		Error,
-	},
+	state:      Declaration_State,
 	defined_in: ^File,
+}
+
+Declaration_State :: enum {
+	Unseen,
+	Processing,
+	Done,
+	Failed,
 }
 
 Function :: struct {
@@ -148,6 +150,47 @@ Partial_Symbol :: union {
 	^Annotation,
 	^Formal_Parameter,
 	^Named_Return,
+}
+
+// partial_symbol_header centralizes access to the common header so semantic
+// passes do not need to repeat a switch every time they inspect declaration
+// state or identity.
+partial_symbol_header :: proc(symbol: Partial_Symbol) -> ^_Symbol_Header {
+	switch value in symbol {
+	case ^Function:
+		return &value.header
+	case ^Type_Alias:
+		return &value.header
+	case ^Distinct_Type:
+		return &value.header
+	case ^Struct_Type:
+		return &value.header
+	case ^Enum_Type:
+		return &value.header
+	case ^Constant:
+		return &value.header
+	case ^Global_Variable:
+		return &value.header
+	case ^Local_Variable:
+		return &value.header
+	case ^Unit_Type:
+		return &value.header
+	case ^Base_Unit:
+		return &value.header
+	case ^Unit_Type_Alias:
+		return &value.header
+	case ^Unit_Alias:
+		return &value.header
+	case ^Capability:
+		return &value.header
+	case ^Annotation:
+		return &value.header
+	case ^Formal_Parameter:
+		return &value.header
+	case ^Named_Return:
+		return &value.header
+	}
+	return nil
 }
 
 Named :: intrinsics.type_merge(union {

@@ -18,3 +18,10 @@ initialize :: proc() {
 	json.register_user_marshaler(Code, _marshal_kind)
 	json.register_user_marshaler(Level, _marshal_level)
 }
+
+destroy :: proc() {
+	delete(_current_diagnostics)
+	mem.dynamic_arena_destroy(&_msg_arena)
+	_current_diagnostics = nil
+	_msg_allocator = {}
+}

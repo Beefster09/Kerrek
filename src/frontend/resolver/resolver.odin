@@ -18,12 +18,13 @@ import "../units"
 KERREK_FILE_EXTENSION :: ".krk"
 
 Resolver :: struct {
-	project_root:   string,
-	next_symbol_id: common.Symbol_ID,
-	packages:       map[string]^Package,
-	files:          map[string]^File,
-	arena:          mem.Dynamic_Arena,
-	allocator:      runtime.Allocator,
+	project_root:    string,
+	next_symbol_id:  common.Symbol_ID,
+	packages:        map[string]^Package,
+	loaded_packages: [dynamic]^Package,
+	files:           map[string]^File,
+	arena:           mem.Dynamic_Arena,
+	allocator:       runtime.Allocator,
 }
 
 Load_Error :: enum {
@@ -40,8 +41,9 @@ Load_Error :: enum {
 init :: proc(res: ^Resolver, project_root := "") {
 	mem.dynamic_arena_init(&res.arena)
 	res.allocator = mem.dynamic_arena_allocator(&res.arena)
-	res.packages = make(map[string]^Package)
-	res.files = make(map[string]^File)
+	res.packages = make(map[string]^Package, res.allocator)
+	res.loaded_packages = make([dynamic]^Package, res.allocator)
+	res.files = make(map[string]^File, res.allocator)
 	res.next_symbol_id = FIRST_USER_SYMBOL_ID
 
 	if project_root != "" {
@@ -76,8 +78,9 @@ load_package :: proc(
 	}
 
 	pkg := new(Package, res.allocator)
-	pkg.defined_symbols = make(map[Identifier]Partial_Symbol)
+	pkg.defined_symbols = make(map[Identifier]Partial_Symbol, res.allocator)
 	res.packages[abs_path] = pkg
+	append(&res.loaded_packages, pkg)
 
 	if file_as_package {
 		pkg.name = Identifier(
@@ -135,8 +138,8 @@ _load_file :: proc(res: ^Resolver, pkg: ^Package, path: string) -> (^File, Load_
 	file^ = {
 		src             = file_ast.source,
 		src_ast         = file_ast,
-		imports         = make(map[common.Identifier]^Import),
-		defined_symbols = make([dynamic]Partial_Symbol),
+		imports         = make(map[common.Identifier]^Import, res.allocator),
+		defined_symbols = make([dynamic]Partial_Symbol, res.allocator),
 		own_package     = pkg,
 	}
 	// Source_File owns a stable copy of the absolute path.

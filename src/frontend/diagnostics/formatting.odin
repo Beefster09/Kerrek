@@ -14,7 +14,7 @@ emit :: proc {
 suggest :: proc(diag: ^Diagnostic, fmtstr: string, args: ..any) {
 	msg := fmt.aprintf(fmtstr, ..args, allocator = _msg_allocator)
 	if diag.extra == nil {
-		diag.extra = make([dynamic]Addendum)
+		diag.extra = make([dynamic]Addendum, _msg_allocator)
 	}
 	append(&diag.extra, Suggestion(msg))
 }
@@ -22,7 +22,7 @@ suggest :: proc(diag: ^Diagnostic, fmtstr: string, args: ..any) {
 reference :: proc(diag: ^Diagnostic, span: common.Span, fmtstr: string, args: ..any) {
 	msg := fmt.aprintf(fmtstr, ..args, allocator = _msg_allocator)
 	if diag.extra == nil {
-		diag.extra = make([dynamic]Addendum)
+		diag.extra = make([dynamic]Addendum, _msg_allocator)
 	}
 	append(&diag.extra, Reference{message = msg, span = span})
 }

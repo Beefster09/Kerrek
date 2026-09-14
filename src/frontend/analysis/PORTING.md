@@ -55,22 +55,27 @@ Points to settle while implementing scopes:
   `hir.Func_Return` is only signature metadata, not a variable-like HIR symbol.
   Before exposing named returns in bodies, either give return slots symbol
   identity or lower them to ordinary implicit locals with a return-slot marker.
+    - the plan here is to lower them to only positional returns. the named returns exist only for `with defer` statements within the function signature
 - Capability expressions remain opaque in HIR, matching the Python prototype.
   When capability analysis starts, replace that placeholder with resolved
   named/all/any nodes rather than retaining AST qualified names.
+    - done
 - `Type_With_Args` has syntax but no direct HIR node. Decide whether it denotes
   generic instantiation, type construction, or both, then represent its
   canonical type separately from any runtime constructor expression.
+    - this is generic instantiation. the callish expression in the ast is there to allow both generic instantiation (if a callee is the type) and value instantiation (if the callee is a callable) or poison if neither is possible
 - Several aggregate/interface nodes are ahead of parser support. Keep them in
   the HIR vocabulary, but add semantic construction only when their AST forms
   and rules are stable enough to test.
+    - the plan right now is to build up the language in vertical slices so that I can create increasingly capable programs rather than trying to do a sort of waterfall development style for each stage of the compiler. some ast and hir nodes will be incomplete and unsupported at each step along the way until the core feature set is implemented
 - Decide whether invalid-but-recovered constructs get explicit poison HIR nodes
   or are omitted. Explicit poison generally improves diagnostic recovery but
   must be rejected by validation before lowering.
+    - added a poison node
 
 ## Suggested passes
 
-### 1. Declaration graph and state
+### 1. Declaration graph and state (DONE)
 
 Keep the resolver's eager top-level symbol collection. Replace the current
 `processed: bool` with a state such as `Unseen`, `Processing`, `Done`, and

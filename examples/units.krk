@@ -38,6 +38,10 @@ unit yard: length;
 unit mile: length;
 unit football_field: length;
 
+unit woman = woman;
+unit wolf = canine;
+unit dog = canine;
+unit canine = dog;
 
 unit kilogram: mass;
 unit kg = kilogram;

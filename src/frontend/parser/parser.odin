@@ -199,7 +199,11 @@ _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: 
 	case Numeric:
 		tok_str = fmt.tprintf("a number: %s", what.raw)
 	case String:
-		tok_str = fmt.tprintf("a string: %s", what.raw)
+		if what.is_multiline {
+			tok_str = "a multiline string"
+		} else {
+			tok_str = fmt.tprintf("a string: %s", what.raw)
+		}
 	case Rune:
 		tok_str = fmt.tprintf("a rune: %s", what.raw)
 	case lexer.Garbage:

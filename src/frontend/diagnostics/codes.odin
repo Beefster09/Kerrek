@@ -25,6 +25,8 @@ Code :: enum {
 	Dubious_Shadowing,
 	Import_Conflict,
 	Import_Not_Found,
+	// Semantic analysis diagnostics
+	Declaration_Cycle,
 	// TEST
 	Test,
 }
@@ -62,6 +64,8 @@ CODE_METADATA := [Code]Code_Metadata {
 	},
 	.Import_Conflict = {origin = .Resolver, default_level = .Error, stable_id = "R20"},
 	.Import_Not_Found = {origin = .Resolver, default_level = .Error, stable_id = "R21"},
+	// Semantic analysis diagnostics
+	.Declaration_Cycle = {origin = .TypeCheck, default_level = .Error, stable_id = "T00"},
 	// TEST
 	.Test = {origin = .Resolver, default_level = .Notice, stable_id = "TEST"},
 }

@@ -3,7 +3,9 @@ package main
 import "core:fmt"
 import "core:os"
 
+import "frontend/analysis"
 import "frontend/diagnostics"
+import "frontend/hir"
 import "frontend/resolver"
 
 build :: proc(entry_point: string, backend_id: string = "c99") {
@@ -15,27 +17,19 @@ build :: proc(entry_point: string, backend_id: string = "c99") {
 	if err != .OK {
 		fmt.eprintln("loading source failed:", err)
 	}
-	diagnostics.emit(
-		.Test,
-		{1, {50, {line = 1, col = 6}}, {50, {line = 1, col = 6}}},
-		"test diagnostic",
-	)
-	diagnostics.emit(
-		.Test,
-		{1, {50, {line = 5, col = 6}}, {50, {line = 11, col = 6}}},
-		"test diagnostic",
-	)
-	d := diagnostics.emit(
-		.Test,
-		{1, {50, {line = 5, col = 2}}, {50, {line = 45, col = 15}}},
-		"test diagnostic",
-	)
-	diagnostics.suggest(d, "eat my shorts")
-	diagnostics.reference(
-		d,
-		{1, {50, {line = 5, col = 6}}, {50, {line = 5, col = 20}}},
-		"other thing",
-	)
+
+	if entry_pkg != nil {
+		tu: hir.Translation_Unit
+		hir.init(&tu)
+		defer hir.destroy(&tu)
+
+		translation: analysis.Translation_State
+		analysis.init_state(&translation, &res, entry_pkg, &tu)
+		defer analysis.destroy_state(&translation)
+		analysis.prepare_declaration_graph(&translation)
+		analysis.commit_hir_items(&translation)
+	}
+
 	diagnostics.report_and_exit()
 
 
