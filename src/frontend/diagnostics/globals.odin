@@ -10,12 +10,12 @@ _msg_allocator: runtime.Allocator
 _msg_arena: mem.Dynamic_Arena
 
 initialize :: proc() {
-	fmt.register_user_formatter(Code, _fmt_kind)
+	fmt.register_user_formatter(Code, _fmt_code)
 	mem.dynamic_arena_init(&_msg_arena)
 	_msg_allocator = mem.dynamic_arena_allocator(&_msg_arena)
 	_current_diagnostics = make([dynamic]Diagnostic, 0, 100)
 
-	json.register_user_marshaler(Code, _marshal_kind)
+	json.register_user_marshaler(Code, _marshal_code)
 	json.register_user_marshaler(Level, _marshal_level)
 }
 
