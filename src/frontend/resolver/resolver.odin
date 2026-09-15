@@ -234,18 +234,17 @@ file_lookup :: proc(file: ^File, name: Identifier) -> Named {
 	return nil
 }
 
-lookup :: proc(scope: ^Scope, name: Identifier) -> Named {
-	scope := scope
+lookup :: proc(parent: Scope_Parent, name: Identifier) -> Named {
+	parent := parent
 	outer: for {
-		if symbol, ok := scope.locals[name]; ok {
-			return _to_named(symbol)
-		}
-
-		switch parent in scope.parent {
+		switch current in parent {
 		case ^Scope:
-			scope = parent
+			if symbol, ok := current.locals[name]; ok {
+				return _to_named(symbol)
+			}
+			parent = current.parent
 		case ^File:
-			if symbol := file_lookup(parent, name); symbol != nil {
+			if symbol := file_lookup(current, name); symbol != nil {
 				return symbol
 			}
 			break outer
@@ -268,21 +267,24 @@ partial_resolve :: proc {
 
 partial_resolve_qualname :: proc(
 	qualname: ast.Qualified_Name,
-	scope: ^Scope,
+	parent: Scope_Parent,
 ) -> (
 	Named,
 	[]Identifier,
 ) {
-	return _resolve_qualname(scope, qualname), nil
+	return _resolve_qualname(parent, qualname), nil
 }
 
-partial_resolve_expression :: proc(scope: ^Scope, expr: ast.Expression) -> (Named, []Identifier) {
+partial_resolve_expression :: proc(
+	parent: Scope_Parent,
+	expr: ast.Expression,
+) -> (Named, []Identifier) {
 	#partial switch node in expr {
 	case ^ast.Name_Expr:
-		return lookup(scope, node.name.id), nil
+		return lookup(parent, node.name.id), nil
 
 	case ^ast.FieldAccess_Expr:
-		base, rest := partial_resolve_expression(scope, node.base)
+		base, rest := partial_resolve_expression(parent, node.base)
 		if base != nil {
 			if field := _static_resolve_field(base, node.field); field != nil {
 				return field, nil
@@ -305,12 +307,12 @@ resolve :: proc {
 	resolve_expression,
 }
 
-resolve_qualname :: proc(scope: ^Scope, qualname: ast.Qualified_Name) -> Named {
-	return _resolve_qualname(scope, qualname)
+resolve_qualname :: proc(parent: Scope_Parent, qualname: ast.Qualified_Name) -> Named {
+	return _resolve_qualname(parent, qualname)
 }
 
-resolve_expression :: proc(scope: ^Scope, expr: ast.Expression) -> Named {
-	named, unresolved := partial_resolve_expression(scope, expr)
+resolve_expression :: proc(parent: Scope_Parent, expr: ast.Expression) -> Named {
+	named, unresolved := partial_resolve_expression(parent, expr)
 
 	if named != nil && len(unresolved) > 0 {
 		diagnostics.emit(
@@ -464,11 +466,11 @@ _emit_namespace_error :: proc(field: ast.Name, base_name: Identifier, kind: stri
 	)
 }
 
-_resolve_qualname :: proc(scope: ^Scope, qualname: ast.Qualified_Name) -> Named {
+_resolve_qualname :: proc(parent: Scope_Parent, qualname: ast.Qualified_Name) -> Named {
 	if len(qualname.path) == 0 do return nil
 
 	base_name := qualname.path[0]
-	resolved := lookup(scope, base_name.id)
+	resolved := lookup(parent, base_name.id)
 	if resolved == nil {
 		diagnostics.emit(.Unresolved_Name, base_name.span, "cannot resolve '%s'", base_name.id)
 		return nil

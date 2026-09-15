@@ -37,7 +37,7 @@ get_canonical_unit :: proc(
 			return nil, false
 		}
 
-		resolved := resolver.resolve_qualname(ctx.scope, component.base)
+		resolved := resolver.resolve_qualname(_resolution_parent(ctx), component.base)
 		if resolved == nil {
 			return nil, false
 		}

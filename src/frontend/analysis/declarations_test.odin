@@ -237,11 +237,6 @@ test_unit_alias_signature_is_canonicalized :: proc(t: ^testing.T) {
 		defined_symbols = make([dynamic]resolver.Partial_Symbol, res.allocator),
 		own_package = &pkg,
 	}
-	scope := resolver.Scope {
-		locals = make(map[common.Identifier]resolver.Partial_Symbol, res.allocator),
-		parent = &file,
-	}
-	defer delete(scope.locals)
 
 	state: Translation_State
 	init_state(&state, &res, &pkg, &output)
@@ -270,7 +265,7 @@ test_unit_alias_signature_is_canonicalized :: proc(t: ^testing.T) {
 	}
 	pkg.defined_symbols[alias.name] = &alias
 
-	ctx := Declaration_Context{translation = &state, file = &file, scope = &scope}
+	ctx := Declaration_Context{translation = &state, file = &file}
 	testing.expect(t, process_declaration_signature(ctx, &alias))
 	testing.expect(t, alias.state == .Done)
 	testing.expect(t, meter.state == .Done)
@@ -282,7 +277,7 @@ test_unit_alias_signature_is_canonicalized :: proc(t: ^testing.T) {
 
 
 @(test)
-test_function_signature_builds_parameter_and_named_return_scopes :: proc(t: ^testing.T) {
+test_function_signature_builds_parameters_without_body_scopes :: proc(t: ^testing.T) {
 	output: hir.Translation_Unit
 	hir.init(&output)
 	defer hir.destroy(&output)
@@ -363,13 +358,9 @@ test_function_signature_builds_parameter_and_named_return_scopes :: proc(t: ^tes
 	testing.expect(t, function.state == .Done)
 	testing.expect(t, len(function.hir.params) == 1)
 	testing.expect(t, function.hir.params[0].type == hir.Primitive_Type.Int64)
+	testing.expect(t, function.hir.params[0].name.id == param_name.id)
 	testing.expect(t, len(function.hir.returns) == 1)
 	testing.expect(t, function.hir.returns[0].type == hir.Primitive_Type.Int64)
 	testing.expect(t, len(state.pending_bodies) == 1)
-	parameter := state.pending_bodies[0].function_scope.locals[param_name.id]
-	_, is_parameter := parameter.(^resolver.Formal_Parameter)
-	testing.expect(t, is_parameter)
-	named_return := state.pending_bodies[0].named_returns.locals[return_name.id]
-	_, is_named_return := named_return.(^resolver.Named_Return)
-	testing.expect(t, is_named_return)
+	testing.expect(t, state.pending_bodies[0].symbol == &function)
 }

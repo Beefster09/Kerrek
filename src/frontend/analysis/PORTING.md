@@ -96,8 +96,10 @@ This pass should:
 - resolve every named type and tag;
 - canonicalize aliases while retaining source-facing names where reflection or
   diagnostics need them;
-- create parameter and named-return symbols in the function scope;
-- queue defaults and annotation arguments for compile-time validation in pass 3;
+- validate parameter and named-return names while deferring function scope
+  construction until body analysis;
+- leave parameter defaults late-bound at call sites and queue annotation
+  applications for compile-time validation in pass 3;
 - record, but not yet enforce, capability requirements; and
 - choose the entry point and validate its signature.
 

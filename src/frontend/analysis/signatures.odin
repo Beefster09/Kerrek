@@ -13,8 +13,8 @@ Signature_Type_Context :: struct {
 
 
 // analyze_declaration_signatures is the second semantic pass. Dependencies are
-// processed recursively, but function bodies and expression-valued signature
-// details are only queued so source order cannot affect callable signatures.
+// processed recursively, but function bodies and annotation applications are
+// only queued so source order cannot affect callable signatures.
 analyze_declaration_signatures :: proc(state: ^Translation_State) -> bool {
 	assert(state != nil)
 	if !prepare_declaration_graph(state) {
@@ -27,7 +27,6 @@ analyze_declaration_signatures :: proc(state: ^Translation_State) -> bool {
 			ctx := Declaration_Context {
 				translation = state,
 				file        = file,
-				scope       = _scope_for_file(state, file),
 			}
 			for symbol in file.defined_symbols {
 				ok = process_declaration_signature(ctx, symbol) && ok
@@ -63,7 +62,11 @@ process_declaration_signature :: proc(
 	case .Ready:
 	}
 
-	ctx := _context_for_symbol(caller_ctx, symbol)
+	header := resolver.partial_symbol_header(symbol)
+	ctx := Declaration_Context {
+		translation = caller_ctx.translation,
+		file        = header.defined_in if header.defined_in != nil else caller_ctx.file,
+	}
 	succeeded := _build_declaration_signature(ctx, symbol)
 	return finish_declaration(ctx.translation, symbol, succeeded)
 }
@@ -92,7 +95,7 @@ _build_declaration_signature :: proc(
 	case ^resolver.Base_Unit:
 		ok := true
 		if len(value.ast.unit_type.path) > 0 {
-			resolved := resolver.resolve_qualname(ctx.scope, value.ast.unit_type)
+			resolved := resolver.resolve_qualname(_resolution_parent(ctx), value.ast.unit_type)
 			#partial switch unit_type in resolved {
 			case ^resolver.Unit_Type:
 				ok = process_declaration_signature(ctx, unit_type, value.ast.unit_type.span)
@@ -177,33 +180,11 @@ _build_declaration_signature :: proc(
 }
 
 
-_scope_for_file :: proc(state: ^Translation_State, file: ^resolver.File) -> ^resolver.Scope {
-	if scope, exists := state.file_scopes[file]; exists {
-		return scope
+_resolution_parent :: proc(ctx: Declaration_Context) -> resolver.Scope_Parent {
+	if ctx.scope != nil {
+		return ctx.scope
 	}
-
-	context.allocator = state.scratch_allocator
-	scope := new(resolver.Scope)
-	scope^ = {
-		locals = make(map[common.Identifier]resolver.Partial_Symbol),
-		parent = file,
-	}
-	state.file_scopes[file] = scope
-	return scope
-}
-
-
-_context_for_symbol :: proc(
-	ctx: Declaration_Context,
-	symbol: resolver.Partial_Symbol,
-) -> Declaration_Context {
-	result := ctx
-	header := resolver.partial_symbol_header(symbol)
-	if header.defined_in != nil {
-		result.file = header.defined_in
-		result.scope = _scope_for_file(ctx.translation, header.defined_in)
-	}
-	return result
+	return ctx.file
 }
 
 
@@ -249,7 +230,7 @@ resolve_signature_type :: proc(
 
 	switch node in type_expr {
 	case ^ast.Simple_Type:
-		resolved := resolver.resolve_qualname(ctx.scope, node.type)
+		resolved := resolver.resolve_qualname(_resolution_parent(ctx), node.type)
 		if resolved == nil {
 			return nil, false
 		}
@@ -337,7 +318,7 @@ resolve_signature_type :: proc(
 		context.allocator = ctx.translation.output.allocator
 		tags := make([dynamic]hir.Symbol_ID, 0, len(node.tags))
 		for tag in node.tags {
-			resolved := resolver.resolve_qualname(ctx.scope, tag)
+			resolved := resolver.resolve_qualname(_resolution_parent(ctx), tag)
 			if resolved == nil {
 				ok = false
 				continue
@@ -458,26 +439,28 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 
 
 _build_function_signature :: proc(ctx: Declaration_Context, symbol: ^resolver.Function) -> bool {
-	context.allocator = ctx.translation.scratch_allocator
-	function_scope := new(resolver.Scope)
-	function_scope^ = {
-		locals = make(map[common.Identifier]resolver.Partial_Symbol),
-		parent = ctx.file,
-	}
-	named_returns := new(resolver.Scope)
-	named_returns^ = {
-		locals = make(map[common.Identifier]resolver.Partial_Symbol),
-		parent = function_scope,
-	}
-
 	type_ctx: Signature_Type_Context
 	context.allocator = ctx.translation.output.allocator
 	params := make([dynamic]^hir.Formal_Parameter, 0, len(symbol.ast.params))
 	returns := make([dynamic]^hir.Func_Return, 0, len(symbol.ast.returns))
 	ok := true
 
-	for ast_param in symbol.ast.params {
-		param, param_ok := _build_formal_parameter(ctx, ast_param, function_scope, &type_ctx)
+	for ast_param, i in symbol.ast.params {
+		if previous_span, duplicate := _find_parameter_name(
+			symbol.ast.params[:i],
+			ast_param.name.id,
+		); duplicate {
+			diagnostics.emit(
+				.Duplicate_Local,
+				ast_param.name.span,
+				"duplicate parameter name '%s'",
+				ast_param.name.id,
+			)
+			ok = false
+			continue
+		}
+
+		param, param_ok := _build_formal_parameter(ctx, ast_param, &type_ctx)
 		if param_ok {
 			append(&params, param)
 		} else {
@@ -485,7 +468,7 @@ _build_function_signature :: proc(ctx: Declaration_Context, symbol: ^resolver.Fu
 		}
 	}
 
-	for ast_return in symbol.ast.returns {
+	for ast_return, i in symbol.ast.returns {
 		return_type, type_ok := resolve_signature_type(ctx, ast_return.type, &type_ctx)
 		return_unit, unit_ok := resolve_declared_unit(ctx, ast_return.unit)
 		if !type_ok || !unit_ok {
@@ -503,18 +486,17 @@ _build_function_signature :: proc(ctx: Declaration_Context, symbol: ^resolver.Fu
 		append(&returns, result)
 
 		if ast_return.name != nil {
-			ret_symbol := new(resolver.Named_Return, ctx.translation.symbol_resolver.allocator)
-			ret_symbol.id = _next_symbol_id(ctx.translation)
-			ret_symbol.name = ast_return.name.?.id
-			ret_symbol.defined_in = ctx.file
-			ret_symbol.ast = ast_return
-			ret_symbol.hir = result
-			prepare_declaration(ctx.translation, ret_symbol)
-			if resolver.define_local(named_returns, ast_return.name.?, ret_symbol) != .OK {
-				ret_symbol.state = .Failed
+			if previous_span, duplicate := _find_return_name(
+				symbol.ast.returns[:i],
+				ast_return.name.?.id,
+			); duplicate {
+				diagnostics.emit(
+					.Duplicate_Local,
+					ast_return.name.?.span,
+					"duplicate return name '%s'",
+					ast_return.name.?.id,
+				)
 				ok = false
-			} else {
-				ret_symbol.state = .Done
 			}
 		}
 	}
@@ -546,14 +528,7 @@ _build_function_signature :: proc(ctx: Declaration_Context, symbol: ^resolver.Fu
 	symbol.hir.returns = returns[:]
 
 	if ok {
-		append(
-			&ctx.translation.pending_bodies,
-			Pending_Function_Body {
-				symbol = symbol,
-				function_scope = function_scope,
-				named_returns = named_returns,
-			},
-		)
+		append(&ctx.translation.pending_bodies, Pending_Function_Body{symbol = symbol})
 		if symbol.defined_in.own_package == ctx.translation.entry_package &&
 		   symbol.name == "main" {
 			if ctx.translation.output.entry_point == nil {
@@ -580,7 +555,6 @@ _build_function_signature :: proc(ctx: Declaration_Context, symbol: ^resolver.Fu
 _build_formal_parameter :: proc(
 	ctx: Declaration_Context,
 	ast_param: ^ast.Formal_Parameter,
-	scope: ^resolver.Scope,
 	type_ctx: ^Signature_Type_Context,
 ) -> (
 	^hir.Formal_Parameter,
@@ -592,30 +566,46 @@ _build_formal_parameter :: proc(
 		return nil, false
 	}
 
-	param_symbol := new(resolver.Formal_Parameter, ctx.translation.symbol_resolver.allocator)
-	param_symbol.id = _next_symbol_id(ctx.translation)
-	param_symbol.name = ast_param.name.id
-	param_symbol.defined_in = ctx.file
-	param_symbol.ast = ast_param
-	if !prepare_declaration(ctx.translation, param_symbol) {
-		return nil, false
-	}
-	param_symbol.hir.type = param_type
-	param_symbol.hir.unit = param_unit
+	context.allocator = ctx.translation.output.allocator
+	param := new(hir.Formal_Parameter)
+	param.span = ast_param.span
+	param.id = _next_symbol_id(ctx.translation)
+	param.name = ast_param.name
+	param.type = param_type
+	param.unit = param_unit
+	return param, true
+}
 
-	if resolver.define_local(scope, ast_param.name, param_symbol) != .OK {
-		param_symbol.state = .Failed
-		return nil, false
-	}
-	param_symbol.state = .Done
 
-	if ast_param.default != nil {
-		append(
-			&ctx.translation.pending_defaults,
-			Pending_Parameter_Default{ast = ast_param, hir = param_symbol.hir},
-		)
+_find_parameter_name :: proc(
+	params: []^ast.Formal_Parameter,
+	name: common.Identifier,
+) -> (
+	common.Span,
+	bool,
+) {
+	for param in params {
+		if param.name.id == name {
+			return param.name.span, true
+		}
 	}
-	return param_symbol.hir, true
+	return {}, false
+}
+
+
+_find_return_name :: proc(
+	returns: []^ast.Func_Return,
+	name: common.Identifier,
+) -> (
+	common.Span,
+	bool,
+) {
+	for result in returns {
+		if result.name != nil && result.name.?.id == name {
+			return result.name.?.span, true
+		}
+	}
+	return {}, false
 }
 
 
@@ -623,19 +613,31 @@ _build_annotation_definition :: proc(
 	ctx: Declaration_Context,
 	symbol: ^resolver.Annotation,
 ) -> bool {
-	context.allocator = ctx.translation.scratch_allocator
-	param_scope := new(resolver.Scope)
-	param_scope^ = {
-		locals = make(map[common.Identifier]resolver.Partial_Symbol),
-		parent = ctx.file,
-	}
-
 	type_ctx: Signature_Type_Context
 	context.allocator = ctx.translation.output.allocator
 	params := make([dynamic]^hir.Formal_Parameter, 0, len(symbol.ast.args))
 	ok := true
-	for ast_param in symbol.ast.args {
-		param, param_ok := _build_formal_parameter(ctx, ast_param, param_scope, &type_ctx)
+	for ast_param, i in symbol.ast.args {
+		if previous_span, duplicate := _find_parameter_name(
+			symbol.ast.args[:i],
+			ast_param.name.id,
+		); duplicate {
+			diag := diagnostics.emit(
+				.Duplicate_Local,
+				ast_param.name.span,
+				"annotation parameter '%s' is already defined",
+				ast_param.name.id,
+			)
+			diagnostics.reference(
+				diag,
+				previous_span,
+				"annotation parameter '%s' was previously defined here",
+				ast_param.name.id,
+			)
+			ok = false
+			continue
+		}
+		param, param_ok := _build_formal_parameter(ctx, ast_param, &type_ctx)
 		if param_ok {
 			append(&params, param)
 		} else {
@@ -662,14 +664,8 @@ _build_annotations :: proc(
 	ok := true
 
 	for ast_annotation in ast_annotations {
-		resolved := resolver.resolve_qualname(ctx.scope, ast_annotation.base)
+		resolved := resolver.resolve_qualname(_resolution_parent(ctx), ast_annotation.base)
 		if resolved == nil {
-			diagnostics.emit(
-				.Unresolved_Name,
-				ast_annotation.span,
-				"builtin '%s' is not an annotation",
-				definition.name,
-			)
 			ok = false
 			continue
 		}
@@ -684,12 +680,15 @@ _build_annotations :: proc(
 			annotation.span = ast_annotation.span
 			annotation.definition = definition.hir
 			append(&annotations, annotation)
-			if len(ast_annotation.args) > 0 {
-				append(
-					&ctx.translation.pending_annotations,
-					Pending_Annotation_Arguments{ast = ast_annotation, hir = annotation},
-				)
-			}
+			append(
+				&ctx.translation.pending_annotations,
+				Pending_Annotation_Application {
+					ast = ast_annotation,
+					hir = annotation,
+					definition = definition,
+					file = ctx.file,
+				},
+			)
 
 		case ^resolver.Builtin:
 			if definition.kind != .Annotation {
@@ -729,7 +728,7 @@ _build_capability_expression :: proc(
 ) {
 	switch node in ast_expr {
 	case ^ast.Named_Capability:
-		resolved := resolver.resolve_qualname(ctx.scope, node.capability)
+		resolved := resolver.resolve_qualname(_resolution_parent(ctx), node.capability)
 		#partial switch capability in resolved {
 		case ^resolver.Capability:
 			if process_declaration_signature(ctx, capability, node.capability.span) {
