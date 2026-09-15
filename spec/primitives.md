@@ -8,13 +8,15 @@ Numeric types support all standard mathematical operators
 
 The zero value is as you would expect, which must be represented as all bits set to zero
 
-All numeric types may be explicitly converted between one another via casts
+All numeric types may be explicitly converted between one another via casts, even when such a conversion would lose precision. Explicit casts emit an `OverflowError` if the destination type cannot hold the magnitude of the original value.
 
 Numeric types additionally support all implicit conversions which can losslessly represent all possible values of the original type
 
 ## Compile-time numerics
 
 Numbers at compile time should be stored as losslessly as possible (e.g. rationals/BigRat/Fraction) and only truncated when the destination demands a concrete type.
+
+When an irrational number is demanded by some calculation, the result must have at least as much precision as the input values, or a double-precision float, whichever is more precise.
 
 ## Integers
 
@@ -41,7 +43,7 @@ The Decimal types are:
 	- `digits` must be a compile-time known positive integer
 	- `scale` must be a compile-time known integer
 		- negative `scale` and `scale > digits` are both well-formed and allowed, but both cases will trigger diagnostic warnings unless silenced, as it may be surprising and unintended
-	- `Integer(d)` and `Decimal(d, 0)` are the same type, including the removal of the `/` operator
+	- `Integer(d)` and `Decimal(d, 0)` are the same type, including the absence of the `/` operator
 
 Floating point decimal and arbitrary precision decimal are not primitive types, as they do not have widespread support on consumer hardware.
 

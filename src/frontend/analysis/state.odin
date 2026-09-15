@@ -13,11 +13,11 @@ import "../resolver"
 // Resolver symbols/scopes remain owned by resolver.Resolver, and every node that
 // survives translation must be allocated through output.allocator.
 Translation_State :: struct {
-	symbol_resolver:   ^resolver.Resolver,
-	entry_package:     ^resolver.Package,
-	output:            ^hir.Translation_Unit,
-	hir_items:         HIR_Accumulator,
-	symbols_by_id:     map[common.Symbol_ID]resolver.Partial_Symbol,
+	symbol_resolver:     ^resolver.Resolver,
+	entry_package:       ^resolver.Package,
+	output:              ^hir.Translation_Unit,
+	hir_items:           HIR_Accumulator,
+	symbols_by_id:       map[common.Symbol_ID]resolver.Partial_Symbol,
 	pending_bodies:      [dynamic]Pending_Function_Body,
 	pending_defaults:    [dynamic]Pending_Parameter_Default,
 	pending_annotations: [dynamic]Pending_Annotation_Arguments,

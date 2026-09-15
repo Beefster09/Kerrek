@@ -256,16 +256,26 @@ resolve_signature_type :: proc(
 
 		#partial switch symbol in resolved {
 		case ^resolver.Builtin:
-			primitive, ok := _primitive_type(symbol)
-			if ok {
-				return primitive, true
+			#partial switch symbol.kind {
+			case .Primitive_Type:
+				return _primitive_type(symbol)
+			case .Parameterized_Type:
+				diagnostics.emit(
+					.Invalid_Type,
+					node.span,
+					"builtin type '%s' requires arguments",
+					symbol.name,
+				)
+				return nil, false
+			case:
+				diagnostics.emit(
+					.Invalid_Type,
+					node.span,
+					"builtin '%s' is not a type",
+					symbol.name,
+				)
+				return nil, false
 			}
-			diagnostics.emit(
-				.Invalid_Type,
-				node.span,
-				"builtin '%s' is not a primitive type",
-				symbol.name,
-			)
 
 		case ^resolver.Type_Alias:
 			if process_declaration_signature(ctx, symbol, node.span) {
@@ -415,12 +425,6 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 		return .UInt16, true
 	case "UInt8":
 		return .UInt8, true
-	case "Dec128":
-		return .Dec128, true
-	case "Dec64":
-		return .Dec64, true
-	case "Dec32":
-		return .Dec32, true
 	case "Float64":
 		return .Bin64, true
 	case "Float32":
@@ -448,6 +452,7 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 	case "Opaque64":
 		return .Opaque64, true
 	}
+
 	return {}, false
 }
 
@@ -659,6 +664,12 @@ _build_annotations :: proc(
 	for ast_annotation in ast_annotations {
 		resolved := resolver.resolve_qualname(ctx.scope, ast_annotation.base)
 		if resolved == nil {
+			diagnostics.emit(
+				.Unresolved_Name,
+				ast_annotation.span,
+				"builtin '%s' is not an annotation",
+				definition.name,
+			)
 			ok = false
 			continue
 		}
@@ -820,7 +831,7 @@ _validate_entry_point :: proc(entry: ^hir.Func_Definition) -> bool {
 		diagnostics.emit(
 			.Invalid_Entry_Point,
 			entry.name.span,
-			"entry point must not accept parameters",
+			"func 'main' must not accept parameters",
 		)
 		ok = false
 	}
@@ -828,12 +839,12 @@ _validate_entry_point :: proc(entry: ^hir.Func_Definition) -> bool {
 		diagnostics.emit(
 			.Invalid_Entry_Point,
 			entry.name.span,
-			"entry point must not return values",
+			"func 'main' must not return values",
 		)
 		ok = false
 	}
 	if entry.fallible {
-		diagnostics.emit(.Invalid_Entry_Point, entry.name.span, "entry point must not be fallible")
+		diagnostics.emit(.Invalid_Entry_Point, entry.name.span, "func 'main' must not be fallible")
 		ok = false
 	}
 	return ok
