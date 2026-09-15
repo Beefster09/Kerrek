@@ -10,3 +10,8 @@ Sub-documents of this spec:
 - [Primitive type semantics](./primitives.md)
 - [Compound types](./compound-types.md)
 - [Pointers and Ownership](./pointers.md)
+- [Variables](./variables.md)
+- [Control Flow](./control-flow.md)
+- [Errors](./errors.md)
+- [Concurrency](./concurrency.md)
+- [Interfaces](./interfaces.md)

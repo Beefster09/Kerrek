@@ -10,19 +10,22 @@ You may also defer variable initialization using the ellipsis `...` as long as y
 
 ```kerrek
 let inferred = 123;
-let zeroable: Integer;
+let zeroable: Integer(9);
 let uninitialized: SomeEnum = ...;
 ```
 
 ## Type inference with flexibly typed values
 
 - A plain numeric literal in hex, octal, or binary is inferred as `UInt64`
-- An expression made of integer literals and no fractional division (floor division is ok) is inferred as `Integer`
-- Any other numeric value is inferred as `Decimal` (the floating point decimal version, not some arbitrary fixed point decimal type)
+- An expression made of integer literals and no fractional division (floor division is ok) is inferred as `Int64` if it fits in that range
+- Fractional decimal literals are inferred as `Decimal(18, x)`, where `x` is the number of digits after the decimal point, assuming there are no more than 18 provided digits
+- Hex floats are inferred as `float.Binary64`
+- Any other numeric value *cannot be inferred*
+
 - String literals are inferred as `String`
 - Rune literals are inferred as `Rune`
 - `true` and `false` are inferred as `Boolean`
-- `nil` cannot possibly imply a singular type and therefore must trigger a compiler error
+- `nil` cannot be inferred
 
 # Constants
 

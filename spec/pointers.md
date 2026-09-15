@@ -16,7 +16,7 @@ Owned pointers may not be assigned into other owned pointers, only moved
 
 An shared pointer points to storage that is guaranteed to be able to outlive the scope in which it was created.
 
-The value it points to is reference counted, and *must* be destroyed when there are no shared references remaining which point to the value.
+The value it points to is reference counted, and will be destroyed as soon as there are no shared references remaining which point to the value.
 
 Shared pointers may only be assigned from other shared pointers.
 

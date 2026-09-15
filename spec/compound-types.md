@@ -58,7 +58,7 @@ Each item in the list of variants may carry *one* type as its payload. You may a
 ```kerrek
 enum Game {
 	Rock,
-	Paper(Integer),
+	Paper(Integer(3)),
 	(Scissors),
 }
 ```

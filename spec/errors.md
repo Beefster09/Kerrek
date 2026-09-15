@@ -22,7 +22,7 @@ From my discussion with ChatGPT in refining some ideas I've had about error hand
 Each function can return multiple errors and it may be fallible. Fallible functions may specify one type that is passed to the subsequent error handler.
 
 ```kerrek
-func never_fails() -> Integer, Decimal(10, 2), String {
+func never_fails() -> Integer(5), Decimal(10, 2), String {
 	\\ implementation omitted
 }
 
