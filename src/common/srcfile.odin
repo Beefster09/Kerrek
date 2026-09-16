@@ -34,6 +34,17 @@ _next_id: Source_ID = 1
 _sources: xar.Array(Source_File, 4)
 _sources_by_path: map[string]^Source_File
 _source_lock: sync.Mutex // protects the above three globals
+_source_storage_initialized: bool
+
+
+_initialize_source_storage :: proc() {
+	if _source_storage_initialized {
+		return
+	}
+	xar.array_init(&_sources)
+	_sources_by_path = make(map[string]^Source_File)
+	_source_storage_initialized = true
+}
 
 
 AVG_CHARS_PER_LINE :: 15 // very conservative estimate of number of characters per source line
@@ -106,6 +117,10 @@ load_source_by_id :: proc(id: Source_ID) -> (^Source_File, Load_Source_Error) {
 
 // primarily for testing: spawn a source file
 inject_source_file :: proc(name: string, contents: []u8) -> (sf: ^Source_File) {
+	sync.lock(&_source_lock)
+	defer sync.unlock(&_source_lock)
+	_initialize_source_storage()
+
 	_, xar_err := xar.append(
 		&_sources,
 		Source_File {
@@ -124,6 +139,28 @@ inject_source_file :: proc(name: string, contents: []u8) -> (sf: ^Source_File) {
 	_sources_by_path[sf.file] = sf
 
 	return sf
+}
+
+// Releases the source registry after tests which use inject_source_file.
+// All injected contents are owned by the registry, just like file-backed contents.
+destroy_source_storage_for_testing :: proc() {
+	sync.lock(&_source_lock)
+	defer sync.unlock(&_source_lock)
+	if !_source_storage_initialized {
+		return
+	}
+
+	iterator := xar.iterator(&_sources)
+	for sf, _ in xar.iterate_by_ptr(&iterator) {
+		delete(sf.file)
+		delete(sf.contents)
+		delete(sf.newline_offsets)
+	}
+	xar.destroy(&_sources)
+	delete(_sources_by_path)
+	_sources_by_path = nil
+	_next_id = 1
+	_source_storage_initialized = false
 }
 
 _ensure_contents_loaded :: proc(sf: ^Source_File) -> bool {

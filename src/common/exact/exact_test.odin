@@ -211,7 +211,13 @@ _test_parsing :: proc(t: ^testing.T) {
 		source: string,
 		radix:  int,
 		value:  string,
-	}{{"101101", 2, "45"}, {"755", 8, "493"}, {"deadBEEF", 16, "3735928559"}}
+	} {
+		{"101_101", 2, "45"},
+		{"7_5_5", 8, "493"},
+		{"dead_BEEF", 16, "3735928559"},
+		// Exercise the big.Int fallback with separators as well as the i128 path.
+		{"170_141_183_460_469_231_731_687_303_715_884_105_728", 10, "170141183460469231731687303715884105728"},
+	}
 	for tc in int_cases {
 		actual, parsed := parse_int(tc.source, tc.radix)
 		testing.expectf(t, parsed, "expected %q (base %d) to parse", tc.source, tc.radix)
@@ -228,6 +234,11 @@ _test_parsing :: proc(t: ^testing.T) {
 	testing.expect(t, !ok)
 	_, ok = parse_int("+")
 	testing.expect(t, !ok)
+	invalid_integer_separators := [?]string{"_1", "1_", "1__2", "+_1", "-_1"}
+	for source in invalid_integer_separators {
+		_, parsed := parse_int(source)
+		testing.expectf(t, !parsed, "expected integer %q to reject misplaced separators", source)
+	}
 
 	decimal_cases := [?]struct {
 		source:      string,
@@ -238,6 +249,7 @@ _test_parsing :: proc(t: ^testing.T) {
 		{"-1.25", "-5", "4"},
 		{"1e3", "1000", "1"},
 		{"1.5e-2", "3", "200"},
+		{"1_2.5_0e-1_0", "1", "800000000"},
 		{"0.00", "0", "1"},
 	}
 	for tc in decimal_cases {
@@ -271,8 +283,36 @@ _test_parsing :: proc(t: ^testing.T) {
 	testing.expect(t, !ok)
 	_, ok = parse_decimal("1.2.3")
 	testing.expect(t, !ok)
+	invalid_fractional_separators := [?]string {
+		"_1.0",
+		"1_.0",
+		"1._0",
+		"1.0_",
+		"1__0.0",
+		"1_e2",
+		"1e_2",
+		"1e2_",
+		"1e+_2",
+	}
+	for source in invalid_fractional_separators {
+		_, parsed := parse_decimal(source)
+		testing.expectf(t, !parsed, "expected decimal %q to reject misplaced separators", source)
+	}
 	_, ok = parse_hexfloat("1p-")
 	testing.expect(t, !ok)
+	invalid_hexfloat_separators := [?]string {
+		"_1p0",
+		"1_.0p0",
+		"1._0p0",
+		"1.0_p0",
+		"1.0p_1",
+		"1.0p1_",
+		"1.0p+_1",
+	}
+	for source in invalid_hexfloat_separators {
+		_, parsed := parse_hexfloat(source)
+		testing.expectf(t, !parsed, "expected hex float %q to reject misplaced separators", source)
+	}
 	_, ok = parse_hexfloat("1p999999999999999999999999999999999999999")
 	testing.expect(t, !ok)
 }

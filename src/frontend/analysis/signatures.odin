@@ -145,15 +145,7 @@ _build_declaration_signature :: proc(
 		return ok
 
 	case ^resolver.Constant:
-		type_ctx: Signature_Type_Context
-		ok := true
-		if value.ast.type != nil {
-			value.type, ok = resolve_signature_type(ctx, value.ast.type, &type_ctx)
-		}
-		resolved_unit, unit_ok := resolve_declared_unit(ctx, value.ast.unit)
-		value.unit = resolved_unit
-		_, annotations_ok := _build_annotations(ctx, value.ast.annotations)
-		return ok && unit_ok && annotations_ok
+		return true // we'll deal with these later
 
 	case ^resolver.Global_Variable:
 		type_ctx: Signature_Type_Context

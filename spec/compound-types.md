@@ -1,29 +1,56 @@
 
+# Static Arrays
+
+Static arrays have a compile-time known length. This allows them to be value types.
+
+```kerrek
+[3]Integer(12)
+[SOME_CONSTANT]String
+[TWO + CONSTANTS]Decimal(12,3)
+[1 + TWO]Boolean
+```
+
+# Views
+
+A view is a 1- to 16- dimensional view into somewhere else in memory
+
+```
+[]Int64           \\ 1-dimensional borrowed view
+[shared]Int64     \\ 1-dimensional shared view
+[#1; weak]Int64   \\ 1-dimensional weak view; alternate spelling
+[#2]Pixel         \\ 2-dimensional borrowed view
+[#3; owned]Block  \\ 3-dimensional owned view
+```
+
+You may create owned and shared views into heap memory under one of the following two conditions:
+- The element type has a well-defined zero value
+- All element values are specified
+
+Slicing can only produce a weak or borrowed view
+
+# Dynamic Arrays
+
+Dynamic arrays are one-dimensional dynamically resizable arrays
+
+```
+[dynamic]Decimal(15, 5)
+[dynamic]String
+```
+
+Dynamic arrays cannot change size while a borrow pointer alias of any of its elements exists, as the resize may invalidate the pointer.
+
 # Maps
 
 Maps represent key-value mappings between any two values.
 
 - The zero value is the empty map (not `nil`)
 - Keys must be value types supporting the `==` operator; pointers are not allowed as keys
-- Maps are reference types supporting `owned`, `shared`, `weak`, and borrow ownership classes
+- Maps are considered uniquely owned.
+	- If you want to pass maps around, you need to pass them by pointer or by move
 - Get operations must be O(1) in all cases
 - Put and Delete operations must be O(1) assuming storage does not need to be reallocated
 - Maps may reallocate their backing storage any time an element is added
 - The implementation may choose either a hash table or an enumerated array depending on the key and value types
-
-# Static Arrays
-
-Static arrays have a compile-time known length. This allows them to be value types.
-
-```kerrek
-[3]Integer
-[SOME_CONSTANT]String
-[TWO + CONSTANTS]Decimal(12,3)
-[1 + TWO]Boolean
-```
-
-# Dimensioned Arrays (Slices)
-# Dynamic Arrays
 
 # Struct Types
 

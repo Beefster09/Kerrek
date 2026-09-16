@@ -6,8 +6,60 @@ import "core:mem"
 import "core:unicode"
 
 
-_parse_i128_checked :: proc(s: string, radix: int) -> (i128, bool) {
+_digit_value :: proc(c: rune) -> (int, bool) {
+	switch c {
+	case '0' ..= '9':
+		return int(c - '0'), true
+	case 'a' ..= 'f':
+		return int(c - 'a') + 10, true
+	case 'A' ..= 'F':
+		return int(c - 'A') + 10, true
+	}
+	return 0, false
+}
+
+_is_digit_for_radix :: proc(c: rune, radix: int) -> bool {
+	digit, ok := _digit_value(c)
+	return ok && digit < radix
+}
+
+_underscore_between_digits :: proc(s: string, i, radix: int) -> bool {
+	return i > 0 &&
+	       i + 1 < len(s) &&
+	       _is_digit_for_radix(rune(s[i - 1]), radix) &&
+	       _is_digit_for_radix(rune(s[i + 1]), radix)
+}
+
+_valid_integer_syntax :: proc(s: string, radix: int) -> bool {
 	if len(s) == 0 || radix < 2 || radix > 16 {
+		return false
+	}
+
+	start := 1 if s[0] == '+' || s[0] == '-' else 0
+	if start == len(s) {
+		return false
+	}
+
+	body := s[start:]
+	digits := 0
+	for c, i in body {
+		if c == '_' {
+			if !_underscore_between_digits(body, i, radix) {
+				return false
+			}
+			continue
+		}
+		if !_is_digit_for_radix(c, radix) {
+			return false
+		}
+		digits += 1
+	}
+	return digits > 0
+}
+
+
+_parse_i128_checked :: proc(s: string, radix: int) -> (i128, bool) {
+	if !_valid_integer_syntax(s, radix) {
 		return 0, false
 	}
 
@@ -27,31 +79,17 @@ _parse_i128_checked :: proc(s: string, radix: int) -> (i128, bool) {
 	I128_ABS_MIN :: u128(1) << 127
 	limit := I128_ABS_MIN if negative else I128_ABS_MIN - 1
 	magnitude: u128
-	digits := 0
 	for c in s[start:] {
 		if c == '_' {
 			continue
 		}
 
-		digit: int
-		switch c {
-		case '0' ..= '9':
-			digit = int(c - '0')
-		case 'a' ..= 'f':
-			digit = int(c - 'a') + 10
-		case 'A' ..= 'F':
-			digit = int(c - 'A') + 10
-		case:
-			return 0, false
-		}
+		digit, ok := _digit_value(c)
+		assert(ok)
 		if digit >= radix || magnitude > (limit - u128(digit)) / u128(radix) {
 			return 0, false
 		}
 		magnitude = magnitude * u128(radix) + u128(digit)
-		digits += 1
-	}
-	if digits == 0 {
-		return 0, false
 	}
 
 	if negative {
@@ -65,7 +103,7 @@ _parse_i128_checked :: proc(s: string, radix: int) -> (i128, bool) {
 
 
 parse_int :: proc(s: string, radix: int = 10, allocator := bigint_allocator) -> (Int, bool) {
-	if len(s) == 0 || radix < 2 || radix > 16 || len(s) == 1 && (s[0] == '+' || s[0] == '-') {
+	if !_valid_integer_syntax(s, radix) {
 		return 0, false
 	}
 
@@ -75,7 +113,14 @@ parse_int :: proc(s: string, radix: int = 10, allocator := bigint_allocator) -> 
 	}
 	large := new(big.Int, allocator)
 	big_source := s[1:] if len(s) > 0 && s[0] == '+' else s
-	err := big.atoi(large, big_source, i8(radix), allocator)
+	normalized := make([dynamic]u8, 0, len(big_source), context.temp_allocator)
+	defer delete(normalized)
+	for c in big_source {
+		if c != '_' {
+			append(&normalized, u8(c))
+		}
+	}
+	err := big.atoi(large, transmute(string)normalized[:], i8(radix), allocator)
 	if err == nil {
 		return large, true
 	}
@@ -117,6 +162,13 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 	sign := 1
 
 	loop: for c, i in s {
+		if c == '_' {
+			if !_underscore_between_digits(s, i, RADIX) {
+				return {}, false
+			}
+			continue
+		}
+
 		switch unicode.to_lower(c) {
 		case '+':
 			if i != 0 {
