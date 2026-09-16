@@ -12,7 +12,7 @@ Builtin :: struct {
 
 Builtin_Kind :: enum {
 	Primitive_Type,
-	Parameterized_Type,
+	Parametric_Type,
 	Function,
 	Annotation,
 }
@@ -32,7 +32,7 @@ FIRST_USER_SYMBOL_ID :: 10_000
 // ID, and makes adding a builtin unable to collide with an existing ID.
 BUILTINS := [?]Builtin {
 	// Types.
-	{name = "Integer", kind = .Parameterized_Type},
+	{name = "Integer", kind = .Parametric_Type},
 	{name = "Int128", kind = .Primitive_Type},
 	{name = "Int64", kind = .Primitive_Type},
 	{name = "Int32", kind = .Primitive_Type},
@@ -43,7 +43,7 @@ BUILTINS := [?]Builtin {
 	{name = "UInt32", kind = .Primitive_Type},
 	{name = "UInt16", kind = .Primitive_Type},
 	{name = "UInt8", kind = .Primitive_Type},
-	{name = "Decimal", kind = .Parameterized_Type},
+	{name = "Decimal", kind = .Parametric_Type},
 	{name = "Dec128", kind = .Primitive_Type},
 	{name = "Dec64", kind = .Primitive_Type},
 	{name = "Dec32", kind = .Primitive_Type},

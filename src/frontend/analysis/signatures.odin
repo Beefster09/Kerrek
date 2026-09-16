@@ -232,7 +232,7 @@ resolve_signature_type :: proc(
 			#partial switch symbol.kind {
 			case .Primitive_Type:
 				return _primitive_type(symbol)
-			case .Parameterized_Type:
+			case .Parametric_Type:
 				diagnostics.emit(
 					.Invalid_Type,
 					node.span,

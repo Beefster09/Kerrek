@@ -475,15 +475,15 @@ _check_hex_numeric :: proc(s: string) -> (length: int, is_float: bool, ok: bool,
 				precision += 1
 			case 'p', 'P':
 				if _exponent_marker_starts_identifier(s, i) {
-					return i, true, false, precision
+					return i, true, whole_digits > 0, precision
 				}
 				state = .Exponent
 			case '_':
 				if !_underscore_between_digits(s, i, 16) {
-					return i, true, false, precision
+					return i, true, whole_digits > 0, precision
 				}
 			case:
-				return i, true, false, precision
+				return i, true, whole_digits > 0, precision
 			}
 		case .Exponent:
 			switch c {
@@ -512,7 +512,11 @@ _check_hex_numeric :: proc(s: string) -> (length: int, is_float: bool, ok: bool,
 		}
 	}
 
-	return len(s), is_float, whole_digits > 0 && (!is_float || exp_digits > 0), precision
+	ok = whole_digits > 0
+	if state == .Exponent || state == .Exponent_Digits {
+		ok = ok && exp_digits > 0
+	}
+	return len(s), is_float, ok, precision
 }
 
 _match_hex_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {

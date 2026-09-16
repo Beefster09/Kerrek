@@ -204,15 +204,21 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 				result.precision += 1
 			case '_':
 				if !_underscore_between_digits(src, i, 16) {
-					return
+					result.length = i
+					result.ok = true
+					break scan
 				}
 			case 'p', 'P':
 				if _exponent_marker_starts_identifier(src, i) {
-					return
+					result.length = i
+					result.ok = true
+					break scan
 				}
 				state = .Hex_Exponent
 			case:
-				return
+				result.length = i
+				result.ok = true
+				break scan
 			}
 
 		case .Hex_Exponent:
@@ -290,7 +296,7 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 
 	result.length = len(src)
 	#partial switch state {
-	case .Leading_Zero, .Decimal_Whole, .Decimal_Fraction, .Hex_Whole, .Octal_Whole, .Binary_Whole:
+	case .Leading_Zero, .Decimal_Whole, .Decimal_Fraction, .Hex_Whole, .Hex_Fraction, .Octal_Whole, .Binary_Whole:
 		result.ok = true
 	case .Decimal_Exponent_Digits, .Hex_Exponent_Digits:
 		result.ok = exponent_digits > 0

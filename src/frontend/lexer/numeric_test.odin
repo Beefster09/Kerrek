@@ -321,6 +321,11 @@ test_numeric_literals :: proc(t: ^testing.T) {
 		{"0x0.08p0|", "0x0.08p0", .HexFloat, 1, 32, 1, 2},
 		{"0x1p10~", "0x1p10", .HexFloat, 1024, 1, 1, 0},
 		{"0x1P10", "0x1P10", .HexFloat, 1024, 1, 1, 0},
+		// The binary exponent is optional when the literal contains a point.
+		{"0x1.8", "0x1.8", .HexFloat, 3, 2, 2, 1},
+		{"0x1.;", "0x1.", .HexFloat, 1, 1, 1, 0},
+		{"0x0.08 ", "0x0.08", .HexFloat, 1, 32, 1, 2},
+		{"0xa.b_c)", "0xa.b_c", .HexFloat, 687, 64, 3, 2},
 	}
 
 	for tc, i in cases {
@@ -409,7 +414,7 @@ test_numeric_literals :: proc(t: ^testing.T) {
 		{"123abc", "123", .DecimalInteger, 123, 1, 3, 0},
 		{"0o7octal", "0o7", .OctalInteger, 7, 1, 1, 0},
 		{"0b10binary", "0b10", .BinaryInteger, 2, 1, 2, 0},
-		{"0xfff.3a5df", "0xfff.3a5df", .BinaryInteger, 0xfff3a5df, 0x100000, 8, 5},
+		{"0xfff.3a5dftail", "0xfff.3a5df", .HexFloat, 0xfff3a5df, 0x100000, 8, 5},
 	}
 	for tc, i in contextual_suffix_cases {
 		_expect_numeric(t, tc)
@@ -483,10 +488,17 @@ test_numeric_literals :: proc(t: ^testing.T) {
 		{"0x1p2_", "0x1p2"},
 		{"0x1p+_2", ""},
 		{"0x1p+2_", "0x1p+2"},
+		{"0x1._8", "0x1."},
+		{"0x1.8_", "0x1.8"},
+		{"0x1.8p", ""},
+		{"0x1.8p_2", ""},
+		{"0x1.8p+", ""},
 		// A leading exponent marker should be treated as an identifier.
 		{"1example", "1"},
 		{"1eels", "1"},
 		{"0x1panda", "0x1"},
+		{"0x1.panda", "0x1."},
+		{"0x1.8panda", "0x1.8"},
 	}
 
 	for tc in boundary_cases {
