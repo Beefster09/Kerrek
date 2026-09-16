@@ -58,6 +58,7 @@ parse_source_file :: proc(sf: ^common.Source_File) -> (file: ^ast.File, err: Par
 	defer if err != .OK {
 		mem.dynamic_arena_destroy(file.node_arena)
 		free(file.node_arena)
+		file = nil
 	}
 
 	temp_arena: mem.Dynamic_Arena
@@ -70,7 +71,7 @@ parse_source_file :: proc(sf: ^common.Source_File) -> (file: ^ast.File, err: Par
 
 		err = _parse(&ps, file)
 		if err != .OK {
-			return nil, err
+			return // we can't set file to nil yet because there is some cleanup to do
 		}
 	}
 
@@ -138,10 +139,13 @@ _parse :: proc(ps: ^Parser_State, file: ^ast.File) -> Parse_Error {
 		}
 	}
 
-	file.imports = slice.clone(imports[:])
-	file.declarations = slice.clone(declarations[:])
-
-	return .OK
+	if ps.error_count == 0 {
+		file.imports = slice.clone(imports[:])
+		file.declarations = slice.clone(declarations[:])
+		return .OK
+	} else {
+		return .Syntax_Error
+	}
 }
 
 _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: bool) {
@@ -223,6 +227,7 @@ _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: 
 		"expected a top-level declaration here but got %s",
 		tok_str,
 	)
+	ps.error_count += 1
 	ps.cur_token += 1
 
 	return nil, true

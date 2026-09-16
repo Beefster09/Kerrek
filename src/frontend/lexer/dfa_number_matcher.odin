@@ -60,6 +60,11 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 				result.format = .Decimal
 				state = .Decimal_Fraction
 			case 'e', 'E':
+				if _exponent_marker_starts_identifier(src, i) {
+					result.length = i
+					result.ok = true
+					break scan
+				}
 				result.format = .Decimal
 				state = .Decimal_Exponent
 			case '_':
@@ -91,6 +96,11 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 				result.format = .Decimal
 				state = .Decimal_Fraction
 			case 'e', 'E':
+				if _exponent_marker_starts_identifier(src, i) {
+					result.length = i
+					result.ok = true
+					break scan
+				}
 				result.format = .Decimal
 				state = .Decimal_Exponent
 			case:
@@ -110,6 +120,11 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 					break scan
 				}
 			case 'e', 'E':
+				if _exponent_marker_starts_identifier(src, i) {
+					result.length = i
+					result.ok = true
+					break scan
+				}
 				state = .Decimal_Exponent
 			case:
 				result.length = i
@@ -170,6 +185,11 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 				result.format = .HexFloat
 				state = .Hex_Fraction
 			case 'p', 'P':
+				if _exponent_marker_starts_identifier(src, i) {
+					result.length = i
+					result.ok = true
+					break scan
+				}
 				result.format = .HexFloat
 				state = .Hex_Exponent
 			case:
@@ -187,6 +207,9 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 					return
 				}
 			case 'p', 'P':
+				if _exponent_marker_starts_identifier(src, i) {
+					return
+				}
 				state = .Hex_Exponent
 			case:
 				return

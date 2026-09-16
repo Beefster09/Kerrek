@@ -113,6 +113,8 @@ unit watt = joule per s;
 
 unit man;
 unit count;
+unit `unit`;
+const `🔥🔥🔥` = "FIAH!";
 
 unit ratio = 1;
 

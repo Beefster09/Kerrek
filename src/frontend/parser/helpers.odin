@@ -199,6 +199,7 @@ _error_here :: proc(ps: ^Parser_State, format: string, args: ..any) -> ^diagnost
 	} else if len(ps.tokens) > 0 {
 		span = common.collapse_span_to_end(ps.tokens[len(ps.tokens) - 1].span)
 	}
+	ps.error_count += 1
 	return diagnostics.emit_with_default_level(.Syntax_Error, span, format, ..args)
 }
 
@@ -211,5 +212,6 @@ _error_before_here :: proc(
 	if len(ps.tokens) > 0 {
 		span = common.collapse_span_to_end(ps.tokens[max(ps.cur_token - 1, 0)].span)
 	}
+	ps.error_count += 1
 	return diagnostics.emit_with_default_level(.Syntax_Error, span, format, ..args)
 }

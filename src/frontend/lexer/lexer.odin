@@ -3,8 +3,11 @@ package lexer
 import "base:runtime"
 import "core:fmt"
 import "core:strings"
+import "core:unicode"
+import "core:unicode/utf8"
 
 import "../../common"
+import "../diagnostics"
 
 @(private = "file")
 _PREALLOC_CAP_FACTOR_MUL :: #config(TOKEN_PREALLOC_FACTOR_MUL, 1)
@@ -78,6 +81,32 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 				)
 				last_thing_was_garbage = true
 			}
+		case '`':
+			// escaped identifier: allows keywords, emoji, numbers
+			if ident, n, w := _match_weird_ident(cursor, src[offset:]); ident != "" {
+				interned_ident, err := strings.intern_get(&common.ident_intern, ident)
+				assert(err == nil, "identifier intern failed")
+				append(
+					&tokens,
+					Token {
+						span = common.cursor_to_span(cursor, n, w),
+						what = Identifier(interned_ident),
+					},
+				)
+				last_thing_was_garbage = false
+				advance_by = n
+				// not a valid escaped identifier, so it's garbage
+			} else {
+				append(
+					&tokens,
+					Token {
+						span = common.cursor_to_span(cursor, 1),
+						what = Garbage(src[offset:offset + 1]),
+					},
+				)
+				last_thing_was_garbage = true
+			}
+
 		case '\\':
 			// comment?
 			if strings.starts_with(src[offset:], "\\\\") {
@@ -142,11 +171,15 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 				advance_by = n
 
 			} else if ident, width := _match_ident_like(src[offset:]); ident != "" {
+				span := common.cursor_to_span(cursor, len(ident), width)
+
 				what: Token_Data
+				is_keyword := false
 
 				for kw_str, keyword in KEYWORD_STRINGS {
 					if ident == kw_str {
 						what = keyword
+						is_keyword = true
 						break
 					}
 				}
@@ -157,10 +190,26 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 					what = Identifier(interned_ident)
 				}
 
-				append(
-					&tokens,
-					Token{span = common.cursor_to_span(cursor, len(ident), width), what = what},
-				)
+				if len(tokens) > 0 {
+					prev_token := tokens[len(tokens) - 1]
+					if num, is_num := prev_token.what.(Numeric);
+					   is_num && prev_token.span.end.offset == cursor.offset {
+						diag := diagnostics.emit(
+							.Number_Followed_By_Identifier,
+							common.merge_spans(prev_token.span, span),
+							"number followed by %s without whitespace",
+							"keyword" if is_keyword else "identifier",
+						)
+						diagnostics.suggest(
+							diag,
+							"put a space between %s and %s to make your intent clear",
+							num.raw,
+							ident,
+						)
+					}
+				}
+
+				append(&tokens, Token{span = span, what = what})
 				last_thing_was_garbage = false
 				advance_by = len(ident)
 

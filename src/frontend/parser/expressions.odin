@@ -71,6 +71,7 @@ _expr_atom :: proc(ps: ^Parser_State) -> ast.Expression {
 				lparen[0].span,
 				"parenthesized expression was not closed",
 			)
+			ps.error_count += 1
 			return nil
 		}
 	} else if ident, ok := _match1(ps, Identifier); ok {
@@ -212,6 +213,7 @@ _binop_expr :: proc(
 					_operator_string(op_tok1),
 					_operator_string(op_tok2),
 				)
+				ps.error_count += 1
 				return nil
 			}
 			if !(info2.prec > prec1 || info2.associativity == .Right && info2.prec == prec1) {

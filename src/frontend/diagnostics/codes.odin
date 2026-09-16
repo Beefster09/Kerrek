@@ -10,6 +10,8 @@ Code :: enum {
 
 	// The source contains a malformed numeric literal.
 	Invalid_Number_Literal,
+	// A numeric literal and identifier are not separated by whitespace.
+	Number_Followed_By_Identifier,
 	// An escape sequence is unknown or malformed.
 	Invalid_Escape,
 	// A rune literal does not contain a code point.
@@ -81,6 +83,12 @@ Code_Metadata :: struct {
 CODE_METADATA := [Code]Code_Metadata {
 	// Lexer diagnostics
 	.Invalid_Number_Literal = {origin = .Lexer, default_level = .Error, stable_id = "L00"},
+	.Number_Followed_By_Identifier = {
+		origin = .Lexer,
+		category = .Style,
+		default_level = .Warning,
+		stable_id = "L01",
+	},
 	.Invalid_Escape = {origin = .Lexer, default_level = .Error, stable_id = "L10"},
 	.Empty_Rune = {origin = .Lexer, default_level = .Error, stable_id = "L11"},
 	.Unclosed_Rune = {origin = .Lexer, default_level = .Error, stable_id = "L12"},

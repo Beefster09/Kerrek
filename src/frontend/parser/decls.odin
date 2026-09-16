@@ -87,6 +87,7 @@ _const_or_var :: proc(
 		expr, has_expr := value.(ast.Expression)
 		if !has_expr || expr == nil {
 			diagnostics.emit(.Syntax_Error, name_tok.span, "constants must be given a value")
+			ps.error_count += 1
 			return nil
 		}
 		decl := new(ast.Constant_Def)
@@ -112,6 +113,7 @@ _const_or_var :: proc(
 		} else {
 			if _, unbound := value.(ast.Unbound_Var); unbound {
 				diagnostics.emit(.Syntax_Error, end_span, "global variables cannot be unbound")
+				ps.error_count += 1
 				return nil
 			}
 			expr, _ := value.(ast.Expression)

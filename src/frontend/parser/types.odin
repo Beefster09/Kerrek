@@ -24,17 +24,17 @@ _type_expr :: proc(ps: ^Parser_State, allow_generics := false) -> ast.Type_Expre
 			typ = generic
 		}
 		if !allow_generics {
-			diagnostics.emit(.Syntax_Error, tok.span, "generic types are not allowed here")
+			_error_here(ps, "generic types are not allowed here")
 		}
 
 	case Punctuation.Caret, Keyword.Owned, Keyword.Shared, Keyword.Weak:
 		typ = _pointer_type(ps)
 
 	case Punctuation.LSquare:
-		// Arrays are not implemented in the Python parser yet.
+	// Arrays are not implemented in the Python parser yet.
 
 	case Keyword.Map:
-		// Maps are not implemented in the Python parser yet.
+	// Maps are not implemented in the Python parser yet.
 
 	case Punctuation.Question:
 		question, _ := _pop(ps)
@@ -102,7 +102,10 @@ _simple_type :: proc(ps: ^Parser_State) -> ast.Type_Expression {
 		return nil
 	}
 	simple := new(ast.Simple_Type)
-	simple^ = {span = qualname.span, type = qualname}
+	simple^ = {
+		span = qualname.span,
+		type = qualname,
+	}
 	return simple
 }
 
@@ -136,8 +139,8 @@ _pointer_type :: proc(ps: ^Parser_State) -> ast.Type_Expression {
 
 	pointer := new(ast.Pointer_Type)
 	pointer^ = {
-		span = common.merge_spans(prefix.span, _type_span(to)),
-		to = to,
+		span      = common.merge_spans(prefix.span, _type_span(to)),
+		to        = to,
 		ownership = ownership,
 	}
 	return pointer

@@ -28,22 +28,66 @@ _match_punctuation :: proc(cursor: common.Cursor, s: string) -> (punct: Punctuat
 
 
 _match_ident_like :: proc(s: string) -> (idlike: string, width: int) {
-	for i := 0; i < len(s); {
-		r, n := utf8.decode_rune(s[i:])
+	for r, i in s {
 		if r == '_' || unicode.is_alpha(r) || i > 0 && unicode.is_number(r) {
 			width += unicode.normalized_east_asian_width(r)
-			i += n
 		} else {
 			return s[:i], width
 		}
 	}
 
-	return "", 0
+	return s, width
+}
+
+_match_weird_ident :: proc(
+	cursor: common.Cursor,
+	s: string,
+) -> (
+	ident: string,
+	length: int,
+	width: int,
+) {
+	if s[0] != '`' {
+		return "", 0, 0
+	}
+
+	loop: for r, i in s[1:] {
+		#assert(type_of(r) == rune)
+		switch r {
+		case '`':
+			return s[1:i + 1], i + 2, width + 2
+		case 'a' ..= 'z', 'A' ..= 'Z', '0' ..= '9', '_':
+			// valid ascii character
+			width += 1
+		case 0 ..= 0x7f:
+			return "", 0, 0
+		case:
+			if unicode.is_space(r) ||
+			   unicode.is_punct(r) ||
+			   unicode.is_control(r) ||
+			   unicode.is_enclosing_mark(r) {
+				return "", 0, 0
+			} else {
+				width += unicode.normalized_east_asian_width(r)
+			}
+		}
+	}
+
+	return "", 0, 0
 }
 
 
 _match_rune_literal :: proc(cursor: common.Cursor, s: string) -> (rune_lit: Rune, width: int) {
-	if s[0] != '\'' {
+	if len(s) == 0 || s[0] != '\'' {
+		return {}, 0
+	}
+	if len(s) == 1 || s[1] == '\'' {
+		length := min(len(s), 2)
+		diagnostics.emit(
+			.Empty_Rune,
+			common.cursor_to_span(cursor, length),
+			"rune literal is empty",
+		)
 		return {}, 0
 	}
 
@@ -67,15 +111,16 @@ _match_rune_literal :: proc(cursor: common.Cursor, s: string) -> (rune_lit: Rune
 		width = unicode.normalized_east_asian_width(codepoint)
 	}
 
-	if s[length + 1] == '\'' {
+	if length + 1 < len(s) && s[length + 1] == '\'' {
 		length += 2
 		width += 2
 	} else {
+		unclosed_length := min(length + 1, len(s))
 		diagnostics.emit(
 			.Unclosed_Rune,
-			common.cursor_to_span(cursor, length + 1, width + 1),
+			common.cursor_to_span(cursor, unclosed_length, width + 1),
 			"unclosed rune: %s",
-			strings.trim_space(s[:length + 1]),
+			strings.trim_space(s[:unclosed_length]),
 		)
 		return {}, 0
 	}
@@ -98,7 +143,7 @@ _match_string_literal :: proc(
 	case '"':
 		mode = .Normal
 	case '\\':
-		if s[1] != '"' {
+		if len(s) < 2 || s[1] != '"' {
 			return {}, start, false
 		}
 		mode = .Raw
@@ -240,11 +285,29 @@ _match_string_literal :: proc(
 
 
 _interpret_escape :: proc(cursor: common.Cursor, s: string) -> (rune, int) {
-	if s[0] != '\\' {
+	if len(s) == 0 || s[0] != '\\' {
+		return 0, 0
+	}
+	if len(s) < 2 {
+		diagnostics.emit(
+			.Invalid_Escape,
+			common.cursor_to_span(cursor, len(s)),
+			"invalid escape: '%s'",
+			s,
+		)
 		return 0, 0
 	}
 
 	_hex_escape :: proc(cursor: common.Cursor, s: string, n: int) -> (rune, bool) {
+		if len(s) < n {
+			diagnostics.emit(
+				.Invalid_Escape,
+				common.cursor_to_span(cursor, len(s)),
+				"invalid escape: '%s'",
+				s,
+			)
+			return 0, false
+		}
 		if _is_hex(s[2:n]) {
 			v, ok := strconv.parse_u64(s[2:n], 16)
 			if ok {
@@ -327,10 +390,20 @@ _digit_in_radix :: proc(c: rune, radix: int) -> bool {
 }
 
 _underscore_between_digits :: proc(s: string, i, radix: int) -> bool {
-	return i > 0 &&
-	       i + 1 < len(s) &&
-	       _digit_in_radix(rune(s[i - 1]), radix) &&
-	       _digit_in_radix(rune(s[i + 1]), radix)
+	return(
+		i > 0 &&
+		i + 1 < len(s) &&
+		_digit_in_radix(rune(s[i - 1]), radix) &&
+		_digit_in_radix(rune(s[i + 1]), radix) \
+	)
+}
+
+_exponent_marker_starts_identifier :: proc(s: string, i: int) -> bool {
+	if i + 1 >= len(s) {
+		return false
+	}
+	next, _ := utf8.decode_rune(s[i + 1:])
+	return unicode.is_alpha(next)
 }
 
 _count_significant_digits :: proc(raw: string, format: Number_Format) -> u32 {
@@ -365,12 +438,7 @@ _count_significant_digits :: proc(raw: string, format: Number_Format) -> u32 {
 	return max(digits, 1) if saw_digit else 0
 }
 
-_check_hex_numeric :: proc(s: string) -> (
-	length:    int,
-	is_float:  bool,
-	ok:        bool,
-	precision: u32,
-) {
+_check_hex_numeric :: proc(s: string) -> (length: int, is_float: bool, ok: bool, precision: u32) {
 	state: enum {
 		Whole,
 		Fractional,
@@ -389,6 +457,9 @@ _check_hex_numeric :: proc(s: string) -> (
 				is_float = true
 				state = .Fractional
 			case 'p', 'P':
+				if _exponent_marker_starts_identifier(s, i) {
+					return i, false, whole_digits > 0, 0
+				}
 				is_float = true
 				state = .Exponent
 			case '_':
@@ -403,6 +474,9 @@ _check_hex_numeric :: proc(s: string) -> (
 			case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
 				precision += 1
 			case 'p', 'P':
+				if _exponent_marker_starts_identifier(s, i) {
+					return i, true, false, precision
+				}
 				state = .Exponent
 			case '_':
 				if !_underscore_between_digits(s, i, 16) {
@@ -438,10 +512,7 @@ _check_hex_numeric :: proc(s: string) -> (
 		}
 	}
 
-	return len(s),
-	       is_float,
-	       whole_digits > 0 && (!is_float || exp_digits > 0),
-	       precision
+	return len(s), is_float, whole_digits > 0 && (!is_float || exp_digits > 0), precision
 }
 
 _match_hex_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
@@ -467,12 +538,13 @@ _match_hex_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int)
 			return {}, 0
 		}
 		return {
-			raw = src[:full_match_len],
-			value = value,
-			digits = _count_significant_digits(src[:full_match_len], .HexFloat),
-			precision = precision,
-			format = .HexFloat,
-		}, full_match_len
+				raw = src[:full_match_len],
+				value = value,
+				digits = _count_significant_digits(src[:full_match_len], .HexFloat),
+				precision = precision,
+				format = .HexFloat,
+			},
+			full_match_len
 	}
 
 	value, parsed := exact.parse_int(src[2:full_match_len], 16)
@@ -480,11 +552,11 @@ _match_hex_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int)
 		return {}, 0
 	}
 	return {
-		raw = src[:full_match_len],
-		value = exact.int_to_rat(value),
-		digits = _count_significant_digits(src[:full_match_len], .HexInteger),
-		format = .HexInteger,
-	},
+			raw = src[:full_match_len],
+			value = exact.int_to_rat(value),
+			digits = _count_significant_digits(src[:full_match_len], .HexInteger),
+			format = .HexInteger,
+		},
 		full_match_len
 }
 
@@ -534,11 +606,11 @@ _match_radix_integer :: proc(
 		return {}, 0
 	}
 	return {
-		raw = src[:full_match_len],
-		value = exact.int_to_rat(value),
-		digits = _count_significant_digits(src[:full_match_len], FORMAT),
-		format = FORMAT,
-	},
+			raw = src[:full_match_len],
+			value = exact.int_to_rat(value),
+			digits = _count_significant_digits(src[:full_match_len], FORMAT),
+			format = FORMAT,
+		},
 		full_match_len
 }
 
@@ -550,11 +622,13 @@ _match_binary_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, i
 	return #force_inline _match_radix_integer(cursor, src, 2, .BinaryInteger, "binary")
 }
 
-_check_decimal_numeric :: proc(s: string) -> (
-	length:       int,
+_check_decimal_numeric :: proc(
+	s: string,
+) -> (
+	length: int,
 	is_fractional: bool,
-	ok:           bool,
-	precision:    u32,
+	ok: bool,
+	precision: u32,
 ) {
 	state: enum {
 		Whole,
@@ -575,6 +649,9 @@ _check_decimal_numeric :: proc(s: string) -> (
 				is_fractional = true
 				state = .Fractional
 			case 'e', 'E':
+				if _exponent_marker_starts_identifier(s, i) {
+					return i, false, whole_digits > 0, 0
+				}
 				is_fractional = true
 				state = .Exponent
 			case '_':
@@ -589,6 +666,9 @@ _check_decimal_numeric :: proc(s: string) -> (
 			case '0' ..= '9':
 				precision += 1
 			case 'e', 'E':
+				if _exponent_marker_starts_identifier(s, i) {
+					return i, true, whole_digits > 0, precision
+				}
 				state = .Exponent
 			case '_':
 				if !_underscore_between_digits(s, i, 10) {
@@ -641,21 +721,22 @@ _match_decimal_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, 
 		value, parsed := exact.parse_decimal(src[:match_len])
 		assert(parsed)
 		return {
-			raw = src[:match_len],
-			value = value,
-			digits = _count_significant_digits(src[:match_len], .Decimal),
-			precision = precision,
-			format = .Decimal,
-		}, match_len
+				raw = src[:match_len],
+				value = value,
+				digits = _count_significant_digits(src[:match_len], .Decimal),
+				precision = precision,
+				format = .Decimal,
+			},
+			match_len
 	} else {
 		value, parsed := exact.parse_int(src[:match_len], 10)
 		assert(parsed)
 		return {
-			raw = src[:match_len],
-			value = exact.int_to_rat(value),
-			digits = _count_significant_digits(src[:match_len], .DecimalInteger),
-			format = .DecimalInteger,
-		},
+				raw = src[:match_len],
+				value = exact.int_to_rat(value),
+				digits = _count_significant_digits(src[:match_len], .DecimalInteger),
+				format = .DecimalInteger,
+			},
 			match_len
 	}
 }
