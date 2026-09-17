@@ -1,21 +1,45 @@
 package lexer
 
+import "core:unicode"
+import "core:unicode/utf8"
+
 import "../../common"
 import "../../common/exact"
+import "../diagnostics"
 
 
-// This is an alternate implementation of _match_numeric. Unlike the production
-// matcher, which splits each numeric family into a small checker, this version
-// puts every numeric form into one explicit state machine
+// Scan every numeric form with one explicit state machine.
 
-Number_DFA_Result :: struct {
-	length:    int,
-	format:    Number_Format,
-	precision: u32,
-	ok:        bool,
+_digit_in_radix :: proc(c: rune, radix: int) -> bool {
+	switch {
+	case '0' <= c && c <= '9':
+		return int(c - '0') < radix
+	case 'a' <= c && c <= 'f':
+		return int(c - 'a') + 10 < radix
+	case 'A' <= c && c <= 'F':
+		return int(c - 'A') + 10 < radix
+	}
+	return false
 }
 
-_scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
+_underscore_between_digits :: proc(s: string, i, radix: int) -> bool {
+	return(
+		i > 0 &&
+		i + 1 < len(s) &&
+		_digit_in_radix(rune(s[i - 1]), radix) &&
+		_digit_in_radix(rune(s[i + 1]), radix) \
+	)
+}
+
+_exponent_marker_starts_identifier :: proc(s: string, i: int) -> bool {
+	if i + 1 >= len(s) {
+		return false
+	}
+	next, _ := utf8.decode_rune(s[i + 1:])
+	return unicode.is_alpha(next)
+}
+
+_scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, ok: bool) {
 	state: enum {
 		Start,
 		Leading_Zero,
@@ -34,9 +58,9 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 		Binary_Whole,
 	}
 	exponent_digits := 0
-	result.format = .DecimalInteger
+	format = .DecimalInteger
 
-	scan: for c, i in src {
+	for c, i in src {
 		switch state {
 		case .Start:
 			if '0' <= c && c <= '9' {
@@ -48,39 +72,39 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 		case .Leading_Zero:
 			switch c {
 			case 'x':
-				result.format = .HexInteger
+				format = .HexInteger
 				state = .Hex_First_Digit
 			case 'o':
-				result.format = .OctalInteger
+				format = .OctalInteger
 				state = .Octal_First_Digit
 			case 'b':
-				result.format = .BinaryInteger
+				format = .BinaryInteger
 				state = .Binary_First_Digit
 			case '.':
-				result.format = .Decimal
+				format = .Decimal
 				state = .Decimal_Fraction
 			case 'e', 'E':
 				if _exponent_marker_starts_identifier(src, i) {
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
-				result.format = .Decimal
+				format = .Decimal
 				state = .Decimal_Exponent
 			case '_':
 				if _underscore_between_digits(src, i, 10) {
 					state = .Decimal_Whole
 				} else {
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
 			case '0' ..= '9':
 				state = .Decimal_Whole
 			case:
-				result.length = i
-				result.ok = true
-				break scan
+				length = i
+				ok = true
+				return
 			}
 
 		case .Decimal_Whole:
@@ -88,48 +112,47 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 			case '0' ..= '9':
 			case '_':
 				if !_underscore_between_digits(src, i, 10) {
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
 			case '.':
-				result.format = .Decimal
+				format = .Decimal
 				state = .Decimal_Fraction
 			case 'e', 'E':
 				if _exponent_marker_starts_identifier(src, i) {
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
-				result.format = .Decimal
+				format = .Decimal
 				state = .Decimal_Exponent
 			case:
-				result.length = i
-				result.ok = true
-				break scan
+				length = i
+				ok = true
+				return
 			}
 
 		case .Decimal_Fraction:
 			switch c {
 			case '0' ..= '9':
-				result.precision += 1
 			case '_':
 				if !_underscore_between_digits(src, i, 10) {
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
 			case 'e', 'E':
 				if _exponent_marker_starts_identifier(src, i) {
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
 				state = .Decimal_Exponent
 			case:
-				result.length = i
-				result.ok = true
-				break scan
+				length = i
+				ok = true
+				return
 			}
 
 		case .Decimal_Exponent:
@@ -152,17 +175,17 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 					if exponent_digits == 0 {
 						return
 					}
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
 			case:
 				if exponent_digits == 0 {
 					return
 				}
-				result.length = i
-				result.ok = true
-				break scan
+				length = i
+				ok = true
+				return
 			}
 
 		case .Hex_First_Digit:
@@ -177,48 +200,47 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 			case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
 			case '_':
 				if !_underscore_between_digits(src, i, 16) {
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
 			case '.':
-				result.format = .HexFloat
+				format = .HexFloat
 				state = .Hex_Fraction
 			case 'p', 'P':
 				if _exponent_marker_starts_identifier(src, i) {
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
-				result.format = .HexFloat
+				format = .HexFloat
 				state = .Hex_Exponent
 			case:
-				result.length = i
-				result.ok = true
-				break scan
+				length = i
+				ok = true
+				return
 			}
 
 		case .Hex_Fraction:
 			switch c {
 			case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
-				result.precision += 1
 			case '_':
 				if !_underscore_between_digits(src, i, 16) {
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
 			case 'p', 'P':
 				if _exponent_marker_starts_identifier(src, i) {
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
 				state = .Hex_Exponent
 			case:
-				result.length = i
-				result.ok = true
-				break scan
+				length = i
+				ok = true
+				return
 			}
 
 		case .Hex_Exponent:
@@ -241,17 +263,17 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 					if exponent_digits == 0 {
 						return
 					}
-					result.length = i
-					result.ok = true
-					break scan
+					length = i
+					ok = true
+					return
 				}
 			case:
 				if exponent_digits == 0 {
 					return
 				}
-				result.length = i
-				result.ok = true
-				break scan
+				length = i
+				ok = true
+				return
 			}
 
 		case .Octal_First_Digit:
@@ -266,9 +288,9 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 			} else if c == '_' && _underscore_between_digits(src, i, 8) {
 				// The separator is valid; remain in this state.
 			} else {
-				result.length = i
-				result.ok = true
-				break scan
+				length = i
+				ok = true
+				return
 			}
 
 		case .Binary_First_Digit:
@@ -283,40 +305,63 @@ _scan_numeric_dfa :: proc(src: string) -> (result: Number_DFA_Result) {
 			} else if c == '_' && _underscore_between_digits(src, i, 2) {
 				// The separator is valid; remain in this state.
 			} else {
-				result.length = i
-				result.ok = true
-				break scan
+				length = i
+				ok = true
+				return
 			}
 		}
 	}
 
-	if result.ok {
-		return
-	}
-
-	result.length = len(src)
+	length = len(src)
 	#partial switch state {
-	case .Leading_Zero, .Decimal_Whole, .Decimal_Fraction, .Hex_Whole, .Hex_Fraction, .Octal_Whole, .Binary_Whole:
-		result.ok = true
+	case .Leading_Zero,
+	     .Decimal_Whole,
+	     .Decimal_Fraction,
+	     .Hex_Whole,
+	     .Hex_Fraction,
+	     .Octal_Whole,
+	     .Binary_Whole:
+		ok = true
 	case .Decimal_Exponent_Digits, .Hex_Exponent_Digits:
-		result.ok = exponent_digits > 0
+		ok = exponent_digits > 0
 	case:
-		result.ok = false
+		ok = false
 	}
 	return
 }
 
-_match_numeric_dfa :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
-	match := _scan_numeric_dfa(src)
-	if !match.ok {
+_match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
+	length, format, ok := _scan_numeric_dfa(src)
+	if !ok {
+		#partial switch format {
+		case .HexInteger, .HexFloat:
+			diagnostics.emit(
+				.Invalid_Number_Literal,
+				common.cursor_to_span(cursor, max(length, 2)),
+				"invalid hex literal",
+			)
+		case .OctalInteger:
+			diagnostics.emit(
+				.Invalid_Number_Literal,
+				common.cursor_to_span(cursor, max(length, 2)),
+				"found no digits in octal literal",
+			)
+		case .BinaryInteger:
+			diagnostics.emit(
+				.Invalid_Number_Literal,
+				common.cursor_to_span(cursor, max(length, 2)),
+				"found no digits in binary literal",
+			)
+		case:
+		}
 		return {}, 0
 	}
 
-	raw := src[:match.length]
+	raw := src[:length]
 	value: exact.Rat
 	parsed := false
 
-	#partial switch match.format {
+	#partial switch format {
 	case .DecimalInteger:
 		integer, ok := exact.parse_int(raw, 10)
 		if ok {
@@ -352,12 +397,54 @@ _match_numeric_dfa :: proc(cursor: common.Cursor, src: string) -> (Numeric, int)
 	if !parsed {
 		return {}, 0
 	}
-	return {
-			raw = raw,
-			value = value,
-			digits = _count_significant_digits(raw, match.format),
-			precision = match.precision,
-			format = match.format,
-		},
-		match.length
+	digits, precision := _count_numeric_digits(raw, format)
+	return {raw = raw, value = value, digits = digits, precision = precision, format = format},
+		length
+}
+
+_count_numeric_digits :: proc(
+	raw: string,
+	format: Number_Format,
+) -> (
+	digits: u32,
+	precision: u32,
+) {
+	start := 0
+	#partial switch format {
+	case .HexInteger, .OctalInteger, .BinaryInteger, .HexFloat:
+		start = 2
+	case:
+	}
+
+	saw_digit := false
+	saw_nonzero := false
+	after_point := false
+	for c in raw[start:] {
+		if format == .Decimal && (c == 'e' || c == 'E') ||
+		   format == .HexFloat && (c == 'p' || c == 'P') {
+			break
+		}
+		switch c {
+		case '.':
+			after_point = true
+		case '0':
+			saw_digit = true
+			if after_point {
+				precision += 1
+			}
+			if saw_nonzero {
+				digits += 1
+			}
+		case '1' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
+			saw_digit = true
+			saw_nonzero = true
+			digits += 1
+			if after_point {
+				precision += 1
+			}
+		case:
+		}
+	}
+	digits = max(digits, 1) if saw_digit else 0
+	return
 }

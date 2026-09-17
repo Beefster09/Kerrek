@@ -3,7 +3,6 @@ package lexer
 
 import "core:fmt"
 import "core:slice"
-import "core:strings"
 import "core:testing"
 import "core:time"
 
@@ -82,7 +81,7 @@ _consume_numeric_benchmark_result :: #force_inline proc(
 	            u64(denominator) << 1
 }
 
-_benchmark_current_numeric_matcher :: proc(
+_benchmark_numeric_matcher :: proc(
 	corpus: []string,
 	rounds: int,
 ) -> Numeric_Benchmark_Result {
@@ -105,44 +104,19 @@ _benchmark_current_numeric_matcher :: proc(
 	return result
 }
 
-_benchmark_dfa_numeric_matcher :: proc(
-	corpus: []string,
-	rounds: int,
-) -> Numeric_Benchmark_Result {
-	result: Numeric_Benchmark_Result
-	watch: time.Stopwatch
-	time.stopwatch_start(&watch)
-	for _ in 0 ..< rounds {
-		for source in corpus {
-			numeric, length := _match_numeric_dfa({}, source)
-			assert(length > 0)
-			_consume_numeric_benchmark_result(&result.checksum, numeric, length)
-		}
-	}
-	time.stopwatch_stop(&watch)
-	result.duration = time.stopwatch_duration(watch)
-	result.calls = rounds * len(corpus)
-	for source in corpus {
-		result.processed += rounds * len(source)
-	}
-	return result
-}
-
 _consume_numeric_scanner_result :: #force_inline proc(
 	checksum: ^u64,
 	length: int,
 	format: Number_Format,
-	precision: u32,
 	ok: bool,
 ) {
 	checksum^ = checksum^ * 1099511628211 ~
 	            u64(length) ~
 	            u64(format) << 16 ~
-	            u64(precision) << 24 ~
-	            u64(ok) << 32
+	            u64(ok) << 24
 }
 
-_benchmark_current_numeric_scanner :: proc(
+_benchmark_numeric_scanner :: proc(
 	corpus: []string,
 	rounds: int,
 ) -> Numeric_Benchmark_Result {
@@ -151,50 +125,13 @@ _benchmark_current_numeric_scanner :: proc(
 	time.stopwatch_start(&watch)
 	for _ in 0 ..< rounds {
 		for source in corpus {
-			length: int
-			format: Number_Format
-			precision: u32
-			ok: bool
-			if strings.starts_with(source, "0x") {
-				is_float: bool
-				length, is_float, ok, precision = _check_hex_numeric(source[2:])
-				length += 2
-				format = .HexFloat if is_float else .HexInteger
-			} else {
-				is_fractional: bool
-				length, is_fractional, ok, precision = _check_decimal_numeric(source)
-				format = .Decimal if is_fractional else .DecimalInteger
-			}
+			length, format, ok := _scan_numeric_dfa(source)
 			assert(ok && length > 0)
-			_consume_numeric_scanner_result(&result.checksum, length, format, precision, ok)
-		}
-	}
-	time.stopwatch_stop(&watch)
-	result.duration = time.stopwatch_duration(watch)
-	result.calls = rounds * len(corpus)
-	for source in corpus {
-		result.processed += rounds * len(source)
-	}
-	return result
-}
-
-_benchmark_dfa_numeric_scanner :: proc(
-	corpus: []string,
-	rounds: int,
-) -> Numeric_Benchmark_Result {
-	result: Numeric_Benchmark_Result
-	watch: time.Stopwatch
-	time.stopwatch_start(&watch)
-	for _ in 0 ..< rounds {
-		for source in corpus {
-			match := _scan_numeric_dfa(source)
-			assert(match.ok && match.length > 0)
 			_consume_numeric_scanner_result(
 				&result.checksum,
-				match.length,
-				match.format,
-				match.precision,
-				match.ok,
+				length,
+				format,
+				ok,
 			)
 		}
 	}
@@ -207,104 +144,60 @@ _benchmark_dfa_numeric_scanner :: proc(
 	return result
 }
 
-_run_numeric_scanner_benchmark :: proc(t: ^testing.T, corpus: []string) {
+_run_numeric_scanner_benchmark :: proc(corpus: []string) {
 	warmup_rounds := max(NUMERIC_BENCHMARK_ROUNDS / 20, 1)
-	warm_current := _benchmark_current_numeric_scanner(corpus, warmup_rounds)
-	warm_dfa := _benchmark_dfa_numeric_scanner(corpus, warmup_rounds)
-	testing.expectf(t, warm_current.checksum == warm_dfa.checksum, "scanner warm-up checksums differ")
+	_ = _benchmark_numeric_scanner(corpus, warmup_rounds)
 
-	current_samples: [NUMERIC_BENCHMARK_SAMPLES]time.Duration
-	dfa_samples: [NUMERIC_BENCHMARK_SAMPLES]time.Duration
+	samples: [NUMERIC_BENCHMARK_SAMPLES]time.Duration
 	reference: Numeric_Benchmark_Result
 	for i in 0 ..< NUMERIC_BENCHMARK_SAMPLES {
-		current, dfa: Numeric_Benchmark_Result
-		if i % 2 == 0 {
-			current = _benchmark_current_numeric_scanner(corpus, NUMERIC_BENCHMARK_ROUNDS)
-			dfa = _benchmark_dfa_numeric_scanner(corpus, NUMERIC_BENCHMARK_ROUNDS)
-		} else {
-			dfa = _benchmark_dfa_numeric_scanner(corpus, NUMERIC_BENCHMARK_ROUNDS)
-			current = _benchmark_current_numeric_scanner(corpus, NUMERIC_BENCHMARK_ROUNDS)
-		}
-		testing.expectf(t, current.checksum == dfa.checksum, "scanner sample %d checksums differ", i)
-		current_samples[i] = current.duration
-		dfa_samples[i] = dfa.duration
-		reference = current
+		result := _benchmark_numeric_scanner(corpus, NUMERIC_BENCHMARK_ROUNDS)
+		samples[i] = result.duration
+		reference = result
 	}
 
-	slice.sort(current_samples[:])
-	slice.sort(dfa_samples[:])
-	current_median := current_samples[NUMERIC_BENCHMARK_SAMPLES / 2]
-	dfa_median := dfa_samples[NUMERIC_BENCHMARK_SAMPLES / 2]
-	current_ns := f64(time.duration_nanoseconds(current_median)) / f64(reference.calls)
-	dfa_ns := f64(time.duration_nanoseconds(dfa_median)) / f64(reference.calls)
-	current_mib := f64(reference.processed) /
+	slice.sort(samples[:])
+	median := samples[NUMERIC_BENCHMARK_SAMPLES / 2]
+	ns := f64(time.duration_nanoseconds(median)) / f64(reference.calls)
+	mib := f64(reference.processed) /
 	               (1024 * 1024) /
-	               (f64(time.duration_nanoseconds(current_median)) / 1e9)
-	dfa_mib := f64(reference.processed) /
-	           (1024 * 1024) /
-	           (f64(time.duration_nanoseconds(dfa_median)) / 1e9)
+	               (f64(time.duration_nanoseconds(median)) / 1e9)
 	fmt.printfln(
-		"scanner  %d calls  current %.2f ns/literal %.2f MiB/s  DFA %.2f ns/literal %.2f MiB/s  DFA/current %.3fx",
+		"scanner  %d calls  %.2f ns/literal %.2f MiB/s",
 		reference.calls,
-		current_ns,
-		current_mib,
-		dfa_ns,
-		dfa_mib,
-		dfa_ns / current_ns,
+		ns,
+		mib,
 	)
 }
 
 _run_numeric_benchmark_corpus :: proc(
-	t: ^testing.T,
 	name: string,
 	corpus: []string,
 ) {
 	warmup_rounds := max(NUMERIC_BENCHMARK_ROUNDS / 20, 1)
-	warm_current := _benchmark_current_numeric_matcher(corpus, warmup_rounds)
-	warm_dfa := _benchmark_dfa_numeric_matcher(corpus, warmup_rounds)
-	testing.expectf(t, warm_current.checksum == warm_dfa.checksum, "%s warm-up checksums differ", name)
+	_ = _benchmark_numeric_matcher(corpus, warmup_rounds)
 
-	current_samples: [NUMERIC_BENCHMARK_SAMPLES]time.Duration
-	dfa_samples: [NUMERIC_BENCHMARK_SAMPLES]time.Duration
+	samples: [NUMERIC_BENCHMARK_SAMPLES]time.Duration
 	reference: Numeric_Benchmark_Result
 	for i in 0 ..< NUMERIC_BENCHMARK_SAMPLES {
-		current, dfa: Numeric_Benchmark_Result
-		if i % 2 == 0 {
-			current = _benchmark_current_numeric_matcher(corpus, NUMERIC_BENCHMARK_ROUNDS)
-			dfa = _benchmark_dfa_numeric_matcher(corpus, NUMERIC_BENCHMARK_ROUNDS)
-		} else {
-			dfa = _benchmark_dfa_numeric_matcher(corpus, NUMERIC_BENCHMARK_ROUNDS)
-			current = _benchmark_current_numeric_matcher(corpus, NUMERIC_BENCHMARK_ROUNDS)
-		}
-
-		testing.expectf(t, current.checksum == dfa.checksum, "%s sample %d checksums differ", name, i)
-		current_samples[i] = current.duration
-		dfa_samples[i] = dfa.duration
-		reference = current
+		result := _benchmark_numeric_matcher(corpus, NUMERIC_BENCHMARK_ROUNDS)
+		samples[i] = result.duration
+		reference = result
 	}
 
-	slice.sort(current_samples[:])
-	slice.sort(dfa_samples[:])
-	current_median := current_samples[NUMERIC_BENCHMARK_SAMPLES / 2]
-	dfa_median := dfa_samples[NUMERIC_BENCHMARK_SAMPLES / 2]
-	current_ns := f64(time.duration_nanoseconds(current_median)) / f64(reference.calls)
-	dfa_ns := f64(time.duration_nanoseconds(dfa_median)) / f64(reference.calls)
-	current_mib := f64(reference.processed) /
+	slice.sort(samples[:])
+	median := samples[NUMERIC_BENCHMARK_SAMPLES / 2]
+	ns := f64(time.duration_nanoseconds(median)) / f64(reference.calls)
+	mib := f64(reference.processed) /
 	               (1024 * 1024) /
-	               (f64(time.duration_nanoseconds(current_median)) / 1e9)
-	dfa_mib := f64(reference.processed) /
-	           (1024 * 1024) /
-	           (f64(time.duration_nanoseconds(dfa_median)) / 1e9)
+	               (f64(time.duration_nanoseconds(median)) / 1e9)
 
 	fmt.printfln(
-		"%s %d calls  current %.2f ns/literal %.2f MiB/s  DFA %.2f ns/literal %.2f MiB/s  DFA/current %.3fx",
+		"%s %d calls  %.2f ns/literal %.2f MiB/s",
 		name,
 		reference.calls,
-		current_ns,
-		current_mib,
-		dfa_ns,
-		dfa_mib,
-		dfa_ns / current_ns,
+		ns,
+		mib,
 	)
 }
 
@@ -319,7 +212,7 @@ benchmark_numeric_matchers :: proc(t: ^testing.T) {
 		NUMERIC_BENCHMARK_SAMPLES,
 		NUMERIC_BENCHMARK_ROUNDS,
 	)
-	_run_numeric_scanner_benchmark(t, NUMERIC_SCANNER_BENCHMARK_CORPUS[:])
-	_run_numeric_benchmark_corpus(t, "integers", NUMERIC_INTEGER_BENCHMARK_CORPUS[:])
-	_run_numeric_benchmark_corpus(t, "mixed", NUMERIC_MIXED_BENCHMARK_CORPUS[:])
+	_run_numeric_scanner_benchmark(NUMERIC_SCANNER_BENCHMARK_CORPUS[:])
+	_run_numeric_benchmark_corpus("integers", NUMERIC_INTEGER_BENCHMARK_CORPUS[:])
+	_run_numeric_benchmark_corpus("mixed", NUMERIC_MIXED_BENCHMARK_CORPUS[:])
 }

@@ -5,7 +5,6 @@ import "core:strings"
 import "core:testing"
 
 import "../../common"
-import "../../common/exact"
 import "../diagnostics"
 
 Numeric_Case :: struct {
@@ -122,60 +121,6 @@ _expect_tokenized_numeric :: proc(t: ^testing.T, tc: Numeric_Case, index: int) {
 	)
 }
 
-_expect_dfa_equivalent :: proc(t: ^testing.T, source: string) {
-	expected, expected_length := _match_numeric({}, source)
-	actual, actual_length := _match_numeric_dfa({}, source)
-	testing.expectf(
-		t,
-		actual_length == expected_length,
-		"DFA consumed %d bytes of %q; production matcher consumed %d",
-		actual_length,
-		source,
-		expected_length,
-	)
-	if actual_length == 0 || expected_length == 0 {
-		return
-	}
-
-	testing.expectf(
-		t,
-		actual.raw == expected.raw,
-		"DFA matched %q; expected %q",
-		actual.raw,
-		expected.raw,
-	)
-	testing.expectf(
-		t,
-		actual.format == expected.format,
-		"DFA format for %q was %v; expected %v",
-		source,
-		actual.format,
-		expected.format,
-	)
-	testing.expectf(
-		t,
-		actual.digits == expected.digits,
-		"DFA digit count for %q was %d; expected %d",
-		source,
-		actual.digits,
-		expected.digits,
-	)
-	testing.expectf(
-		t,
-		actual.precision == expected.precision,
-		"DFA precision for %q was %d; expected %d",
-		source,
-		actual.precision,
-		expected.precision,
-	)
-	testing.expectf(
-		t,
-		exact.eq(actual.value, expected.value),
-		"DFA value for %q differs from production matcher",
-		source,
-	)
-}
-
 _expect_adjacent_identifier_warning :: proc(
 	t: ^testing.T,
 	source, numeric_raw, identifier_raw: string,
@@ -287,6 +232,38 @@ _expect_no_adjacent_identifier_warning :: proc(t: ^testing.T, source: string) {
 	}
 }
 
+_expect_invalid_numeric_diagnostic :: proc(t: ^testing.T, source: string, span_length: int) {
+	clear(&diagnostics._current_diagnostics)
+	_, length := _match_numeric({}, source)
+	testing.expectf(t, length == 0, "expected %q to be rejected", source)
+	testing.expectf(
+		t,
+		len(diagnostics._current_diagnostics) == 1,
+		"expected one diagnostic for %q, got %d",
+		source,
+		len(diagnostics._current_diagnostics),
+	)
+	if len(diagnostics._current_diagnostics) != 1 {
+		return
+	}
+	diagnostic := diagnostics._current_diagnostics[0]
+	testing.expectf(
+		t,
+		diagnostic.code == .Invalid_Number_Literal,
+		"expected invalid-number diagnostic for %q, got %v",
+		source,
+		diagnostic.code,
+	)
+	testing.expectf(
+		t,
+		diagnostic.span.end.offset == u32(span_length),
+		"expected diagnostic for %q to span %d bytes, got %d",
+		source,
+		span_length,
+		diagnostic.span.end.offset,
+	)
+}
+
 @(test)
 test_numeric_literals :: proc(t: ^testing.T) {
 	diagnostics.initialize()
@@ -331,7 +308,6 @@ test_numeric_literals :: proc(t: ^testing.T) {
 	for tc, i in cases {
 		_expect_numeric(t, tc)
 		_expect_tokenized_numeric(t, tc, i)
-		_expect_dfa_equivalent(t, tc.source)
 	}
 
 	// Exercise termination independently from numeric form. These suffixes are
@@ -397,7 +373,6 @@ test_numeric_literals :: proc(t: ^testing.T) {
 			suffix_case.source = source
 			_expect_numeric(t, suffix_case)
 			_expect_tokenized_numeric(t, suffix_case, case_index * len(suffixes) + suffix_index)
-			_expect_dfa_equivalent(t, suffix_case.source)
 			delete(source)
 		}
 	}
@@ -419,7 +394,6 @@ test_numeric_literals :: proc(t: ^testing.T) {
 	for tc, i in contextual_suffix_cases {
 		_expect_numeric(t, tc)
 		_expect_tokenized_numeric(t, tc, i)
-		_expect_dfa_equivalent(t, tc.source)
 	}
 
 	adjacent_identifier_cases := [?]struct {
@@ -523,6 +497,10 @@ test_numeric_literals :: proc(t: ^testing.T) {
 				actual.raw,
 			)
 		}
-		_expect_dfa_equivalent(t, tc.source)
 	}
+
+	_expect_invalid_numeric_diagnostic(t, "0x_1", 2)
+	_expect_invalid_numeric_diagnostic(t, "0o8", 2)
+	_expect_invalid_numeric_diagnostic(t, "0b2", 2)
+	_expect_invalid_numeric_diagnostic(t, "0x1.8p", 6)
 }
