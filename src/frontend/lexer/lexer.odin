@@ -23,7 +23,32 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 		len(sf.contents) * _PREALLOC_CAP_FACTOR_MUL / _PREALLOC_CAP_FACTOR_DIV,
 	)
 
-	last_thing_was_garbage := false
+	_append_garbage :: proc(tokens: ^[dynamic]Token, src: string, cursor: common.Cursor) -> int {
+		r, n := utf8.decode_rune(src[cursor.offset:])
+		if n <= 0 {
+			n = 1
+		}
+		width := unicode.normalized_east_asian_width(r)
+		span := common.cursor_to_span(cursor, n, width)
+
+		if len(tokens) > 0 {
+			last := &tokens[len(tokens) - 1]
+
+			if _, is_garbage := last.what.(Garbage);
+			   is_garbage &&
+			   last.span.file == span.file &&
+			   last.span.end.offset == span.start.offset {
+
+				last.span.end = span.end
+				last.what = Garbage(src[last.span.start.offset:span.end.offset])
+				return n
+			}
+		}
+
+		append(tokens, Token{span = span, what = Garbage(src[span.start.offset:span.end.offset])})
+		return n
+	}
+
 	advance_by := 1
 	cursor := common.Cursor {
 		file = sf.id,
@@ -41,8 +66,7 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 
 		switch c := src[offset]; c {
 		case ' ', '\t', '\n', '\r':
-			// control code or space; no token to produce
-			last_thing_was_garbage = false // but spaces DO break up garbage
+		// control code or space; no token to produce
 		case '\'':
 			// rune
 			if rune_literal, n := _match_rune_literal(cursor, src[offset:]); n > 0 {
@@ -54,32 +78,16 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 					},
 				)
 				advance_by = len(rune_literal.raw)
-				last_thing_was_garbage = false
 			} else {
-				append(
-					&tokens,
-					Token {
-						span = common.cursor_to_span(cursor, 1),
-						what = Garbage(src[offset:offset + 1]),
-					},
-				)
-				last_thing_was_garbage = true
+				advance_by = _append_garbage(&tokens, src, cursor)
 			}
 
 		case '"':
 			if str, end, matched := _match_string_literal(cursor, src[offset:]); matched {
 				append(&tokens, Token{span = common.cursor_to_span(cursor, end), what = str})
 				advance_by = len(str.raw)
-				last_thing_was_garbage = false
 			} else {
-				append(
-					&tokens,
-					Token {
-						span = common.cursor_to_span(cursor, 1),
-						what = Garbage(src[offset:offset + 1]),
-					},
-				)
-				last_thing_was_garbage = true
+				advance_by = _append_garbage(&tokens, src, cursor)
 			}
 		case '`':
 			// escaped identifier: allows keywords, emoji, numbers
@@ -93,18 +101,10 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 						what = Identifier(interned_ident),
 					},
 				)
-				last_thing_was_garbage = false
 				advance_by = n
 				// not a valid escaped identifier, so it's garbage
 			} else {
-				append(
-					&tokens,
-					Token {
-						span = common.cursor_to_span(cursor, 1),
-						what = Garbage(src[offset:offset + 1]),
-					},
-				)
-				last_thing_was_garbage = true
+				advance_by = _append_garbage(&tokens, src, cursor)
 			}
 
 		case '\\':
@@ -121,7 +121,6 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 			} else if str, end, matched := _match_string_literal(cursor, src[offset:]); matched {
 				append(&tokens, Token{span = common.cursor_to_span(cursor, end), what = str})
 				advance_by = len(str.raw)
-				last_thing_was_garbage = false
 
 				// directive?
 			} else if directive, width := _match_ident_like(src[offset:]); directive != "" {
@@ -137,19 +136,11 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 						what = Directive(directive),
 					},
 				)
-				last_thing_was_garbage = false
 				advance_by = len(directive)
 
 				// welp, I guess it's garbage
 			} else {
-				append(
-					&tokens,
-					Token {
-						span = common.cursor_to_span(cursor, 1),
-						what = Garbage(src[offset:offset + 1]),
-					},
-				)
-				last_thing_was_garbage = true
+				advance_by = _append_garbage(&tokens, src, cursor)
 			}
 
 		case:
@@ -163,11 +154,9 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 					},
 				)
 				advance_by = len(numeric.raw)
-				last_thing_was_garbage = false
 
 			} else if punct, n := _match_punctuation(cursor, src[offset:]); n > 0 {
 				append(&tokens, Token{span = common.cursor_to_span(cursor, n), what = punct})
-				last_thing_was_garbage = false
 				advance_by = n
 
 			} else if ident, width := _match_ident_like(src[offset:]); ident != "" {
@@ -210,24 +199,10 @@ tokenize :: proc(sf: ^common.Source_File) -> []Token {
 				}
 
 				append(&tokens, Token{span = span, what = what})
-				last_thing_was_garbage = false
 				advance_by = len(ident)
 
-			} else if last_thing_was_garbage {
-				last_tok := &tokens[len(tokens) - 1]
-				last_tok.span.end.offset += 1
-				last_tok.span.end.col += 1 // FIXME: does not respect utf8 or wide characters
-				last_tok.what = Garbage(src[last_tok.span.start.offset:offset + 1])
-
 			} else {
-				append(
-					&tokens,
-					Token {
-						span = common.cursor_to_span(cursor, 1),
-						what = Garbage(src[offset:offset + 1]),
-					},
-				)
-				last_thing_was_garbage = true
+				advance_by = _append_garbage(&tokens, src, cursor)
 			}
 		}
 	}
