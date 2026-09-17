@@ -1,5 +1,6 @@
 package resolver
 
+import "base:intrinsics"
 import "base:runtime"
 import "core:fmt"
 import "core:mem"
@@ -78,7 +79,7 @@ load_package :: proc(
 	}
 
 	pkg := new(Package, res.allocator)
-	pkg.defined_symbols = make(map[Identifier]Partial_Symbol, res.allocator)
+	pkg.defined_symbols = make(map[Identifier]Symbol, res.allocator)
 	res.packages[abs_path] = pkg
 	append(&res.loaded_packages, pkg)
 
@@ -139,15 +140,13 @@ _load_file :: proc(res: ^Resolver, pkg: ^Package, path: string) -> (^File, Load_
 		src             = file_ast.source,
 		src_ast         = file_ast,
 		imports         = make(map[common.Identifier]^Import, res.allocator),
-		defined_symbols = make([dynamic]Partial_Symbol, res.allocator),
+		defined_symbols = make([dynamic]Symbol, res.allocator),
 		own_package     = pkg,
 	}
-	// Source_File owns a stable copy of the absolute path.
 	res.files[file_ast.source.file] = file
 
-	// Cache before descending so cyclic imports terminate.
 	for decl in file_ast.declarations {
-		_add_symbol(res, file, decl)
+		_add_global_symbol(res, file, decl)
 	}
 
 	for imp in file.imports {
@@ -215,18 +214,18 @@ _load_file :: proc(res: ^Resolver, pkg: ^Package, path: string) -> (^File, Load_
 	return file, .OK
 }
 
-file_lookup :: proc(file: ^File, name: Identifier) -> Named {
+file_lookup :: proc(file: ^File, name: Identifier) -> Symbol {
 	if imp, ok := file.imports[name]; ok {
 		return imp
 	}
 	if defined, ok := file.own_package.defined_symbols[name]; ok {
-		return _to_named(defined)
+		return defined
 	}
 	for _, imp in file.imports {
 		for using_name in imp.use_names {
 			if name == using_name.id {
 				if symbol, ok := imp.pkg.defined_symbols[name]; ok {
-					return _to_named(symbol)
+					return symbol
 				}
 			}
 		}
@@ -234,108 +233,18 @@ file_lookup :: proc(file: ^File, name: Identifier) -> Named {
 	return nil
 }
 
-lookup :: proc(parent: Scope_Parent, name: Identifier) -> Named {
-	parent := parent
-	outer: for {
-		switch current in parent {
-		case ^Scope:
-			if symbol, ok := current.locals[name]; ok {
-				return _to_named(symbol)
-			}
-			parent = current.parent
-		case ^File:
-			if symbol := file_lookup(current, name); symbol != nil {
-				return symbol
-			}
-			break outer
-		case:
-			break outer
-		}
-	}
-
-	if name in _builtins_prelude {
-		return _builtins_prelude[name]
-	}
-
-	return nil
+new_symbol :: proc(
+	res: ^Resolver,
+	$T: typeid,
+	name: Identifier,
+) -> ^T where (intrinsics.type_field_type(T, "header") == _Symbol_Header) {
+	symbol := new(T, res.allocator)
+	symbol.id = intrinsics.atomic_add(&res.next_symbol_id, 1) // atomic add necessary for race conditions
+	symbol.name = name
+	return symbol
 }
 
-partial_resolve :: proc {
-	partial_resolve_qualname,
-	partial_resolve_expression,
-}
-
-partial_resolve_qualname :: proc(
-	qualname: ast.Qualified_Name,
-	parent: Scope_Parent,
-) -> (
-	Named,
-	[]Identifier,
-) {
-	return _resolve_qualname(parent, qualname), nil
-}
-
-partial_resolve_expression :: proc(
-	parent: Scope_Parent,
-	expr: ast.Expression,
-) -> (Named, []Identifier) {
-	#partial switch node in expr {
-	case ^ast.Name_Expr:
-		return lookup(parent, node.name.id), nil
-
-	case ^ast.FieldAccess_Expr:
-		base, rest := partial_resolve_expression(parent, node.base)
-		if base != nil {
-			if field := _static_resolve_field(base, node.field); field != nil {
-				return field, nil
-			}
-		}
-
-		unresolved := slice.concatenate(
-			[][]Identifier{{node.field.id}, rest},
-			allocator = context.temp_allocator,
-		)
-		return base, unresolved[:]
-
-	case:
-		panic(fmt.tprintf("cannot resolve %T nodes", expr))
-	}
-}
-
-resolve :: proc {
-	resolve_qualname,
-	resolve_expression,
-}
-
-resolve_qualname :: proc(parent: Scope_Parent, qualname: ast.Qualified_Name) -> Named {
-	return _resolve_qualname(parent, qualname)
-}
-
-resolve_expression :: proc(parent: Scope_Parent, expr: ast.Expression) -> Named {
-	named, unresolved := partial_resolve_expression(parent, expr)
-
-	if named != nil && len(unresolved) > 0 {
-		diagnostics.emit(
-			.Incomplete_Resolution,
-			_expression_span(expr),
-			"cannot fully resolve this",
-		)
-		return nil
-	}
-	return named
-}
-
-_next_symbol_header :: proc(res: ^Resolver, file: ^File, name: Identifier) -> _Symbol_Header {
-	header := _Symbol_Header {
-		id         = res.next_symbol_id,
-		name       = name,
-		defined_in = file,
-	}
-	res.next_symbol_id += 1
-	return header
-}
-
-_add_symbol :: proc(res: ^Resolver, file: ^File, decl: ast.Top_Level_Declaration) {
+_add_global_symbol :: proc(res: ^Resolver, file: ^File, decl: ast.Top_Level_Declaration) {
 	_real_add_symbol :: #force_inline proc(
 		res: ^Resolver,
 		file: ^File,
@@ -346,11 +255,9 @@ _add_symbol :: proc(res: ^Resolver, file: ^File, decl: ast.Top_Level_Declaration
 		if shadow == .Shadows_Global || shadow == .Shadows_Import {
 			return nil
 		}
-		symbol := new(S, res.allocator)
-		symbol^ = {
-			header = _next_symbol_header(res, file, node.name.id),
-			ast    = node,
-		}
+		symbol := new_symbol(res, S, node.name.id)
+		symbol.ast = node
+		symbol.defined_in = file
 		file.own_package.defined_symbols[node.name.id] = symbol
 		append(&file.defined_symbols, symbol)
 		return symbol
@@ -437,11 +344,11 @@ _check_shadowing :: proc(file: ^File, name: ast.Name) -> enum {
 	return .No_Shadowing
 }
 
-_static_resolve_field :: proc(base: Named, field: ast.Name) -> Named {
+_static_resolve_field :: proc(base: Symbol, field: ast.Name) -> Symbol {
 	#partial switch symbol in base {
 	case ^Import:
 		if sym, ok := symbol.pkg.defined_symbols[field.id]; ok {
-			return _to_named(sym)
+			return sym
 		}
 	case ^Base_Unit:
 		_emit_namespace_error(field, symbol.name, "base unit")
@@ -466,7 +373,7 @@ _emit_namespace_error :: proc(field: ast.Name, base_name: Identifier, kind: stri
 	)
 }
 
-_resolve_qualname :: proc(parent: Scope_Parent, qualname: ast.Qualified_Name) -> Named {
+_resolve_qualname :: proc(parent: Scope, qualname: ast.Qualified_Name) -> Symbol {
 	if len(qualname.path) == 0 do return nil
 
 	base_name := qualname.path[0]
@@ -491,110 +398,12 @@ _resolve_qualname :: proc(parent: Scope_Parent, qualname: ast.Qualified_Name) ->
 	return resolved
 }
 
-_to_named :: proc(symbol: Partial_Symbol) -> Named {
-	switch value in symbol {
-	case ^Function:
-		return value
-	case ^Type_Alias:
-		return value
-	case ^Distinct_Type:
-		return value
-	case ^Struct_Type:
-		return value
-	case ^Enum_Type:
-		return value
-	case ^Constant:
-		return value
-	case ^Global_Variable:
-		return value
-	case ^Local_Variable:
-		return value
-	case ^Unit_Type:
-		return value
-	case ^Base_Unit:
-		return value
-	case ^Unit_Type_Alias:
-		return value
-	case ^Unit_Alias:
-		return value
-	case ^Capability:
-		return value
-	case ^Annotation:
-		return value
-	case ^Formal_Parameter:
-		return value
-	case ^Named_Return:
-		return value
-	case:
-		return nil
-	}
-}
-
-_type_definition_to_named :: proc(symbol: Type_Definition) -> Named {
-	switch value in symbol {
-	case ^Type_Alias:
-		return value
-	case ^Distinct_Type:
-		return value
-	case ^Struct_Type:
-		return value
-	case ^Enum_Type:
-		return value
-	case:
-		return nil
-	}
-}
-
 span_of_name :: proc {
-	_symbol_span,
-	_named_span,
-	_expression_span,
+	symbol_span,
+	expression_span,
 }
 
-_symbol_span :: proc(named: Partial_Symbol) -> (common.Span, bool) {
-	switch symbol in named {
-	case ^Function:
-		return symbol.ast.name.span, true
-	case ^Type_Alias:
-		return symbol.ast.name.span, true
-	case ^Constant:
-		return symbol.ast.name.span, true
-	case ^Global_Variable:
-		return symbol.ast.name.span, true
-	case ^Local_Variable:
-		return symbol.ast.name.span, true
-	case ^Unit_Type:
-		return symbol.ast.name.span, true
-	case ^Base_Unit:
-		return symbol.ast.name.span, true
-	case ^Unit_Type_Alias:
-		return symbol.ast.name.span, true
-	case ^Unit_Alias:
-		return symbol.ast.name.span, true
-	case ^Capability:
-		return symbol.ast.name.span, true
-	case ^Annotation:
-		return symbol.ast.name.span, true
-	case ^Formal_Parameter:
-		return symbol.ast.name.span, true
-	case ^Distinct_Type:
-		return {}, false // TODO
-	// return symbol.ast.name.span, true
-	case ^Struct_Type:
-		return {}, false // TODO
-	// return symbol.ast.name.span, true
-	case ^Enum_Type:
-		return {}, false // TODO
-	// return symbol.ast.name.span, true
-	case ^Named_Return:
-		if symbol.ast.name != nil {
-			return symbol.ast.name.?.span, true
-		}
-	}
-	return {}, false
-}
-
-_named_span :: proc(named: Named) -> (common.Span, bool) {
+symbol_span :: proc(named: Symbol) -> (common.Span, bool) {
 	switch symbol in named {
 	case ^Import:
 		return symbol.local_name.span, true
@@ -641,7 +450,7 @@ _named_span :: proc(named: Named) -> (common.Span, bool) {
 	return {}, false
 }
 
-_expression_span :: proc(expr: ast.Expression) -> common.Span {
+expression_span :: proc(expr: ast.Expression) -> common.Span {
 	switch node in expr {
 	case ^ast.Name_Expr:
 		return node.span

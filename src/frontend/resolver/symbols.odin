@@ -15,13 +15,14 @@ Identifier :: common.Identifier
 _Symbol_Header :: struct {
 	id:         Symbol_ID,
 	name:       Identifier,
-	state:      Declaration_State,
+	state:      Analysis_State,
 	defined_in: ^File,
 }
 
-Declaration_State :: enum {
+Analysis_State :: enum {
 	Unseen,
-	Processing,
+	Declared, // for functions: all parameter types and units resolved, but body is not complete yet
+	Evaluating, // for non-functions used to detect cycles: seeing this while evaluating indicates a cyclical dependency
 	Done,
 	Failed,
 }
@@ -133,7 +134,7 @@ Named_Return :: struct {
 	hir:          ^hir.Func_Return,
 }
 
-Partial_Symbol :: union {
+Symbol :: union {
 	^Function,
 	^Type_Alias,
 	^Distinct_Type,
@@ -150,12 +151,11 @@ Partial_Symbol :: union {
 	^Annotation,
 	^Formal_Parameter,
 	^Named_Return,
+	^Import,
+	^Builtin,
 }
 
-// partial_symbol_header centralizes access to the common header so semantic
-// passes do not need to repeat a switch every time they inspect declaration
-// state or identity.
-partial_symbol_header :: proc(symbol: Partial_Symbol) -> ^_Symbol_Header {
+symbol_header :: proc(symbol: Symbol) -> ^_Symbol_Header {
 	switch value in symbol {
 	case ^Function:
 		return &value.header
@@ -189,18 +189,16 @@ partial_symbol_header :: proc(symbol: Partial_Symbol) -> ^_Symbol_Header {
 		return &value.header
 	case ^Named_Return:
 		return &value.header
+	case ^Import, ^Builtin:
+		return nil
 	}
+
 	return nil
 }
 
-Named :: intrinsics.type_merge(union {
-		^Import,
-		^Builtin,
-	}, Partial_Symbol)
-
 Package :: struct {
 	name:            Identifier,
-	defined_symbols: map[Identifier]Partial_Symbol,
+	defined_symbols: map[Identifier]Symbol,
 	files:           []^File,
 }
 
@@ -208,7 +206,7 @@ File :: struct {
 	src:             ^common.Source_File,
 	src_ast:         ^ast.File,
 	imports:         map[Identifier]^Import,
-	defined_symbols: [dynamic]Partial_Symbol,
+	defined_symbols: [dynamic]Symbol,
 	own_package:     ^Package,
 }
 

@@ -109,7 +109,7 @@ initialize :: proc() {
 	}
 }
 
-builtin_lookup :: proc(name: Identifier) -> Named {
+builtin_lookup :: proc(name: Identifier) -> Symbol {
 	if builtin, ok := _builtins_prelude[name]; ok {
 		return builtin
 	}

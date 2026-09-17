@@ -19,13 +19,7 @@ build :: proc(entry_point: string, backend_id: string = "c99") {
 		os.exit(1)
 	}
 
-	if entry_pkg != nil {
-		tu: hir.Translation_Unit
-		hir.init(&tu)
-		defer hir.destroy(&tu)
-
-		analysis.build_hir(&res, entry_pkg, &tu)
-	}
+	tu, sem_err := analysis.build_hir(&res, entry_pkg)
 
 	diagnostics.report_and_exit()
 

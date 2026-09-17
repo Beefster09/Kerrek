@@ -61,10 +61,10 @@ Code :: enum {
 	Invalid_Capability,
 	// An applied annotation name does not denote an annotation.
 	Invalid_Annotation,
-	// The entry point is duplicated or has an unsupported signature.
-	Invalid_Entry_Point,
 	// The entry package does not define a main function.
 	Missing_Entry_Point,
+	// The entry point is duplicated or has an unsupported signature.
+	Invalid_Entry_Point,
 
 	// == TEST ==
 
@@ -117,8 +117,8 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Invalid_Unit = {origin = .UnitCheck, default_level = .Error, stable_id = "U00"},
 	.Invalid_Capability = {origin = .CapCheck, default_level = .Error, stable_id = "C00"},
 	.Invalid_Annotation = {origin = .TypeCheck, default_level = .Error, stable_id = "T02"},
-	.Invalid_Entry_Point = {origin = .TypeCheck, default_level = .Error, stable_id = "T03"},
-	.Missing_Entry_Point = {origin = .TypeCheck, default_level = .Error, stable_id = "T04"},
+	.Missing_Entry_Point = {origin = .TypeCheck, default_level = .Error, stable_id = "MAIN0"},
+	.Invalid_Entry_Point = {origin = .TypeCheck, default_level = .Error, stable_id = "MAIN1"},
 	// TEST
 	.Test = {origin = .Resolver, default_level = .Notice, stable_id = "TEST"},
 }
