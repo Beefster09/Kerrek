@@ -5,21 +5,22 @@ import "../ast"
 import "../diagnostics"
 import "../hir"
 import "../resolver"
+import "core:slice"
 
 
 process_toplevel_items :: proc(ts: ^Translation_State) -> bool {
 	assert(ts != nil)
 
 	symbol_count := 0
-	incoherent_symbols_count := 0
+	malformed_count := 0
 	for pkg in ts.symbol_resolver.loaded_packages {
 		for file in pkg.files {
 			for symbol in file.defined_symbols {
-				switch check_toplevel_declaration(ts, symbol) {
+				switch ensure_symbol_processed(ts, symbol, file) {
 				case .OK:
 					symbol_count += 1
-				case .Incoherent:
-					incoherent_symbols_count += 1
+				case .Malformed, .Cyclical_Dependency:
+					malformed_count += 1
 
 				}
 			}
@@ -37,18 +38,64 @@ process_toplevel_items :: proc(ts: ^Translation_State) -> bool {
 		return false
 	}
 
-	return incoherent_symbols_count == 0
+	return malformed_count == 0
 }
 
-Signature_Error :: enum {
+Symbol_Processing_Error :: enum {
 	OK,
-	Incoherent,
+	Malformed,
+	Cyclical_Dependency,
 }
 
-check_toplevel_declaration :: proc(
+ensure_symbol_processed :: proc(
 	ts: ^Translation_State,
 	symbol: resolver.Symbol,
-) -> Signature_Error {
+	scope: resolver.Scope,
+) -> Symbol_Processing_Error {
+	header := resolver.symbol_header(symbol)
+	if header == nil {
+		return .OK
+	}
+
+	switch header.state {
+	case .Unseen:
+		header.state = .Processing
+	case .Processing:
+		header.state = .Failed
+		_emit_cyclical_dependency_error(ts, symbol)
+		return .Cyclical_Dependency
+	case .Done:
+		return .OK
+	case .Failed:
+		return .Malformed
+	}
+
+	append(&ts.processing_stack, symbol)
+	defer pop(&ts.processing_stack)
+
+	switch symbol in symbol {
+	case ^resolver.Function:
+		translate_function_signature(ts, symbol)
+		queue_build_function_body(ts, symbol)
+	case ^resolver.Global_Variable:
+	case ^resolver.Local_Variable:
+	case ^resolver.Constant:
+	case ^resolver.Struct_Type:
+	case ^resolver.Enum_Type:
+	case ^resolver.Type_Alias:
+	case ^resolver.Distinct_Type:
+	case ^resolver.Unit_Type:
+	case ^resolver.Base_Unit:
+	case ^resolver.Unit_Type_Alias:
+	case ^resolver.Unit_Alias:
+	case ^resolver.Capability:
+	case ^resolver.Annotation:
+	case ^resolver.Formal_Parameter:
+	case ^resolver.Named_Return:
+	case ^resolver.Builtin, ^resolver.Import:
+		panic("unreachable")
+	}
+
 	return .OK // TODO
 }
 
@@ -57,11 +104,52 @@ Func_Translation_Error :: enum {
 	Invalid_Types,
 }
 
-translate_function :: proc(
+translate_function_signature :: proc(
 	ts: ^Translation_State,
-	symbol: resolver.Symbol,
+	symbol: ^resolver.Function,
 ) -> Func_Translation_Error {
 	return .OK // TODO
+}
+
+queue_build_function_body :: proc(
+	ts: ^Translation_State,
+	symbol: ^resolver.Function,
+) -> Func_Translation_Error {
+	return .OK // TODO
+}
+
+build_function_body :: proc(
+	ts: ^Translation_State,
+	symbol: ^resolver.Function,
+) -> Func_Translation_Error {
+	return .OK // TODO
+}
+
+_emit_cyclical_dependency_error :: proc(ts: ^Translation_State, symbol: resolver.Symbol) {
+	idx, found := slice.linear_search(ts.processing_stack[:], symbol)
+	if !found {
+		return
+	}
+
+	last_name := resolver.symbol_name(symbol)
+	diag := diagnostics.emit(
+		.Cyclical_Dependency,
+		resolver.span_of_name(symbol) or_else {},
+		"'%s' forms a cyclical dependency",
+		last_name,
+	)
+
+	for dep in ts.processing_stack[idx + 1:] {
+		dep_name := resolver.symbol_name(dep)
+		diagnostics.reference(
+			diag,
+			resolver.span_of_name(dep) or_else {},
+			"%s depends on the definition of %s",
+			last_name,
+			dep_name,
+		)
+		last_name = dep_name
+	}
 }
 
 

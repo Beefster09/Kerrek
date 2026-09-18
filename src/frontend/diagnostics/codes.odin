@@ -52,7 +52,7 @@ Code :: enum {
 	// == Semantic analysis diagnostics ==
 
 	// Declarations form a recursive dependency cycle.
-	Declaration_Cycle,
+	Cyclical_Dependency,
 	// A name or type expression is not valid in a type position.
 	Invalid_Type,
 	// A unit reference, expression, or exponent is invalid.
@@ -112,7 +112,7 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Import_Conflict = {origin = .Resolver, default_level = .Error, stable_id = "R20"},
 	.Import_Not_Found = {origin = .Resolver, default_level = .Error, stable_id = "R21"},
 	// Semantic analysis diagnostics
-	.Declaration_Cycle = {origin = .TypeCheck, default_level = .Error, stable_id = "T00"},
+	.Cyclical_Dependency = {origin = .TypeCheck, default_level = .Error, stable_id = "T00"},
 	.Invalid_Type = {origin = .TypeCheck, default_level = .Error, stable_id = "T01"},
 	.Invalid_Unit = {origin = .UnitCheck, default_level = .Error, stable_id = "U00"},
 	.Invalid_Capability = {origin = .CapCheck, default_level = .Error, stable_id = "C00"},

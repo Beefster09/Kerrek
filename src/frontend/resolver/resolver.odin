@@ -398,6 +398,48 @@ _resolve_qualname :: proc(parent: Scope, qualname: ast.Qualified_Name) -> Symbol
 	return resolved
 }
 
+symbol_name :: proc(named: Symbol) -> Identifier {
+	switch symbol in named {
+	case ^Import:
+		return symbol.local_name.id
+	case ^Builtin:
+		return symbol.name
+	case ^Function:
+		return symbol.name
+	case ^Type_Alias:
+		return symbol.name
+	case ^Constant:
+		return symbol.name
+	case ^Global_Variable:
+		return symbol.name
+	case ^Local_Variable:
+		return symbol.name
+	case ^Unit_Type:
+		return symbol.name
+	case ^Base_Unit:
+		return symbol.name
+	case ^Unit_Type_Alias:
+		return symbol.name
+	case ^Unit_Alias:
+		return symbol.name
+	case ^Capability:
+		return symbol.name
+	case ^Annotation:
+		return symbol.name
+	case ^Formal_Parameter:
+		return symbol.name
+	case ^Distinct_Type:
+		return symbol.name
+	case ^Struct_Type:
+		return symbol.name
+	case ^Enum_Type:
+		return symbol.name
+	case ^Named_Return:
+		return symbol.name
+	}
+	return ""
+}
+
 span_of_name :: proc {
 	symbol_span,
 	expression_span,

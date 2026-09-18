@@ -15,16 +15,13 @@ Identifier :: common.Identifier
 _Symbol_Header :: struct {
 	id:         Symbol_ID,
 	name:       Identifier,
-	state:      Analysis_State,
+	state:      enum {
+		Unseen,
+		Processing,
+		Done,
+		Failed,
+	},
 	defined_in: ^File,
-}
-
-Analysis_State :: enum {
-	Unseen,
-	Declared, // for functions: all parameter types and units resolved, but body is not complete yet
-	Evaluating, // for non-functions used to detect cycles: seeing this while evaluating indicates a cyclical dependency
-	Done,
-	Failed,
 }
 
 Function :: struct {

@@ -34,6 +34,7 @@ HIR_Accumulator :: struct {
 
 Pending_Function_Body :: struct {
 	symbol: ^resolver.Function,
+	scope:  resolver.Scope,
 }
 
 Pending_Annotation_Application :: struct {
