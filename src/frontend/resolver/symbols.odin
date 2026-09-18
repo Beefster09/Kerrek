@@ -81,22 +81,10 @@ Local_Variable :: struct {
 	hir:          ^hir.Local_Variable,
 }
 
-Unit_Type :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Unit_Type_Decl,
-	hir:          ^hir.Unit_Type,
-}
-
 Base_Unit :: struct {
 	using header: _Symbol_Header,
 	ast:          ^ast.Unit_Decl,
 	hir:          ^hir.Base_Unit,
-}
-
-Unit_Type_Alias :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Unit_Type_Alias_Decl,
-	canonical:    units.Compound_Unit,
 }
 
 Unit_Alias :: struct {
@@ -140,9 +128,7 @@ Symbol :: union {
 	^Constant,
 	^Global_Variable,
 	^Local_Variable,
-	^Unit_Type,
 	^Base_Unit,
-	^Unit_Type_Alias,
 	^Unit_Alias,
 	^Capability,
 	^Annotation,
@@ -170,11 +156,7 @@ symbol_header :: proc(symbol: Symbol) -> ^_Symbol_Header {
 		return &value.header
 	case ^Local_Variable:
 		return &value.header
-	case ^Unit_Type:
-		return &value.header
 	case ^Base_Unit:
-		return &value.header
-	case ^Unit_Type_Alias:
 		return &value.header
 	case ^Unit_Alias:
 		return &value.header

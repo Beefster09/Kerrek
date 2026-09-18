@@ -207,37 +207,7 @@ _unit_conversion :: proc(ps: ^Parser_State) -> ^ast.Unit_Conversion_Def {
 }
 
 _unit_decl :: proc(ps: ^Parser_State) -> ast.Top_Level_Declaration {
-	// unit type alias
-	if m, matched := _match(ps, Keyword.Unit, Keyword.Type, M.Identifier, Punctuation.Assign);
-	   matched {
-		base := _compound_unit(ps, required = true)
-		if base == nil {
-			return nil
-		}
-
-		if _end_of_statement(ps) {
-			decl := new(ast.Unit_Type_Alias_Decl)
-			decl^ = {
-				span = common.merge_spans(m[0].span, base.span),
-				name = _name(m[2]),
-				orig = base,
-			}
-			return decl
-		}
-
-		// unit type declaration
-	} else if m, matched := _match(ps, Keyword.Unit, Keyword.Type, M.Identifier); matched {
-		if _end_of_statement(ps) {
-			decl := new(ast.Unit_Type_Decl)
-			decl^ = {
-				span = common.merge_spans(m[0].span, m[2].span),
-				name = _name(m[2]),
-			}
-			return decl
-		}
-
-		// unit alias
-	} else if m, matched := _match(ps, Keyword.Unit, M.Identifier, Punctuation.Assign); matched {
+	if m, matched := _match(ps, Keyword.Unit, M.Identifier, Punctuation.Assign); matched {
 		base := _compound_unit(ps, required = true)
 		if base != nil && _end_of_statement(ps) {
 			decl := new(ast.Unit_Alias_Decl)
@@ -252,9 +222,6 @@ _unit_decl :: proc(ps: ^Parser_State) -> ast.Top_Level_Declaration {
 		// unit declaration
 	} else if m, matched := _match(ps, Keyword.Unit, M.Identifier); matched {
 		unit_type: ast.Qualified_Name
-		if _just_match(ps, Punctuation.Colon) {
-			unit_type, _ = _qualname(ps, required = true) // plain unit
-		}
 
 		if _just_match(ps, Punctuation.LCurly) {
 			conversions := make([dynamic]^ast.Unit_Conversion_Def)
@@ -286,7 +253,6 @@ _unit_decl :: proc(ps: ^Parser_State) -> ast.Top_Level_Declaration {
 			decl^ = {
 				span        = common.merge_spans(m[0].span, rcurly.span),
 				name        = _name(m[1]),
-				unit_type   = unit_type,
 				conversions = conversions[:],
 			}
 			return decl
@@ -298,9 +264,8 @@ _unit_decl :: proc(ps: ^Parser_State) -> ast.Top_Level_Declaration {
 			}
 			decl := new(ast.Unit_Decl)
 			decl^ = {
-				span      = common.merge_spans(m[0].span, end_span),
-				name      = _name(m[1]),
-				unit_type = unit_type,
+				span = common.merge_spans(m[0].span, end_span),
+				name = _name(m[1]),
 			}
 			return decl
 		} else {

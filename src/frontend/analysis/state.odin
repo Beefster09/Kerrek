@@ -26,7 +26,6 @@ HIR_Accumulator :: struct {
 	types:        [dynamic]hir.Type_Definition,
 	funcs:        [dynamic]^hir.Func_Definition,
 	variables:    [dynamic]^hir.Global_Variable,
-	unit_types:   [dynamic]^hir.Unit_Type,
 	units:        [dynamic]^hir.Base_Unit,
 	capabilities: [dynamic]^hir.Capability,
 	annotations:  [dynamic]^hir.Annotation_Def,
@@ -71,7 +70,6 @@ init_state :: proc(
 		state.hir_items.types = make([dynamic]hir.Type_Definition)
 		state.hir_items.funcs = make([dynamic]^hir.Func_Definition)
 		state.hir_items.variables = make([dynamic]^hir.Global_Variable)
-		state.hir_items.unit_types = make([dynamic]^hir.Unit_Type)
 		state.hir_items.units = make([dynamic]^hir.Base_Unit)
 		state.hir_items.capabilities = make([dynamic]^hir.Capability)
 		state.hir_items.annotations = make([dynamic]^hir.Annotation_Def)
@@ -98,7 +96,6 @@ commit_hir_items :: proc(state: ^Translation_State) {
 	state.output.types = state.hir_items.types[:]
 	state.output.funcs = state.hir_items.funcs[:]
 	state.output.variables = state.hir_items.variables[:]
-	state.output.unit_types = state.hir_items.unit_types[:]
 	state.output.units = state.hir_items.units[:]
 	state.output.capabilities = state.hir_items.capabilities[:]
 	state.output.annotations = state.hir_items.annotations[:]

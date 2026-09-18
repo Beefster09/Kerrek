@@ -18,7 +18,6 @@ Translation_Unit :: struct {
 	types:        []Type_Definition,
 	funcs:        []^Func_Definition,
 	variables:    []^Global_Variable,
-	unit_types:   []^Unit_Type,
 	units:        []^Base_Unit,
 	capabilities: []^Capability,
 	annotations:  []^Annotation_Def,
@@ -45,7 +44,6 @@ _Symbol_Header :: struct {
 Symbol :: union {
 	^Annotation_Def,
 	^Global_Variable,
-	^Unit_Type,
 	^Base_Unit,
 	^Capability,
 	^Local_Variable,
@@ -86,14 +84,8 @@ Global_Variable :: struct {
 	annotations: []^Annotation,
 }
 
-Unit_Type :: struct {
-	using _:     _Symbol_Header,
-	annotations: []^Annotation,
-}
-
 Base_Unit :: struct {
 	using _:     _Symbol_Header,
-	type:        ^Unit_Type,
 	annotations: []^Annotation,
 }
 

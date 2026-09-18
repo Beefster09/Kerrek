@@ -1,31 +1,21 @@
-unit type length;
-unit type mass;
-unit type time;
-unit type angle;
-unit type temperature;
 
-unit type area = length^2;
-unit type volume = length^3;
-unit type speed = length per time;
-
-
-unit meter: length {
+unit meter {
 	to kilometer: / 1000;
 	to millimeter: * 1000;
 	to centimeter: * 100;
 }
 unit m = meter;
 
-unit kilometer: length;
+unit kilometer;
 unit km = kilometer;
 
-unit centimeter: length;
+unit centimeter;
 unit cm = centimeter;
 
-unit millimeter: length;
+unit millimeter;
 unit mm = millimeter;
 
-unit foot: length {
+unit foot {
 	from meter: * 3.28084;
 	to inch: * 12;
 	to yard: / 3;
@@ -33,55 +23,55 @@ unit foot: length {
 	from football_field: * 120;
 }
 unit ft = foot;
-unit inch: length;
-unit yard: length;
-unit mile: length;
-unit football_field: length;
+unit inch;
+unit yard;
+unit mile;
+unit football_field;
 
 unit woman = woman;
 unit wolf = canine;
 unit dog = canine;
 unit canine = dog;
 
-unit kilogram: mass;
+unit kilogram;
 unit kg = kilogram;
 
-unit gram: mass {
+unit gram {
 	to kg: / 1000;
 }
 
-unit milligram: mass;
+unit milligram;
 unit mg = milligram;
 
 
-unit second: time;
+unit second;
 unit s = second;
 
-unit minute: time {
+unit minute {
 	to second: * 60;
 }
-unit hour: time {
+unit hour {
 	to minute: * 60;
 }
-unit day: time {
+unit day {
 	to hour: * 24;
 }
 
 const PI = 3.14159265358979;
 const BULLET = '\u2022';
 
-unit degrees: angle;
-unit radians: angle {
+unit degrees;
+unit radians {
 	from degrees: * PI / 180;
 }
-unit turn: angle {
+unit turn {
 	to degrees: * 360;
 }
 
 
-unit kelvin: temperature;
-unit celsius: temperature;
-unit fahrenheit: temperature;
+unit kelvin;
+unit celsius;
+unit fahrenheit;
 
 @pure
 func celsius_to_kelvin(degrees: Decimal | #celsius) -> Decimal | #kelvin {

@@ -113,14 +113,6 @@ _parse :: proc(ps: ^Parser_State, file: ^ast.File) -> Parse_Error {
 			append(&declarations, node)
 			_attach_annotations(node, &annotations)
 
-		case ^ast.Unit_Type_Decl:
-			append(&declarations, node)
-			_attach_annotations(node, &annotations)
-
-		case ^ast.Unit_Type_Alias_Decl:
-			append(&declarations, node)
-			_attach_annotations(node, &annotations)
-
 		case ^ast.Unit_Decl:
 			append(&declarations, node)
 			_attach_annotations(node, &annotations)
@@ -183,10 +175,6 @@ _toplevel_item :: proc(ps: ^Parser_State) -> (result: ast.Top_Level_Item, more: 
 		case ^ast.Unit_Decl:
 			return decl, true
 		case ^ast.Unit_Alias_Decl:
-			return decl, true
-		case ^ast.Unit_Type_Decl:
-			return decl, true
-		case ^ast.Unit_Type_Alias_Decl:
 			return decl, true
 		case:
 			return nil, true

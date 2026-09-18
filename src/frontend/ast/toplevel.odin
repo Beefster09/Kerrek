@@ -22,8 +22,6 @@ Top_Level_Declaration :: union {
 	^Global_Variable,
 	^Type_Alias,
 	^Annotation_Def,
-	^Unit_Type_Decl,
-	^Unit_Type_Alias_Decl,
 	^Unit_Decl,
 	^Unit_Alias_Decl,
 	^Capability_Decl,

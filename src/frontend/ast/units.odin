@@ -13,23 +13,9 @@ Indeterminate_Unit :: enum {
 	Flexible, // explicit _ unit; always matches the desired unit in expressions
 }
 
-Unit_Type_Decl :: struct {
-	span:        Span,
-	name:        Name,
-	annotations: []^Annotation,
-}
-
-Unit_Type_Alias_Decl :: struct {
-	span:        Span,
-	name:        Name,
-	orig:        ^Compound_Unit,
-	annotations: []^Annotation,
-}
-
 Unit_Decl :: struct {
 	span:        Span,
 	name:        Name,
-	unit_type:   Qualified_Name,
 	conversions: []^Unit_Conversion_Def,
 	annotations: []^Annotation,
 }

@@ -84,9 +84,7 @@ ensure_symbol_processed :: proc(
 	case ^resolver.Enum_Type:
 	case ^resolver.Type_Alias:
 	case ^resolver.Distinct_Type:
-	case ^resolver.Unit_Type:
 	case ^resolver.Base_Unit:
-	case ^resolver.Unit_Type_Alias:
 	case ^resolver.Unit_Alias:
 	case ^resolver.Capability:
 	case ^resolver.Annotation:

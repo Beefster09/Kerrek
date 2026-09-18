@@ -276,12 +276,6 @@ _add_global_symbol :: proc(res: ^Resolver, file: ^File, decl: ast.Top_Level_Decl
 	case ^ast.Global_Variable:
 		_real_add_symbol(res, file, node, Global_Variable)
 
-	case ^ast.Unit_Type_Decl:
-		_real_add_symbol(res, file, node, Unit_Type)
-
-	case ^ast.Unit_Type_Alias_Decl:
-		_real_add_symbol(res, file, node, Unit_Type_Alias)
-
 	case ^ast.Unit_Decl:
 		symbol := _real_add_symbol(res, file, node, Base_Unit)
 		if symbol != nil {
@@ -352,8 +346,6 @@ _static_resolve_field :: proc(base: Symbol, field: ast.Name) -> Symbol {
 		}
 	case ^Base_Unit:
 		_emit_namespace_error(field, symbol.name, "base unit")
-	case ^Unit_Type:
-		_emit_namespace_error(field, symbol.name, "unit type")
 	case ^Function:
 		_emit_namespace_error(field, symbol.name, "function")
 	case ^Capability:
@@ -414,11 +406,7 @@ symbol_name :: proc(named: Symbol) -> Identifier {
 		return symbol.name
 	case ^Local_Variable:
 		return symbol.name
-	case ^Unit_Type:
-		return symbol.name
 	case ^Base_Unit:
-		return symbol.name
-	case ^Unit_Type_Alias:
 		return symbol.name
 	case ^Unit_Alias:
 		return symbol.name
@@ -461,11 +449,7 @@ symbol_span :: proc(named: Symbol) -> (common.Span, bool) {
 		return symbol.ast.name.span, true
 	case ^Local_Variable:
 		return symbol.ast.name.span, true
-	case ^Unit_Type:
-		return symbol.ast.name.span, true
 	case ^Base_Unit:
-		return symbol.ast.name.span, true
-	case ^Unit_Type_Alias:
 		return symbol.ast.name.span, true
 	case ^Unit_Alias:
 		return symbol.ast.name.span, true
