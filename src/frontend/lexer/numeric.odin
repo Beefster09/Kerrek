@@ -39,7 +39,7 @@ _exponent_marker_starts_identifier :: proc(s: string, i: int) -> bool {
 	return unicode.is_alpha(next)
 }
 
-_scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, ok: bool) {
+_scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format) {
 	state: enum {
 		Start,
 		Leading_Zero,
@@ -58,9 +58,13 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 		Binary_Whole,
 	}
 	exponent_digits := 0
+	fallback_length := 0
+	fallback_format: Number_Format
 	format = .DecimalInteger
 
-	for c, i in src {
+	for i in 0 ..= len(src) {
+		c := rune(src[i] if i < len(src) else 0)
+
 		switch state {
 		case .Start:
 			if '0' <= c && c <= '9' {
@@ -86,9 +90,10 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case 'e', 'E':
 				if _exponent_marker_starts_identifier(src, i) {
 					length = i
-					ok = true
 					return
 				}
+				fallback_length = i
+				fallback_format = format
 				format = .Decimal
 				state = .Decimal_Exponent
 			case '_':
@@ -96,14 +101,12 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 					state = .Decimal_Whole
 				} else {
 					length = i
-					ok = true
 					return
 				}
 			case '0' ..= '9':
 				state = .Decimal_Whole
 			case:
 				length = i
-				ok = true
 				return
 			}
 
@@ -113,7 +116,6 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case '_':
 				if !_underscore_between_digits(src, i, 10) {
 					length = i
-					ok = true
 					return
 				}
 			case '.':
@@ -122,14 +124,14 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case 'e', 'E':
 				if _exponent_marker_starts_identifier(src, i) {
 					length = i
-					ok = true
 					return
 				}
+				fallback_length = i
+				fallback_format = format
 				format = .Decimal
 				state = .Decimal_Exponent
 			case:
 				length = i
-				ok = true
 				return
 			}
 
@@ -139,19 +141,18 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case '_':
 				if !_underscore_between_digits(src, i, 10) {
 					length = i
-					ok = true
 					return
 				}
 			case 'e', 'E':
 				if _exponent_marker_starts_identifier(src, i) {
 					length = i
-					ok = true
 					return
 				}
+				fallback_length = i
+				fallback_format = format
 				state = .Decimal_Exponent
 			case:
 				length = i
-				ok = true
 				return
 			}
 
@@ -163,7 +164,7 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case '+', '-':
 				state = .Decimal_Exponent_Digits
 			case:
-				return
+				return fallback_length, fallback_format
 			}
 
 		case .Decimal_Exponent_Digits:
@@ -173,18 +174,16 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case '_':
 				if !_underscore_between_digits(src, i, 10) {
 					if exponent_digits == 0 {
-						return
+						return fallback_length, fallback_format
 					}
 					length = i
-					ok = true
 					return
 				}
 			case:
 				if exponent_digits == 0 {
-					return
+					return fallback_length, fallback_format
 				}
 				length = i
-				ok = true
 				return
 			}
 
@@ -201,7 +200,6 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case '_':
 				if !_underscore_between_digits(src, i, 16) {
 					length = i
-					ok = true
 					return
 				}
 			case '.':
@@ -210,14 +208,14 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case 'p', 'P':
 				if _exponent_marker_starts_identifier(src, i) {
 					length = i
-					ok = true
 					return
 				}
+				fallback_length = i
+				fallback_format = format
 				format = .HexFloat
 				state = .Hex_Exponent
 			case:
 				length = i
-				ok = true
 				return
 			}
 
@@ -227,19 +225,18 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case '_':
 				if !_underscore_between_digits(src, i, 16) {
 					length = i
-					ok = true
 					return
 				}
 			case 'p', 'P':
 				if _exponent_marker_starts_identifier(src, i) {
 					length = i
-					ok = true
 					return
 				}
+				fallback_length = i
+				fallback_format = format
 				state = .Hex_Exponent
 			case:
 				length = i
-				ok = true
 				return
 			}
 
@@ -251,7 +248,7 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case '+', '-':
 				state = .Hex_Exponent_Digits
 			case:
-				return
+				return fallback_length, fallback_format
 			}
 
 		case .Hex_Exponent_Digits:
@@ -261,18 +258,16 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 			case '_':
 				if !_underscore_between_digits(src, i, 10) {
 					if exponent_digits == 0 {
-						return
+						return fallback_length, fallback_format
 					}
 					length = i
-					ok = true
 					return
 				}
 			case:
 				if exponent_digits == 0 {
-					return
+					return fallback_length, fallback_format
 				}
 				length = i
-				ok = true
 				return
 			}
 
@@ -289,7 +284,6 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 				// The separator is valid; remain in this state.
 			} else {
 				length = i
-				ok = true
 				return
 			}
 
@@ -306,38 +300,27 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format, o
 				// The separator is valid; remain in this state.
 			} else {
 				length = i
-				ok = true
 				return
 			}
 		}
 	}
 
-	length = len(src)
-	#partial switch state {
-	case .Leading_Zero,
-	     .Decimal_Whole,
-	     .Decimal_Fraction,
-	     .Hex_Whole,
-	     .Hex_Fraction,
-	     .Octal_Whole,
-	     .Binary_Whole:
-		ok = true
-	case .Decimal_Exponent_Digits, .Hex_Exponent_Digits:
-		ok = exponent_digits > 0
-	case:
-		ok = false
-	}
-	return
+	return 0, {}
 }
 
 _match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
-	length, format, ok := _scan_numeric_dfa(src)
-	if !ok {
+	length, format := _scan_numeric_dfa(src)
+	if length == 0 {
 		#partial switch format {
 		case .HexInteger, .HexFloat:
+			span_length := 2
+			if len(src) > 2 && src[2] != '_' {
+				_, rune_length := utf8.decode_rune(src[2:])
+				span_length += rune_length
+			}
 			diagnostics.emit(
 				.Invalid_Number_Literal,
-				common.cursor_to_span(cursor, max(length, 2)),
+				common.cursor_to_span(cursor, span_length),
 				"invalid hex literal",
 			)
 		case .OctalInteger:

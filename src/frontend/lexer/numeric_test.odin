@@ -380,6 +380,7 @@ test_numeric_literals :: proc(t: ^testing.T) {
 	// Dot and exponent-marker suffixes are context-sensitive rather than plain
 	// delimiters, so keep their expected maximal matches explicit.
 	contextual_suffix_cases := [?]Numeric_Case {
+		{"1e", "1", .DecimalInteger, 1, 1, 1, 0},
 		{"1.", "1.", .Decimal, 1, 1, 1, 0},
 		{"1..", "1.", .Decimal, 1, 1, 1, 0},
 		{"1...tail", "1.", .Decimal, 1, 1, 1, 0},
@@ -389,6 +390,7 @@ test_numeric_literals :: proc(t: ^testing.T) {
 		{"123abc", "123", .DecimalInteger, 123, 1, 3, 0},
 		{"0o7octal", "0o7", .OctalInteger, 7, 1, 1, 0},
 		{"0b10binary", "0b10", .BinaryInteger, 2, 1, 2, 0},
+		{"0x1p", "0x1", .HexInteger, 1, 1, 1, 0},
 		{"0xfff.3a5dftail", "0xfff.3a5df", .HexFloat, 0xfff3a5df, 0x100000, 8, 5},
 	}
 	for tc, i in contextual_suffix_cases {
@@ -404,7 +406,9 @@ test_numeric_literals :: proc(t: ^testing.T) {
 		{"123abc", "123", "abc"},
 		{"1example", "1", "example"},
 		{"1eels", "1", "eels"},
+		{"1e", "1", "e"},
 		{"0x1panda", "0x1", "panda"},
+		{"0x1p", "0x1", "p"},
 		{"0o7octal", "0o7", "octal"},
 		{"0b10binary", "0b10", "binary"},
 		{"42_name", "42", "_name"},
@@ -453,20 +457,20 @@ test_numeric_literals :: proc(t: ^testing.T) {
 		{"1._0", "1."},
 		{"1.0_", "1.0"},
 		{"1_e2", "1"},
-		{"1e_2", ""},
+		{"1e_2", "1"},
 		{"1e2_", "1e2"},
-		{"1e+_2", ""},
+		{"1e+_2", "1"},
 		{"1e+2_", "1e+2"},
 		{"0x1_p2", "0x1"},
-		{"0x1p_2", ""},
+		{"0x1p_2", "0x1"},
 		{"0x1p2_", "0x1p2"},
-		{"0x1p+_2", ""},
+		{"0x1p+_2", "0x1"},
 		{"0x1p+2_", "0x1p+2"},
 		{"0x1._8", "0x1."},
 		{"0x1.8_", "0x1.8"},
-		{"0x1.8p", ""},
-		{"0x1.8p_2", ""},
-		{"0x1.8p+", ""},
+		{"0x1.8p", "0x1.8"},
+		{"0x1.8p_2", "0x1.8"},
+		{"0x1.8p+", "0x1.8"},
 		// A leading exponent marker should be treated as an identifier.
 		{"1example", "1"},
 		{"1eels", "1"},
@@ -502,5 +506,5 @@ test_numeric_literals :: proc(t: ^testing.T) {
 	_expect_invalid_numeric_diagnostic(t, "0x_1", 2)
 	_expect_invalid_numeric_diagnostic(t, "0o8", 2)
 	_expect_invalid_numeric_diagnostic(t, "0b2", 2)
-	_expect_invalid_numeric_diagnostic(t, "0x1.8p", 6)
+	_expect_invalid_numeric_diagnostic(t, "0xg", 3)
 }
