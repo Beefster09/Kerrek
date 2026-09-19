@@ -1,7 +1,9 @@
 package analysis
 
 import "../../common"
+import "../ast"
 import "../hir"
+import "../resolver"
 
 Comptime_Value :: struct {
 	span:  common.Span,
@@ -28,4 +30,16 @@ Flexible_Affinity :: enum {
 	Boolean,
 	String,
 	Rune,
+}
+
+
+build_expr :: proc(
+	ts: ^Translation_State,
+	type_ast: ast.Expression,
+	scope: resolver.Scope,
+) -> (
+	hir.Expression,
+	bool,
+) {
+	return nil, false
 }

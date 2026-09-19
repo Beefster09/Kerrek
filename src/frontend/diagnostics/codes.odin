@@ -6,6 +6,7 @@ import "core:io"
 
 
 Code :: enum {
+	NOT_SET,
 	// == Lexer diagnostics ==
 
 	// The source contains a malformed numeric literal.
@@ -66,6 +67,9 @@ Code :: enum {
 	// The entry point is duplicated or has an unsupported signature.
 	Invalid_Entry_Point,
 
+	// == MISC ==
+	Not_Implemented,
+
 	// == TEST ==
 
 	// A test-only diagnostic used to exercise diagnostic reporting.
@@ -81,6 +85,7 @@ Code_Metadata :: struct {
 
 @(rodata)
 CODE_METADATA := [Code]Code_Metadata {
+	.NOT_SET = {stable_id = "NONE"},
 	// Lexer diagnostics
 	.Invalid_Number_Literal = {origin = .Lexer, default_level = .Error, stable_id = "L00"},
 	.Number_Followed_By_Identifier = {
@@ -119,6 +124,8 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Invalid_Annotation = {origin = .TypeCheck, default_level = .Error, stable_id = "T02"},
 	.Missing_Entry_Point = {origin = .TypeCheck, default_level = .Error, stable_id = "MAIN0"},
 	.Invalid_Entry_Point = {origin = .TypeCheck, default_level = .Error, stable_id = "MAIN1"},
+	// MISC
+	.Not_Implemented = {origin = .TypeCheck, default_level = .Error, stable_id = "NOIMPL"},
 	// TEST
 	.Test = {origin = .Resolver, default_level = .Notice, stable_id = "TEST"},
 }

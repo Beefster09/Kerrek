@@ -19,7 +19,8 @@ Func_Definition :: struct {
 	params:      []^Formal_Parameter,
 	returns:     []^Func_Return,
 	error_type:  Type,
-	fallible:    bool,
+	flags:       Func_Flags,
+	call_conv:   Calling_Convention,
 	requires:    ^Capability_Expression,
 	body:        ^Block,
 	annotations: []^Annotation,
@@ -28,6 +29,19 @@ Func_Definition :: struct {
 Func_Overload_Group :: struct {
 	using _:   _Symbol_Header,
 	overloads: []^Func_Definition,
+}
+
+Func_Flags :: bit_set[Func_Flag;u32]
+Func_Flag :: enum {
+	Fallible,
+	Pure,
+	Diverges,
+}
+
+Calling_Convention :: enum u32 {
+	Invalid,
+	Kerrek,
+	CDecl,
 }
 
 Struct_Field :: struct {

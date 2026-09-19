@@ -71,7 +71,10 @@ unit turn {
 
 unit kelvin;
 unit celsius;
+unit rankine;
 unit fahrenheit;
+\\ unit celsius = kelvin @stp_h2ofreeze;
+\\ unit fahrenheit = rankine @fahrenheit_brine;
 
 @pure
 func celsius_to_kelvin(degrees: Decimal | #celsius) -> Decimal | #kelvin {
@@ -147,4 +150,5 @@ const LONG_STRING = """
 				throw \U10045f baby
 """ + "strong bad"+
 \"this\interprets\backslashes\literally";const x23 = ""; \\23x45 1x
+
 func main() {;;}

@@ -25,9 +25,10 @@ _Symbol_Header :: struct {
 }
 
 Function :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Func_Definition,
-	hir:          ^hir.Func_Definition,
+	using header:   _Symbol_Header,
+	ast:            ^ast.Func_Definition,
+	hir:            ^hir.Func_Definition,
+	deprecated_msg: Maybe(string),
 }
 
 Type_Alias :: struct {

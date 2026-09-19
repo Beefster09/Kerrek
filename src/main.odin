@@ -14,6 +14,9 @@ _user_formatters: map[typeid]fmt.User_Formatter
 _json_marshalers: map[typeid]json.User_Marshaler
 
 main :: proc() {
+	when ODIN_DEBUG {
+		context.assertion_failure_proc = panic_with_stack_trace
+	}
 	_user_formatters = make(map[typeid]fmt.User_Formatter)
 	fmt.set_user_formatters(&_user_formatters)
 	_json_marshalers = make(map[typeid]json.User_Marshaler)

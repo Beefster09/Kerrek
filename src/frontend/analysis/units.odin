@@ -2,20 +2,26 @@ package analysis
 
 import "../ast"
 import "../diagnostics"
+import "../hir"
 import "../resolver"
 import "../units"
 
 
-Unit_Domain :: enum {
-	Value,
-	Type,
+build_unit :: proc(
+	ts: ^Translation_State,
+	unit: ast.Declared_Unit,
+	scope: resolver.Scope,
+) -> (
+	hir.Realized_Unit,
+	bool,
+) {
+	return nil, false
 }
 
-
 get_canonical_unit :: proc(
-	ctx: Declaration_Context,
+	ts: ^Translation_State,
 	unit: ^ast.Compound_Unit,
-	domain := Unit_Domain.Value,
+	scope: resolver.Scope,
 ) -> (
 	units.Compound_Unit,
 	bool,
