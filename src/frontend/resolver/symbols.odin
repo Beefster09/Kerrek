@@ -3,6 +3,7 @@ package resolver
 import "base:intrinsics"
 
 import "../../common"
+import "../../common/exact"
 import "../ast"
 import "../hir"
 import "../units"

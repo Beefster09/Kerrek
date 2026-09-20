@@ -24,6 +24,7 @@ Resolver :: struct {
 	packages:        map[string]^Package,
 	loaded_packages: [dynamic]^Package,
 	files:           map[string]^File,
+	units_by_id:     map[Symbol_ID]^Base_Unit,
 	arena:           mem.Dynamic_Arena,
 	allocator:       runtime.Allocator,
 }
@@ -45,6 +46,7 @@ init :: proc(res: ^Resolver, project_root := "") {
 	res.packages = make(map[string]^Package, res.allocator)
 	res.loaded_packages = make([dynamic]^Package, res.allocator)
 	res.files = make(map[string]^File, res.allocator)
+	res.units_by_id = make(map[Symbol_ID]^Base_Unit, res.allocator)
 	res.next_symbol_id = FIRST_USER_SYMBOL_ID
 
 	if project_root != "" {
@@ -279,7 +281,7 @@ _add_global_symbol :: proc(res: ^Resolver, file: ^File, decl: ast.Top_Level_Decl
 	case ^ast.Unit_Decl:
 		symbol := _real_add_symbol(res, file, node, Base_Unit)
 		if symbol != nil {
-			units.register_unit_name(symbol.id, symbol.name)
+			res.units_by_id[symbol.id] = symbol
 		}
 
 	case ^ast.Unit_Alias_Decl:

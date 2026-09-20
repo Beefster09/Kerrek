@@ -121,6 +121,24 @@ ensure_toplevel_symbol_processed :: proc(
 
 	case ^resolver.Global_Variable:
 		return .Not_Implemented
+
+	case ^resolver.Base_Unit:
+		symbol.hir = new(hir.Base_Unit, ts.output.allocator)
+		symbol.hir^ = {
+			span = symbol.ast.span,
+			id   = symbol.id,
+			name = symbol.ast.name,
+		}
+		// TODO: annotations
+		for conv in symbol.ast.conversions {
+			// #partial switch resolved in resolve(ts, scope, conv.other) {}
+			// TODO
+		}
+		return .OK
+
+	case ^resolver.Unit_Alias:
+		return .OK
+
 	case ^resolver.Struct_Type:
 		return .Not_Implemented
 	case ^resolver.Enum_Type:
@@ -129,13 +147,9 @@ ensure_toplevel_symbol_processed :: proc(
 		return .Not_Implemented
 	case ^resolver.Distinct_Type:
 		return .Not_Implemented
-	case ^resolver.Base_Unit:
-		return .Not_Implemented
-	case ^resolver.Unit_Alias:
+	case ^resolver.Annotation:
 		return .Not_Implemented
 	case ^resolver.Capability:
-		return .Not_Implemented
-	case ^resolver.Annotation:
 		return .Not_Implemented
 
 	case ^resolver.Local_Variable, ^resolver.Formal_Parameter, ^resolver.Named_Return:

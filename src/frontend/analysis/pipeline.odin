@@ -2,6 +2,7 @@ package analysis
 
 import "../hir"
 import "../resolver"
+import "../units"
 
 
 Translation_Error :: enum {
@@ -34,6 +35,9 @@ build_hir :: proc(
 	defer destroy_state(&ts)
 
 	top_ok := process_toplevel_items(&ts)
+
+	units.freeze_conversion_graph(&ts.unit_conversions)
+
 	bodies_ok := true
 	for pending_func in ts.pending_bodies {
 		err := build_function_body(&ts, pending_func.func, pending_func.root_scope)

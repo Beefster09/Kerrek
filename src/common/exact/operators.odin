@@ -65,6 +65,11 @@ ge :: proc {
 	rat_ge,
 }
 
+reciprocal :: proc {
+	int_reciprocal,
+	rat_reciprocal,
+}
+
 is_one :: proc {
 	int_is_one,
 	rat_is_one,
@@ -383,6 +388,14 @@ rat_gt :: proc(a, b: Rat, allocator := bigint_allocator) -> bool {
 
 rat_ge :: proc(a, b: Rat, allocator := bigint_allocator) -> bool {
 	return #force_inline rat_cmp(a, b, allocator) != .Less
+}
+
+int_reciprocal :: proc "contextless" (i: Int) -> Rat {
+	return {i128(1), i}
+}
+
+rat_reciprocal :: proc "contextless" (r: Rat) -> Rat {
+	return {r.denominator, r.numerator}
 }
 
 int_is_one :: proc(i: Int) -> bool {

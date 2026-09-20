@@ -7,6 +7,7 @@ import "../../common"
 import "../ast"
 import "../hir"
 import "../resolver"
+import "../units"
 
 
 Translation_State :: struct {
@@ -14,9 +15,9 @@ Translation_State :: struct {
 	entry_package:    ^resolver.Package,
 	output:           ^hir.Translation_Unit,
 	hir_items:        HIR_Accumulator,
-	symbols_by_id:    map[common.Symbol_ID]resolver.Symbol,
 	pending_bodies:   [dynamic]Pending_Function_Body,
 	processing_stack: [dynamic]resolver.Symbol, // used to detect and emit diagnostics for dependency cycles
+	unit_conversions: units.Conversion_Graph,
 	scratch_arena:    mem.Dynamic_Arena,
 	allocator:        runtime.Allocator,
 }
@@ -59,11 +60,12 @@ init_state :: proc(
 		state.hir_items.annotations = make([dynamic]^hir.Annotation_Def)
 	}
 
+	units.init_conversions(&state.unit_conversions)
+
 	mem.dynamic_arena_init(&state.scratch_arena)
 	state.allocator = mem.dynamic_arena_allocator(&state.scratch_arena)
 	{
 		context.allocator = state.allocator
-		state.symbols_by_id = make(map[common.Symbol_ID]resolver.Symbol)
 		state.pending_bodies = make([dynamic]Pending_Function_Body)
 		state.processing_stack = make([dynamic]resolver.Symbol)
 	}
@@ -90,6 +92,7 @@ destroy_state :: proc(state: ^Translation_State) {
 	if state == nil {
 		return
 	}
+	units.destroy_conversions(&state.unit_conversions)
 	mem.dynamic_arena_destroy(&state.scratch_arena)
 	state^ = {}
 }

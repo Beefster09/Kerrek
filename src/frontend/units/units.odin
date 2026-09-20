@@ -6,12 +6,6 @@ import "core:slice"
 
 import "../../common"
 
-_compound_unit_names: map[common.Symbol_ID]common.Identifier
-
-register_unit_name :: proc(id: common.Symbol_ID, name: common.Identifier) {
-	_compound_unit_names[id] = name
-}
-
 Compound_Unit :: union {
 	Inline_Compound_Unit,
 	Heap_Compound_Unit,
@@ -195,49 +189,45 @@ compound_units_equal :: proc(a, b: Compound_Unit) -> bool {
 SUPERSCRIPT_DIGITS := [10]rune{'⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'}
 SUPERSCRIPT_NEGATIVE :: '⁻'
 
-fmt_compound_unit :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
-	assert(arg.id == Compound_Unit)
-	switch verb {
-	case 'v':
-		fmt.fmt_enum(fi, arg, verb)
-	case 's':
-		unit := (cast(^Compound_Unit)arg.data)^
-		for i in 0 ..< num_components(unit) {
-			if i > 0 {
-				io.write_rune(fi.writer, ' ')
-			}
-			comp := get_component(unit, i)
-			comp_name, ok := _compound_unit_names[comp.unit]
-			if ok {
-				io.write_string(fi.writer, string(comp_name))
-			} else {
-				io.write_string(fi.writer, "UNIT#")
-				io.write_int(fi.writer, int(comp.unit))
-			}
-
-			if comp.exp.d == 0 {
-				sup_digits: [dynamic; 4]rune
-				x := abs(i16(comp.exp.n))
-				for x > 0 {
-					append(&sup_digits, SUPERSCRIPT_DIGITS[x % 10])
-					x /= 10
-				}
-				if comp.exp.n < 0 {
-					io.write_rune(fi.writer, SUPERSCRIPT_NEGATIVE)
-				}
-				#reverse for digit in sup_digits {
-					io.write_rune(fi.writer, digit)
-				}
-			} else {
-				io.write_string(fi.writer, "^(")
-				io.write_int(fi.writer, int(comp.exp.n))
-				io.write_rune(fi.writer, '/')
-				io.write_int(fi.writer, int(comp.exp.d + 1))
-				io.write_rune(fi.writer, ')')
-			}
+write_compound_unit :: proc(
+	w: io.Writer,
+	unit: Compound_Unit,
+	get_unit_name: proc(data: ^$D, id: common.Symbol_ID) -> (string, bool),
+	get_unit_name_data: ^D,
+) {
+	for i in 0 ..< num_components(unit) {
+		if i > 0 {
+			io.write_rune(w, ' ')
 		}
-	case:
-		return false
+
+		comp := get_component(unit, i)
+
+		if comp_name, ok := get_unit_name(get_unit_name_data, comp.unit); ok {
+			io.write_string(w, string(comp_name))
+		} else {
+			io.write_string(w, "UNIT#")
+			io.write_int(w, int(comp.unit))
+		}
+
+		if comp.exp.d == 0 {
+			sup_digits: [dynamic; 4]rune
+			x := abs(i16(comp.exp.n))
+			for x > 0 {
+				append(&sup_digits, SUPERSCRIPT_DIGITS[x % 10])
+				x /= 10
+			}
+			if comp.exp.n < 0 {
+				io.write_rune(w, SUPERSCRIPT_NEGATIVE)
+			}
+			#reverse for digit in sup_digits {
+				io.write_rune(w, digit)
+			}
+		} else {
+			io.write_string(w, "^(")
+			io.write_int(w, int(comp.exp.n))
+			io.write_rune(w, '/')
+			io.write_int(w, int(comp.exp.d + 1))
+			io.write_rune(w, ')')
+		}
 	}
-	return true
 }
