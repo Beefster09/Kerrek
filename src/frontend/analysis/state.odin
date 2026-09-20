@@ -31,8 +31,8 @@ HIR_Accumulator :: struct {
 }
 
 Pending_Function_Body :: struct {
-	symbol: ^resolver.Function,
-	params: []^resolver.Formal_Parameter,
+	func:       ^resolver.Function,
+	root_scope: ^resolver.Lexical_Scope,
 }
 
 init_state :: proc(

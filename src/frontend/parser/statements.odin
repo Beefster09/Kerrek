@@ -64,7 +64,7 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 		}
 		end_span := tok.span
 		if len(values) > 0 {
-			end_span = _expression_span(values[len(values) - 1])
+			end_span = ast.expression_span(values[len(values) - 1])
 		}
 		ret := new(ast.Return_Statement)
 		ret^ = {
@@ -115,8 +115,8 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 			assignment := new(ast.Assign_Statement)
 			assignment^ = {
 				span  = common.merge_spans(
-					_expression_span(expr),
-					_expression_span(rvalues[len(rvalues) - 1]),
+					ast.expression_span(expr),
+					ast.expression_span(rvalues[len(rvalues) - 1]),
 				),
 				dests = lvalues[:],
 				exprs = rvalues[:],
@@ -128,7 +128,7 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 		} else {
 			expr_stmt := new(ast.Expr_Statement)
 			expr_stmt^ = {
-				span = _expression_span(expr),
+				span = ast.expression_span(expr),
 				expr = expr,
 			}
 			stmt = expr_stmt

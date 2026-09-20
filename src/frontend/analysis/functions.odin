@@ -181,14 +181,10 @@ translate_function_signature :: proc(
 		requires    = requires,
 		annotations = annotations[:],
 	}
-	queue_build_function_body(ts, symbol)
+	append(&ts.pending_bodies, Pending_Function_Body{func = symbol, root_scope = params_scope})
 	append(&ts.hir_items.funcs, symbol.hir)
 
 	return .OK
-}
-
-queue_build_function_body :: proc(ts: ^Translation_State, symbol: ^resolver.Function) {
-	return // TODO
 }
 
 build_function_body :: proc(

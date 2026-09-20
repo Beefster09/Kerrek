@@ -27,7 +27,7 @@ _expr :: proc(ps: ^Parser_State) -> ast.Expression {
 		}
 		reinterpret := new(ast.Unit_Reinterpret_Expr)
 		reinterpret^ = {
-			span     = common.merge_spans(_expression_span(expr), to_unit.span),
+			span     = common.merge_spans(ast.expression_span(expr), to_unit.span),
 			expr     = expr,
 			new_unit = to_unit,
 		}
@@ -42,7 +42,7 @@ _expr :: proc(ps: ^Parser_State) -> ast.Expression {
 		}
 		cast_expr := new(ast.Cast_Expr)
 		cast_expr^ = {
-			span = common.merge_spans(_expression_span(expr), _type_span(to_type)),
+			span = common.merge_spans(ast.expression_span(expr), _type_span(to_type)),
 			expr = expr,
 			to   = to_type,
 		}
@@ -225,7 +225,7 @@ _binop_expr :: proc(
 
 		binop := new(ast.Binop_Expr)
 		binop^ = {
-			span = common.merge_spans(_expression_span(result), _expression_span(rhs)),
+			span = common.merge_spans(ast.expression_span(result), ast.expression_span(rhs)),
 			op   = op,
 			lhs  = result,
 			rhs  = rhs,
@@ -259,52 +259,6 @@ _operator_string :: proc(tok: lexer.Token) -> string {
 		return fmt.tprintf("%v", what)
 	}
 }
-
-
-_expression_span :: proc "contextless" (expr: ast.Expression) -> ast.Span {
-	switch node in expr {
-	case ^ast.Name_Expr:
-		return node.span
-	case ^ast.Placeholder_Expr:
-		return node.span
-	case ^ast.FieldAccess_Expr:
-		return node.span
-	case ^ast.Scalar_Literal_Expr:
-		return node.span
-	case ^ast.Simple_Literal_Expr:
-		return node.span
-	case ^ast.Implicit_Enum_Expr:
-		return node.span
-	case ^ast.Move_Expr:
-		return node.span
-	case ^ast.Binop_Expr:
-		return node.span
-	case ^ast.Unary_Expr:
-		return node.span
-	case ^ast.Address_Of_Expr:
-		return node.span
-	case ^ast.Dereference_Expr:
-		return node.span
-	case ^ast.Cast_Expr:
-		return node.span
-	case ^ast.Unit_Conversion_Expr:
-		return node.span
-	case ^ast.Unit_Reinterpret_Expr:
-		return node.span
-	case ^ast.Index_Expr:
-		return node.span
-	case ^ast.Callish_Expr:
-		return node.span
-	case ^ast.Type_Expr_Expr:
-		return node.span
-	case ^ast.Unit_Expr:
-		return node.span
-	case nil:
-		return {}
-	}
-	return {}
-}
-
 
 _set_expression_span :: proc "contextless" (expr: ast.Expression, span: ast.Span) {
 	switch node in expr {

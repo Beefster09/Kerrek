@@ -6,7 +6,7 @@ import "../resolver"
 
 Translation_Error :: enum {
 	OK,
-	Type_Check_Failed,
+	Semantic_Analysis_Failed,
 }
 
 
@@ -17,20 +17,32 @@ build_hir :: proc(
 	entry_package: ^resolver.Package,
 ) -> (
 	output: ^hir.Translation_Unit,
-	err: Translation_Error,
+	ret_err: Translation_Error,
 ) {
 	assert(res != nil)
 	assert(entry_package != nil)
 
-	output = new(hir.Translation_Unit)
-	hir.init(output)
+	tu := new(hir.Translation_Unit)
+	hir.init(tu)
+	defer if ret_err != .OK {
+		hir.destroy(tu)
+		free(tu)
+	}
 
-	state: Translation_State
-	init_state(&state, res, entry_package, output)
-	defer destroy_state(&state)
+	ts: Translation_State
+	init_state(&ts, res, entry_package, tu)
+	defer destroy_state(&ts)
 
-	ok := process_toplevel_items(&state)
-	commit_hir_items(&state)
+	top_ok := process_toplevel_items(&ts)
+	bodies_ok := true
+	for pending_func in ts.pending_bodies {
+		err := build_function_body(&ts, pending_func.func, pending_func.root_scope)
+		bodies_ok &&= err != .OK
+	}
+	if !(top_ok && bodies_ok) {
+		return nil, .Semantic_Analysis_Failed
+	}
+	commit_hir_items(&ts)
 
-	return output, .OK
+	return tu, .OK
 }

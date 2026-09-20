@@ -77,7 +77,7 @@ _const_or_var :: proc(
 	switch v in value {
 	case ast.Expression:
 		if v != nil {
-			end_span = _expression_span(v)
+			end_span = ast.expression_span(v)
 		}
 	case ast.Unbound_Var:
 		end_span = v.span

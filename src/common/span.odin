@@ -50,16 +50,8 @@ cursor_to_span :: proc {
 merge_spans :: proc "contextless" (a, b: Span) -> Span {
 	return {
 		file = a.file,
-		start = {
-			offset = min(a.start.offset, b.start.offset),
-			line = min(a.start.line, b.start.line),
-			col = min(a.start.col, b.start.col),
-		},
-		end = {
-			offset = max(a.end.offset, b.end.offset),
-			line = max(a.end.line, b.end.line),
-			col = max(a.end.col, b.end.col),
-		},
+		start = a.start if a.start.offset < b.start.offset else b.start,
+		end = a.end if a.end.offset > b.end.offset else b.end,
 	}
 }
 

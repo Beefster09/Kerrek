@@ -96,7 +96,7 @@ evaluate :: proc(
 		return _eval_binop(ts, node, scope)
 
 	case ^ast.Name_Expr:
-		var_expr :: proc(
+		var_expr :: #force_inline proc(
 			ts: ^Translation_State,
 			node: ^ast.Name_Expr,
 			symbol: $S,
@@ -111,7 +111,7 @@ evaluate :: proc(
 			return expr
 		}
 
-		#partial switch resolved in resolve(ts, scope, node.name.id) {
+		#partial switch resolved in resolve(ts, scope, node.name) {
 		case ^resolver.Constant:
 			if resolved.state == .Done {
 				return resolved.value
@@ -145,12 +145,6 @@ evaluate :: proc(
 			}
 
 		case nil:
-			diagnostics.emit(
-				.Wrong_Symbol_Kind,
-				node.name.span,
-				"'%s' could not be resolved",
-				node.name.id,
-			)
 			return hir.Expression(poison(ts, node.span))
 
 		case:

@@ -1,17 +1,20 @@
 package analysis
 
 import "../../common"
+import "../diagnostics"
 import "../hir"
 import "../resolver"
 
 resolve :: proc(
 	ts: ^Translation_State,
 	scope: resolver.Scope,
-	name: common.Identifier,
+	name: common.Name,
 ) -> resolver.Symbol {
-	resolved := resolver.lookup(scope, name)
+	resolved := resolver.lookup(scope, name.id)
 	if resolved != nil {
 		ensure_toplevel_symbol_processed(ts, resolved)
+	} else {
+		diagnostics.emit(.Unresolved_Name, name.span, "'%s' could not be resolved", name.id)
 	}
 	return resolved
 }

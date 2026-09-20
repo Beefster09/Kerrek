@@ -74,6 +74,8 @@ Code :: enum {
 	Not_Compile_Time_Known,
 
 	// == MISC ==
+
+	// this part of the compiler is not yet implemented
 	Not_Implemented,
 
 	// == TEST ==
