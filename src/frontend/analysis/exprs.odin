@@ -113,7 +113,11 @@ evaluate :: proc(
 
 		#partial switch resolved in resolve(ts, scope, node.name.id) {
 		case ^resolver.Constant:
-			return resolved.value
+			if resolved.state == .Done {
+				return resolved.value
+			} else {
+				return hir.Expression(poison(ts, node.span))
+			}
 
 		case ^resolver.Local_Variable:
 			return var_expr(ts, node, resolved)
@@ -165,20 +169,20 @@ evaluate :: proc(
 
 	case ^ast.Unit_Reinterpret_Expr:
 		new_unit: hir.Realized_Unit
-		switch node.new_unit {
-		case ast.Indeterminate_Unit.No_Unit:
+		switch unit in node.new_unit {
+		case ^ast.No_Unit:
 			new_unit = hir.Indeterminate_Unit.No_Unit
-		case ast.Indeterminate_Unit.Flexible:
-			diagnostics.emit(.TBD, node.span, "cannot reinterpret units as flexible")
-		case ast.Indeterminate_Unit.Inferred:
+		case ^ast.Flexible_Unit:
+			diagnostics.emit(.TBD, unit.span, "cannot reinterpret units as flexible")
+		case ^ast.Inferred_Unit:
 			// might be a panic("unreachable")
 			diagnostics.emit(
 				.TBD,
 				node.span,
 				"inferred units are not valid for unit reinterpret expressions",
 			)
-		case:
-			new_unit = build_unit(ts, node.new_unit, scope) or_else nil
+		case ^ast.Compound_Unit:
+			new_unit = get_canonical_unit(ts, unit, scope) or_else nil
 		}
 
 		if new_unit == nil {
@@ -202,7 +206,7 @@ evaluate :: proc(
 				diagnostics.emit(
 					.Arity_Mismatch,
 					ast.expression_span(node.expr),
-					"this expression returns %d values, but it requires exactly one to be used in a unit reinterpretation",
+					"this expression evaluates to %d values, but exactly 1 is expected in this context",
 					hir.value_count(result),
 				)
 			}

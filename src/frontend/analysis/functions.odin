@@ -27,6 +27,7 @@ translate_function_signature :: proc(
 	flags, annotations := _process_func_annotations(ts, symbol)
 
 	params := make([dynamic]^resolver.Formal_Parameter, 0, len(symbol.ast.params))
+	params_scope := resolver.new_scope(symbol.defined_in, ts.allocator)
 
 	process_params: for ast_param in func.params {
 		for prev_param in params {
@@ -93,20 +94,37 @@ translate_function_signature :: proc(
 		}
 
 		append(&params, param)
+		resolver.define_local(params_scope, ast_param.name, param)
 	}
 
 	returns := [dynamic]^hir.Func_Return{}
+	named_returns := resolver.temp_scope(params_scope)
+	// named returns are only visible in the function header, namely `defer with` clauses
 
-	for ret in func.returns {
+	for ret, i in func.returns {
 		rtype, rt_ok := build_type(ts, ret.type, scope)
-		runit, ru_ok := build_unit(ts, ret.unit, scope)
 
-		if rtype == nil {
-			diagnostics.emit(.Invalid_Unit, ret.span, "type missing on func return")
-			continue
+		if !rt_ok {
+			diagnostics.emit(
+				.Invalid_Type,
+				ast.type_span(ret.type),
+				"type missing on func return %d",
+				i,
+			)
 		}
 
-		if runit == nil {
+		runit, ru_ok := build_unit(ts, ret.unit, scope)
+
+		if !ru_ok {
+			diagnostics.emit(
+				.Invalid_Unit,
+				ast.unit_span(ret.unit),
+				"unit missing on func return %d",
+				i,
+			)
+		}
+
+		if !rt_ok || !ru_ok {
 			continue
 		}
 
@@ -116,7 +134,6 @@ translate_function_signature :: proc(
 			type = rtype,
 			unit = runit,
 		}
-		append(&returns, hir_ret)
 
 		if ret.name != nil {
 			named_return := resolver.new_symbol(
@@ -126,7 +143,10 @@ translate_function_signature :: proc(
 			)
 			named_return.ast = ret
 			named_return.hir = hir_ret
+			resolver.define_local(&named_returns, ret.name.?, named_return)
 		}
+
+		append(&returns, hir_ret)
 	}
 
 	err_type: hir.Type

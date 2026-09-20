@@ -1,5 +1,6 @@
 package resolver
 
+import "base:runtime"
 import "core:fmt"
 import "core:slice"
 
@@ -18,9 +19,18 @@ Scope :: union {
 	^File,
 }
 
+new_scope :: proc(parent: Scope, allocator: runtime.Allocator) -> ^Lexical_Scope {
+	scope := new(Lexical_Scope, allocator)
+	scope^ = {
+		parent = parent,
+		locals = make(map[common.Identifier]Symbol),
+	}
+	return scope
+}
+
 @(deferred_out_by_ptr = _destroy_local_scope)
-push_scope :: proc(parent: Scope) -> Lexical_Scope {
-	return {parent = parent, locals = make(map[common.Identifier]Symbol)}
+temp_scope :: proc(parent: Scope) -> Lexical_Scope {
+	return {parent = parent, locals = make(map[common.Identifier]Symbol, context.temp_allocator)}
 }
 
 _destroy_local_scope :: proc(scope: ^Lexical_Scope) {

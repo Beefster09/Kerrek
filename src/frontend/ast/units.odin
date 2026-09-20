@@ -3,8 +3,36 @@ package ast
 import "../../common/exact"
 
 Declared_Unit :: union {
+	^No_Unit,
+	^Inferred_Unit,
+	^Flexible_Unit,
 	^Compound_Unit,
-	Indeterminate_Unit,
+}
+
+unit_span :: proc(unit: Declared_Unit) -> Span {
+	switch unit in unit {
+	case ^No_Unit:
+		return unit.span
+	case ^Inferred_Unit:
+		return unit.span
+	case ^Flexible_Unit:
+		return unit.span
+	case ^Compound_Unit:
+		return unit.span
+	}
+	return {}
+}
+
+Inferred_Unit :: struct {
+	span: Span,
+}
+
+No_Unit :: struct {
+	span: Span,
+}
+
+Flexible_Unit :: struct {
+	span: Span,
 }
 
 Indeterminate_Unit :: enum {

@@ -44,7 +44,7 @@ _func_def :: proc(ps: ^Parser_State) -> ^ast.Func_Definition {
 				return nil
 			}
 
-			unit: ast.Declared_Unit = ast.Indeterminate_Unit.Inferred
+			unit: ast.Declared_Unit
 			end_span := _type_span(return_type)
 			if _just_match(ps, Punctuation.Bar) {
 				parsed_unit := _compound_unit(ps)
@@ -54,6 +54,9 @@ _func_def :: proc(ps: ^Parser_State) -> ^ast.Func_Definition {
 				}
 				unit = parsed_unit
 				end_span = parsed_unit.span
+			} else {
+				unit := new(ast.No_Unit)
+				unit.span = _span_between(ps)
 			}
 
 			result := new(ast.Func_Return)
@@ -115,9 +118,12 @@ _param_list :: proc(ps: ^Parser_State) -> ([]^ast.Formal_Parameter, bool) {
 			return nil, false
 		}
 
-		unit: ast.Declared_Unit = ast.Indeterminate_Unit.Inferred
+		unit: ast.Declared_Unit
 		if _just_match(ps, Punctuation.Bar) {
 			unit = _compound_unit(ps)
+		} else {
+			unit := new(ast.Inferred_Unit)
+			unit.span = _span_between(ps)
 		}
 
 		default: ast.Expression

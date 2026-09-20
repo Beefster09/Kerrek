@@ -159,6 +159,35 @@ _match1 :: proc(
 	return {}, false
 }
 
+_span_between :: proc(ps: ^Parser_State, bias: enum {
+		Start,
+		End,
+	} = .Start) -> common.Span {
+	prev_token, p_ok := _peek(ps, -1)
+	next_token, n_ok := _peek(ps, 0)
+	if !p_ok {
+		if n_ok {
+			return common.collapse_span(next_token.span)
+		} else {
+			panic("you're doing something horribly wrong if you see this")
+		}
+	}
+
+	if n_ok && prev_token.span.end.line == next_token.span.start.line {
+		return {
+			file = prev_token.span.file,
+			start = prev_token.span.end,
+			end = next_token.span.start,
+		}
+	} else {
+		if bias == .Start || !n_ok {
+			return common.collapse_span_to_end(prev_token.span)
+		} else {
+			return common.collapse_span(next_token.span)
+		}
+	}
+}
+
 _end_of_statement :: proc(ps: ^Parser_State, _: ..struct{}, required := true) -> bool {
 	if tok, ok := _peek(ps); ok && tok.what == Punctuation.Semicolon {
 		ps.cur_token += 1
@@ -190,7 +219,6 @@ _attach_annotations :: proc(
 	to.annotations = slice.clone(annotations^[:])
 	clear(annotations)
 }
-
 
 _error_here :: proc(ps: ^Parser_State, format: string, args: ..any) -> ^diagnostics.Diagnostic {
 	span: common.Span

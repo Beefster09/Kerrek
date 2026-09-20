@@ -70,6 +70,8 @@ Code :: enum {
 	Wrong_Symbol_Kind,
 	// The number of expected values does not match the actual number of values
 	Arity_Mismatch,
+	// The value needed to be known at compile time, but wasn't
+	Not_Compile_Time_Known,
 
 	// == MISC ==
 	Not_Implemented,
@@ -125,6 +127,7 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Wrong_Symbol_Kind = {origin = .Semantic, default_level = .Error, stable_id = "A002"},
 	.Invalid_Annotation = {origin = .Semantic, default_level = .Error, stable_id = "A003"},
 	.Arity_Mismatch = {origin = .Semantic, default_level = .Error, stable_id = "A003"},
+	.Not_Compile_Time_Known = {origin = .Semantic, default_level = .Error, stable_id = "A004"},
 	.Invalid_Type = {origin = .Semantic, default_level = .Error, stable_id = "AT01"},
 	.Invalid_Unit = {origin = .Semantic, default_level = .Error, stable_id = "AU01"},
 	.Invalid_Capability = {origin = .Semantic, default_level = .Error, stable_id = "AC01"},

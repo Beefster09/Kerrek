@@ -10,16 +10,15 @@ import "../resolver"
 
 
 Translation_State :: struct {
-	symbol_resolver:     ^resolver.Resolver,
-	entry_package:       ^resolver.Package,
-	output:              ^hir.Translation_Unit,
-	hir_items:           HIR_Accumulator,
-	symbols_by_id:       map[common.Symbol_ID]resolver.Symbol,
-	pending_bodies:      [dynamic]Pending_Function_Body,
-	pending_annotations: [dynamic]Pending_Annotation_Application,
-	processing_stack:    [dynamic]resolver.Symbol, // used to detect and emit diagnostics for dependency cycles
-	scratch_arena:       mem.Dynamic_Arena,
-	allocator:           runtime.Allocator,
+	symbol_resolver:  ^resolver.Resolver,
+	entry_package:    ^resolver.Package,
+	output:           ^hir.Translation_Unit,
+	hir_items:        HIR_Accumulator,
+	symbols_by_id:    map[common.Symbol_ID]resolver.Symbol,
+	pending_bodies:   [dynamic]Pending_Function_Body,
+	processing_stack: [dynamic]resolver.Symbol, // used to detect and emit diagnostics for dependency cycles
+	scratch_arena:    mem.Dynamic_Arena,
+	allocator:        runtime.Allocator,
 }
 
 HIR_Accumulator :: struct {
@@ -35,21 +34,6 @@ Pending_Function_Body :: struct {
 	symbol: ^resolver.Function,
 	params: []^resolver.Formal_Parameter,
 }
-
-Pending_Annotation_Application :: struct {
-	ast:        ^ast.Annotation,
-	hir:        ^hir.Annotation,
-	definition: ^resolver.Annotation,
-	file:       ^resolver.File,
-}
-
-Declaration_Context :: struct {
-	translation: ^Translation_State,
-	file:        ^resolver.File,
-	scope:       resolver.Scope,
-	function:    ^resolver.Function,
-}
-
 
 init_state :: proc(
 	state: ^Translation_State,
@@ -81,7 +65,6 @@ init_state :: proc(
 		context.allocator = state.allocator
 		state.symbols_by_id = make(map[common.Symbol_ID]resolver.Symbol)
 		state.pending_bodies = make([dynamic]Pending_Function_Body)
-		state.pending_annotations = make([dynamic]Pending_Annotation_Application)
 		state.processing_stack = make([dynamic]resolver.Symbol)
 	}
 }

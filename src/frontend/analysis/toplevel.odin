@@ -106,9 +106,20 @@ ensure_toplevel_symbol_processed :: proc(
 			ts.output.entry_point = symbol.hir
 		}
 
-	case ^resolver.Global_Variable:
-		return .Not_Implemented
 	case ^resolver.Constant:
+		#partial switch evaluated in evaluate(ts, symbol.ast.expr, symbol.defined_in) {
+		case Comptime_Value:
+			symbol.value = evaluated
+		case:
+			diagnostics.emit(
+				.Not_Compile_Time_Known,
+				ast.expression_span(symbol.ast.expr),
+				"this expression is not constant at compile-time",
+			)
+			return .Malformed
+		}
+
+	case ^resolver.Global_Variable:
 		return .Not_Implemented
 	case ^resolver.Struct_Type:
 		return .Not_Implemented

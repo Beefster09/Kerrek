@@ -34,6 +34,25 @@ Type_Expression :: union {
 	^Type_With_Tags,
 }
 
+type_span :: proc(type: Type_Expression) -> Span {
+	switch type in type {
+	case ^Simple_Type:
+		return type.span
+	case ^Type_With_Args:
+		return type.span
+	case ^Generic_Type:
+		return type.span
+	case ^Optional_Type:
+		return type.span
+	case ^Pointer_Type:
+		return type.span
+	case ^Type_With_Tags:
+		return type.span
+	}
+
+	return {}
+}
+
 Simple_Type :: struct {
 	span: Span,
 	type: Qualified_Name,

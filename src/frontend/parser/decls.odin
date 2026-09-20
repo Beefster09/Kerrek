@@ -32,12 +32,14 @@ _const_or_var :: proc(
 		type_expr = _type_expr(ps)
 	}
 
-	unit: ast.Declared_Unit = ast.Indeterminate_Unit.Inferred
+	unit: ast.Declared_Unit
 	if _just_match(ps, Punctuation.Bar) {
-		if _just_match(ps, Keyword.Nil) {
-			unit = ast.Indeterminate_Unit.No_Unit
-		} else if _just_match(ps, Keyword.Placeholder) {
-			unit = ast.Indeterminate_Unit.Flexible
+		if kw, ok := _match(ps, Keyword.Nil); ok {
+			unit := new(ast.No_Unit)
+			unit.span = kw[0].span
+		} else if kw, ok := _match(ps, Keyword.Placeholder); ok {
+			unit := new(ast.Flexible_Unit)
+			unit.span = kw[0].span
 		} else {
 			parsed_unit := _compound_unit(ps)
 			if parsed_unit == nil {
@@ -47,6 +49,9 @@ _const_or_var :: proc(
 			}
 			unit = parsed_unit
 		}
+	} else {
+		unit := new(ast.Inferred_Unit)
+		unit.span = _span_between(ps)
 	}
 
 	value: union {
