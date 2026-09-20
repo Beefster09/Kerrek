@@ -53,13 +53,13 @@ Numeric :: struct {
 }
 
 Number_Format :: enum {
-	DecimalInteger,
-	HexInteger,
-	OctalInteger,
-	BinaryInteger,
+	Decimal_Integer,
+	Hex_Integer,
+	Octal_Integer,
+	Binary_Integer,
 	Decimal,
 	Float,
-	HexFloat,
+	Hex_Float,
 }
 
 Punctuation :: enum {

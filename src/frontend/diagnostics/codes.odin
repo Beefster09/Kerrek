@@ -6,7 +6,7 @@ import "core:io"
 
 
 Code :: enum {
-	NOT_SET,
+	TBD,
 	// == Lexer diagnostics ==
 
 	// The source contains a malformed numeric literal.
@@ -66,6 +66,10 @@ Code :: enum {
 	Missing_Entry_Point,
 	// The entry point is duplicated or has an unsupported signature.
 	Invalid_Entry_Point,
+	// A name resolved to a kind of symbol that cannot be used in this context.
+	Wrong_Symbol_Kind,
+	// The number of expected values does not match the actual number of values
+	Arity_Mismatch,
 
 	// == MISC ==
 	Not_Implemented,
@@ -85,7 +89,7 @@ Code_Metadata :: struct {
 
 @(rodata)
 CODE_METADATA := [Code]Code_Metadata {
-	.NOT_SET = {stable_id = "NONE"},
+	.TBD = {stable_id = "0000"},
 	// Lexer diagnostics
 	.Invalid_Number_Literal = {origin = .Lexer, default_level = .Error, stable_id = "L00"},
 	.Number_Followed_By_Identifier = {
@@ -102,32 +106,34 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Syntax_Error = {origin = .Parser, default_level = .Error, stable_id = "P00"},
 	.Empty_Statement = {origin = .Parser, default_level = .Notice, stable_id = "P10"},
 	// Resolver diagnostics
-	.Unresolved_Name = {origin = .Resolver, default_level = .Error, stable_id = "R00"},
-	.Incomplete_Resolution = {origin = .Resolver, default_level = .Error, stable_id = "R01"},
-	.Invalid_Namespace_Access = {origin = .Resolver, default_level = .Error, stable_id = "R02"},
-	.Builtin_Shadowing = {origin = .Resolver, default_level = .Notice, stable_id = "R10"},
-	.Duplicate_Global = {origin = .Resolver, default_level = .Error, stable_id = "R11"},
-	.Duplicate_Local = {origin = .Resolver, default_level = .Error, stable_id = "R12"},
+	.Unresolved_Name = {origin = .Resolution, default_level = .Error, stable_id = "R00"},
+	.Incomplete_Resolution = {origin = .Resolution, default_level = .Error, stable_id = "R01"},
+	.Invalid_Namespace_Access = {origin = .Resolution, default_level = .Error, stable_id = "R02"},
+	.Builtin_Shadowing = {origin = .Resolution, default_level = .Notice, stable_id = "R10"},
+	.Duplicate_Global = {origin = .Resolution, default_level = .Error, stable_id = "R11"},
+	.Duplicate_Local = {origin = .Resolution, default_level = .Error, stable_id = "R12"},
 	.Dubious_Shadowing = {
-		origin = .Resolver,
+		origin = .Resolution,
 		category = .Dubious,
 		default_level = .Warning,
 		stable_id = "R13",
 	},
-	.Import_Conflict = {origin = .Resolver, default_level = .Error, stable_id = "R20"},
-	.Import_Not_Found = {origin = .Resolver, default_level = .Error, stable_id = "R21"},
+	.Import_Conflict = {origin = .Resolution, default_level = .Error, stable_id = "R20"},
+	.Import_Not_Found = {origin = .Resolution, default_level = .Error, stable_id = "R21"},
 	// Semantic analysis diagnostics
-	.Cyclical_Dependency = {origin = .TypeCheck, default_level = .Error, stable_id = "T00"},
-	.Invalid_Type = {origin = .TypeCheck, default_level = .Error, stable_id = "T01"},
-	.Invalid_Unit = {origin = .UnitCheck, default_level = .Error, stable_id = "U00"},
-	.Invalid_Capability = {origin = .CapCheck, default_level = .Error, stable_id = "C00"},
-	.Invalid_Annotation = {origin = .TypeCheck, default_level = .Error, stable_id = "T02"},
-	.Missing_Entry_Point = {origin = .TypeCheck, default_level = .Error, stable_id = "MAIN0"},
-	.Invalid_Entry_Point = {origin = .TypeCheck, default_level = .Error, stable_id = "MAIN1"},
+	.Cyclical_Dependency = {origin = .Semantic, default_level = .Error, stable_id = "A001"},
+	.Wrong_Symbol_Kind = {origin = .Semantic, default_level = .Error, stable_id = "A002"},
+	.Invalid_Annotation = {origin = .Semantic, default_level = .Error, stable_id = "A003"},
+	.Arity_Mismatch = {origin = .Semantic, default_level = .Error, stable_id = "A003"},
+	.Invalid_Type = {origin = .Semantic, default_level = .Error, stable_id = "AT01"},
+	.Invalid_Unit = {origin = .Semantic, default_level = .Error, stable_id = "AU01"},
+	.Invalid_Capability = {origin = .Semantic, default_level = .Error, stable_id = "AC01"},
+	.Missing_Entry_Point = {origin = .Semantic, default_level = .Error, stable_id = "MAIN0"},
+	.Invalid_Entry_Point = {origin = .Semantic, default_level = .Error, stable_id = "MAIN1"},
 	// MISC
-	.Not_Implemented = {origin = .TypeCheck, default_level = .Error, stable_id = "NOIMPL"},
+	.Not_Implemented = {origin = .Unknown, default_level = .Error, stable_id = "NOIMPL"},
 	// TEST
-	.Test = {origin = .Resolver, default_level = .Notice, stable_id = "TEST"},
+	.Test = {origin = .Resolution, default_level = .Notice, stable_id = "TEST"},
 }
 
 

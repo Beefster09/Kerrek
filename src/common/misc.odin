@@ -3,7 +3,7 @@ package common
 import "exact"
 
 Value :: union #no_nil {
-	Flex_Value,
+	Untyped_Value,
 	exact.Rat,
 	string,
 	rune,
@@ -11,7 +11,7 @@ Value :: union #no_nil {
 	bool,
 }
 
-Flex_Value :: enum {
+Untyped_Value :: enum {
 	Nil,
 	Zero,
 }

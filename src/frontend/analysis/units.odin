@@ -37,7 +37,7 @@ get_canonical_unit :: proc(
 	}
 
 	shrink(&components)
-	return units.build_compound_unit(components[:], unit.is_absolute), true
+	return units.build_compound_unit(components[:]), true
 }
 
 

@@ -19,9 +19,9 @@ Func_Definition :: struct {
 	params:      []^Formal_Parameter,
 	returns:     []^Func_Return,
 	error_type:  Type,
+	requires:    ^Capability_Expression,
 	flags:       Func_Flags,
 	call_conv:   Calling_Convention,
-	requires:    ^Capability_Expression,
 	body:        ^Block,
 	annotations: []^Annotation,
 }
@@ -39,9 +39,9 @@ Func_Flag :: enum {
 }
 
 Calling_Convention :: enum u32 {
-	Invalid,
 	Kerrek,
 	CDecl,
+	StdCall,
 }
 
 Struct_Field :: struct {

@@ -60,7 +60,7 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format) {
 	exponent_digits := 0
 	fallback_length := 0
 	fallback_format: Number_Format
-	format = .DecimalInteger
+	format = .Decimal_Integer
 
 	for i in 0 ..= len(src) {
 		c := rune(src[i] if i < len(src) else 0)
@@ -76,13 +76,13 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format) {
 		case .Leading_Zero:
 			switch c {
 			case 'x':
-				format = .HexInteger
+				format = .Hex_Integer
 				state = .Hex_First_Digit
 			case 'o':
-				format = .OctalInteger
+				format = .Octal_Integer
 				state = .Octal_First_Digit
 			case 'b':
-				format = .BinaryInteger
+				format = .Binary_Integer
 				state = .Binary_First_Digit
 			case '.':
 				format = .Decimal
@@ -203,7 +203,7 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format) {
 					return
 				}
 			case '.':
-				format = .HexFloat
+				format = .Hex_Float
 				state = .Hex_Fraction
 			case 'p', 'P':
 				if _exponent_marker_starts_identifier(src, i) {
@@ -212,7 +212,7 @@ _scan_numeric_dfa :: proc(src: string) -> (length: int, format: Number_Format) {
 				}
 				fallback_length = i
 				fallback_format = format
-				format = .HexFloat
+				format = .Hex_Float
 				state = .Hex_Exponent
 			case:
 				length = i
@@ -312,7 +312,7 @@ _match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
 	length, format := _scan_numeric_dfa(src)
 	if length == 0 {
 		#partial switch format {
-		case .HexInteger, .HexFloat:
+		case .Hex_Integer, .Hex_Float:
 			span_length := 2
 			if len(src) > 2 && src[2] != '_' {
 				_, rune_length := utf8.decode_rune(src[2:])
@@ -323,13 +323,13 @@ _match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
 				common.cursor_to_span(cursor, span_length),
 				"invalid hex literal",
 			)
-		case .OctalInteger:
+		case .Octal_Integer:
 			diagnostics.emit(
 				.Invalid_Number_Literal,
 				common.cursor_to_span(cursor, max(length, 2)),
 				"found no digits in octal literal",
 			)
-		case .BinaryInteger:
+		case .Binary_Integer:
 			diagnostics.emit(
 				.Invalid_Number_Literal,
 				common.cursor_to_span(cursor, max(length, 2)),
@@ -345,25 +345,25 @@ _match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
 	parsed := false
 
 	#partial switch format {
-	case .DecimalInteger:
+	case .Decimal_Integer:
 		integer, ok := exact.parse_int(raw, 10)
 		if ok {
 			value = exact.int_to_rat(integer)
 			parsed = true
 		}
-	case .HexInteger:
+	case .Hex_Integer:
 		integer, ok := exact.parse_int(raw[2:], 16)
 		if ok {
 			value = exact.int_to_rat(integer)
 			parsed = true
 		}
-	case .OctalInteger:
+	case .Octal_Integer:
 		integer, ok := exact.parse_int(raw[2:], 8)
 		if ok {
 			value = exact.int_to_rat(integer)
 			parsed = true
 		}
-	case .BinaryInteger:
+	case .Binary_Integer:
 		integer, ok := exact.parse_int(raw[2:], 2)
 		if ok {
 			value = exact.int_to_rat(integer)
@@ -371,7 +371,7 @@ _match_numeric :: proc(cursor: common.Cursor, src: string) -> (Numeric, int) {
 		}
 	case .Decimal:
 		value, parsed = exact.parse_decimal(raw)
-	case .HexFloat:
+	case .Hex_Float:
 		value, parsed = exact.parse_hexfloat(raw[2:])
 	case:
 		return {}, 0
@@ -394,7 +394,7 @@ _count_numeric_digits :: proc(
 ) {
 	start := 0
 	#partial switch format {
-	case .HexInteger, .OctalInteger, .BinaryInteger, .HexFloat:
+	case .Hex_Integer, .Octal_Integer, .Binary_Integer, .Hex_Float:
 		start = 2
 	case:
 	}
@@ -404,7 +404,7 @@ _count_numeric_digits :: proc(
 	after_point := false
 	for c in raw[start:] {
 		if format == .Decimal && (c == 'e' || c == 'E') ||
-		   format == .HexFloat && (c == 'p' || c == 'P') {
+		   format == .Hex_Float && (c == 'p' || c == 'P') {
 			break
 		}
 		switch c {

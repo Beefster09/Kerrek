@@ -174,6 +174,7 @@ queue_build_function_body :: proc(ts: ^Translation_State, symbol: ^resolver.Func
 build_function_body :: proc(
 	ts: ^Translation_State,
 	symbol: ^resolver.Function,
+	scope: resolver.Scope,
 ) -> Func_Translation_Error {
 	return .OK // TODO
 }

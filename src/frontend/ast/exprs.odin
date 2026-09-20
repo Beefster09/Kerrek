@@ -100,7 +100,7 @@ Unit_Conversion_Expr :: struct {
 Unit_Reinterpret_Expr :: struct {
 	span:     Span,
 	expr:     Expression,
-	new_unit: ^Compound_Unit,
+	new_unit: Declared_Unit,
 }
 
 Index_Expr :: struct {
@@ -123,4 +123,48 @@ Type_Expr_Expr :: struct {
 Unit_Expr :: struct {
 	span: Span,
 	unit: ^Compound_Unit,
+}
+
+
+expression_span :: proc "contextless" (expr: Expression) -> Span {
+	switch expr in expr {
+	case ^Name_Expr:
+		return expr.span
+	case ^Placeholder_Expr:
+		return expr.span
+	case ^FieldAccess_Expr:
+		return expr.span
+	case ^Scalar_Literal_Expr:
+		return expr.span
+	case ^Simple_Literal_Expr:
+		return expr.span
+	case ^Implicit_Enum_Expr:
+		return expr.span
+	case ^Move_Expr:
+		return expr.span
+	case ^Binop_Expr:
+		return expr.span
+	case ^Unary_Expr:
+		return expr.span
+	case ^Address_Of_Expr:
+		return expr.span
+	case ^Dereference_Expr:
+		return expr.span
+	case ^Cast_Expr:
+		return expr.span
+	case ^Unit_Conversion_Expr:
+		return expr.span
+	case ^Unit_Reinterpret_Expr:
+		return expr.span
+	case ^Index_Expr:
+		return expr.span
+	case ^Callish_Expr:
+		return expr.span
+	case ^Type_Expr_Expr:
+		return expr.span
+	case ^Unit_Expr:
+		return expr.span
+	}
+
+	return {}
 }

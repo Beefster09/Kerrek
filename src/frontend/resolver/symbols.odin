@@ -11,7 +11,6 @@ import "../units"
 Symbol_ID :: common.Symbol_ID
 Identifier :: common.Identifier
 
-
 _Symbol_Header :: struct {
 	id:         Symbol_ID,
 	name:       Identifier,
@@ -22,102 +21,6 @@ _Symbol_Header :: struct {
 		Failed,
 	},
 	defined_in: ^File,
-}
-
-Function :: struct {
-	using header:   _Symbol_Header,
-	ast:            ^ast.Func_Definition,
-	hir:            ^hir.Func_Definition,
-	deprecated_msg: Maybe(string),
-}
-
-Type_Alias :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Type_Alias,
-	hir:          hir.Type,
-}
-
-// These type variants are not produced by the parser yet, but keeping the
-// symbol shapes here makes the resolver ready for their AST nodes.
-Distinct_Type :: struct {
-	using header: _Symbol_Header,
-	ast:          rawptr,
-	hir:          ^hir.Distinct_Type,
-}
-
-Struct_Type :: struct {
-	using header: _Symbol_Header,
-	ast:          rawptr,
-	hir:          ^hir.Struct_Type,
-}
-
-Enum_Type :: struct {
-	using header: _Symbol_Header,
-	ast:          rawptr,
-	hir:          ^hir.Enum_Type,
-}
-
-Type_Definition :: union {
-	^Type_Alias,
-	^Distinct_Type,
-	^Struct_Type,
-	^Enum_Type,
-}
-
-Constant :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Constant_Def,
-	value:        rawptr, // TODO: replace with the compile-time value type
-}
-
-Global_Variable :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Global_Variable,
-	hir:          ^hir.Global_Variable,
-}
-
-Local_Variable :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Local_Variable,
-	hir:          ^hir.Local_Variable,
-}
-
-Base_Unit :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Unit_Decl,
-	hir:          ^hir.Base_Unit,
-}
-
-Unit_Alias :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Unit_Alias_Decl,
-	canonical:    units.Compound_Unit,
-	// These may still exist in the HIR for reflection purposes, e.g. printing
-	// a kg m / s^2 as newtons.
-}
-
-Capability :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Capability_Decl,
-	hir:          ^hir.Capability,
-}
-
-Annotation :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Annotation_Def,
-	hir:          ^hir.Annotation_Def,
-}
-
-Formal_Parameter :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Formal_Parameter,
-	hir:          ^hir.Formal_Parameter,
-}
-
-Named_Return :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Func_Return,
-	hir:          ^hir.Func_Return,
 }
 
 Symbol :: union {
@@ -174,6 +77,102 @@ symbol_header :: proc(symbol: Symbol) -> ^_Symbol_Header {
 	}
 
 	return nil
+}
+
+Function :: struct {
+	using header:   _Symbol_Header,
+	ast:            ^ast.Func_Definition,
+	hir:            ^hir.Func_Definition,
+	deprecated_msg: Maybe(string),
+}
+
+Type_Alias :: struct {
+	using header: _Symbol_Header,
+	ast:          ^ast.Type_Alias,
+	hir:          hir.Type,
+}
+
+// These type variants are not produced by the parser yet, but keeping the
+// symbol shapes here makes the resolver ready for their AST nodes.
+Distinct_Type :: struct {
+	using header: _Symbol_Header,
+	ast:          rawptr,
+	hir:          ^hir.Distinct_Type,
+}
+
+Struct_Type :: struct {
+	using header: _Symbol_Header,
+	ast:          rawptr,
+	hir:          ^hir.Struct_Type,
+}
+
+Enum_Type :: struct {
+	using header: _Symbol_Header,
+	ast:          rawptr,
+	hir:          ^hir.Enum_Type,
+}
+
+Type_Definition :: union {
+	^Type_Alias,
+	^Distinct_Type,
+	^Struct_Type,
+	^Enum_Type,
+}
+
+Constant :: struct {
+	using header: _Symbol_Header,
+	ast:          ^ast.Constant_Def,
+	value:        Comptime_Value,
+}
+
+Global_Variable :: struct {
+	using header: _Symbol_Header,
+	ast:          ^ast.Global_Variable,
+	hir:          ^hir.Global_Variable,
+}
+
+Local_Variable :: struct {
+	using header: _Symbol_Header,
+	ast:          ^ast.Local_Variable,
+	hir:          ^hir.Local_Variable,
+}
+
+Base_Unit :: struct {
+	using header: _Symbol_Header,
+	ast:          ^ast.Unit_Decl,
+	hir:          ^hir.Base_Unit,
+}
+
+Unit_Alias :: struct {
+	using header: _Symbol_Header,
+	ast:          ^ast.Unit_Alias_Decl,
+	canonical:    units.Compound_Unit,
+	// These may still exist in the HIR for reflection purposes, e.g. printing
+	// a kg m / s^2 as newtons.
+}
+
+Capability :: struct {
+	using header: _Symbol_Header,
+	ast:          ^ast.Capability_Decl,
+	hir:          ^hir.Capability,
+}
+
+Annotation :: struct {
+	using header: _Symbol_Header,
+	ast:          ^ast.Annotation_Def,
+	hir:          ^hir.Annotation_Def,
+}
+
+Formal_Parameter :: struct {
+	using header: _Symbol_Header,
+	ast:          ^ast.Formal_Parameter,
+	hir:          ^hir.Formal_Parameter,
+}
+
+Named_Return :: struct {
+	using header: _Symbol_Header,
+	ast:          ^ast.Func_Return,
+	hir:          ^hir.Func_Return,
 }
 
 Package :: struct {

@@ -273,16 +273,16 @@ test_numeric_literals :: proc(t: ^testing.T) {
 
 	cases := [?]Numeric_Case {
 		// Decimal integers: separators do not contribute to digit counts.
-		{"0", "0", .DecimalInteger, 0, 1, 1, 0},
-		{"000_001 ", "000_001", .DecimalInteger, 1, 1, 1, 0},
-		{"1_000_000\t", "1_000_000", .DecimalInteger, 1000000, 1, 7, 0},
-		{"123456789\n", "123456789", .DecimalInteger, 123456789, 1, 9, 0},
+		{"0", "0", .Decimal_Integer, 0, 1, 1, 0},
+		{"000_001 ", "000_001", .Decimal_Integer, 1, 1, 1, 0},
+		{"1_000_000\t", "1_000_000", .Decimal_Integer, 1000000, 1, 7, 0},
+		{"123456789\n", "123456789", .Decimal_Integer, 123456789, 1, 9, 0},
 
 		// Non-decimal integers exercise mixed case and every supported radix.
-		{"0xdead_BEEF;", "0xdead_BEEF", .HexInteger, 3735928559, 1, 8, 0},
-		{"0x0_0_1)", "0x0_0_1", .HexInteger, 1, 1, 1, 0},
-		{"0o7_5_5,", "0o7_5_5", .OctalInteger, 493, 1, 3, 0},
-		{"0b101_101🙂", "0b101_101", .BinaryInteger, 45, 1, 6, 0},
+		{"0xdead_BEEF;", "0xdead_BEEF", .Hex_Integer, 3735928559, 1, 8, 0},
+		{"0x0_0_1)", "0x0_0_1", .Hex_Integer, 1, 1, 1, 0},
+		{"0o7_5_5,", "0o7_5_5", .Octal_Integer, 493, 1, 3, 0},
+		{"0b101_101🙂", "0b101_101", .Binary_Integer, 45, 1, 6, 0},
 
 		// Decimal fractions and exponents permit separators only between digits.
 		{"12.50e-1?", "12.50e-1", .Decimal, 5, 4, 4, 2},
@@ -293,16 +293,16 @@ test_numeric_literals :: proc(t: ^testing.T) {
 		{"12.5E-1:", "12.5E-1", .Decimal, 5, 4, 3, 1},
 
 		// Hex-float precision is counted in hexadecimal fractional digits.
-		{"0x1.8p1%", "0x1.8p1", .HexFloat, 3, 1, 2, 1},
-		{"0x1.a_bp+1_0&", "0x1.a_bp+1_0", .HexFloat, 1708, 1, 3, 2},
-		{"0x0.08p0|", "0x0.08p0", .HexFloat, 1, 32, 1, 2},
-		{"0x1p10~", "0x1p10", .HexFloat, 1024, 1, 1, 0},
-		{"0x1P10", "0x1P10", .HexFloat, 1024, 1, 1, 0},
+		{"0x1.8p1%", "0x1.8p1", .Hex_Float, 3, 1, 2, 1},
+		{"0x1.a_bp+1_0&", "0x1.a_bp+1_0", .Hex_Float, 1708, 1, 3, 2},
+		{"0x0.08p0|", "0x0.08p0", .Hex_Float, 1, 32, 1, 2},
+		{"0x1p10~", "0x1p10", .Hex_Float, 1024, 1, 1, 0},
+		{"0x1P10", "0x1P10", .Hex_Float, 1024, 1, 1, 0},
 		// The binary exponent is optional when the literal contains a point.
-		{"0x1.8", "0x1.8", .HexFloat, 3, 2, 2, 1},
-		{"0x1.;", "0x1.", .HexFloat, 1, 1, 1, 0},
-		{"0x0.08 ", "0x0.08", .HexFloat, 1, 32, 1, 2},
-		{"0xa.b_c)", "0xa.b_c", .HexFloat, 687, 64, 3, 2},
+		{"0x1.8", "0x1.8", .Hex_Float, 3, 2, 2, 1},
+		{"0x1.;", "0x1.", .Hex_Float, 1, 1, 1, 0},
+		{"0x0.08 ", "0x0.08", .Hex_Float, 1, 32, 1, 2},
+		{"0xa.b_c)", "0xa.b_c", .Hex_Float, 687, 64, 3, 2},
 	}
 
 	for tc, i in cases {
@@ -380,18 +380,18 @@ test_numeric_literals :: proc(t: ^testing.T) {
 	// Dot and exponent-marker suffixes are context-sensitive rather than plain
 	// delimiters, so keep their expected maximal matches explicit.
 	contextual_suffix_cases := [?]Numeric_Case {
-		{"1e", "1", .DecimalInteger, 1, 1, 1, 0},
+		{"1e", "1", .Decimal_Integer, 1, 1, 1, 0},
 		{"1.", "1.", .Decimal, 1, 1, 1, 0},
 		{"1..", "1.", .Decimal, 1, 1, 1, 0},
 		{"1...tail", "1.", .Decimal, 1, 1, 1, 0},
 		{"1.e2tail", "1.e2", .Decimal, 100, 1, 1, 0},
-		{"0x1.p2tail", "0x1.p2", .HexFloat, 4, 1, 1, 0},
-		{"0x1face!", "0x1face", .HexInteger, 129742, 1, 5, 0},
-		{"123abc", "123", .DecimalInteger, 123, 1, 3, 0},
-		{"0o7octal", "0o7", .OctalInteger, 7, 1, 1, 0},
-		{"0b10binary", "0b10", .BinaryInteger, 2, 1, 2, 0},
-		{"0x1p", "0x1", .HexInteger, 1, 1, 1, 0},
-		{"0xfff.3a5dftail", "0xfff.3a5df", .HexFloat, 0xfff3a5df, 0x100000, 8, 5},
+		{"0x1.p2tail", "0x1.p2", .Hex_Float, 4, 1, 1, 0},
+		{"0x1face!", "0x1face", .Hex_Integer, 129742, 1, 5, 0},
+		{"123abc", "123", .Decimal_Integer, 123, 1, 3, 0},
+		{"0o7octal", "0o7", .Octal_Integer, 7, 1, 1, 0},
+		{"0b10binary", "0b10", .Binary_Integer, 2, 1, 2, 0},
+		{"0x1p", "0x1", .Hex_Integer, 1, 1, 1, 0},
+		{"0xfff.3a5dftail", "0xfff.3a5df", .Hex_Float, 0xfff3a5df, 0x100000, 8, 5},
 	}
 	for tc, i in contextual_suffix_cases {
 		_expect_numeric(t, tc)

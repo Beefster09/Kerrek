@@ -16,11 +16,8 @@ Origin :: enum u8 {
 	Unknown = 0,
 	Lexer,
 	Parser,
-	Resolver,
-	TypeCheck,
-	UnitCheck,
-	FactCheck,
-	CapCheck,
+	Resolution,
+	Semantic,
 }
 
 Category :: enum u8 {

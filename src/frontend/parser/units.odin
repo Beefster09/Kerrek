@@ -30,7 +30,7 @@ _compound_unit :: proc(ps: ^Parser_State, required := false) -> ^ast.Compound_Un
 		if m, ok := _match(ps, Punctuation.Caret, M.Numeric); ok {
 			exp := m[1].what.(Numeric)
 
-			if exp.format == .DecimalInteger {
+			if exp.format == .Decimal_Integer {
 				if exp128, ok := exp.value.numerator.(i128);
 				   ok && -128 <= exp128 && exp128 <= 127 {
 					exponent = ast.Integer_Unit_Exponent{m[1].span, int(exp128)}
@@ -61,7 +61,7 @@ _compound_unit :: proc(ps: ^Parser_State, required := false) -> ^ast.Compound_Un
 			num := m[2].what.(Numeric)
 			den := m[4].what.(Numeric)
 
-			if num.format == .DecimalInteger && den.format == .DecimalInteger {
+			if num.format == .Decimal_Integer && den.format == .Decimal_Integer {
 				small_num: int
 				small_den: int
 				in_range := true

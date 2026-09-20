@@ -85,8 +85,6 @@ _expr_atom :: proc(ps: ^Parser_State) -> ast.Expression {
 		atom = _literal_expr(ps)
 	}
 
-	// Field access, dereference, calls, and indexing are still unimplemented in
-	// pykerrek and intentionally remain outside this compatibility port.
 	return atom
 }
 
@@ -150,7 +148,7 @@ _literal_expr :: proc(ps: ^Parser_State) -> ast.Expression {
 			literal := new(ast.Simple_Literal_Expr)
 			literal^ = {
 				span  = tok.span,
-				value = common.Flex_Value.Nil,
+				value = common.Untyped_Value.Nil,
 			}
 			ps.cur_token += 1
 			return literal

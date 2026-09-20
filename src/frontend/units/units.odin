@@ -20,7 +20,6 @@ Compound_Unit :: union {
 #assert(size_of(Heap_Compound_Unit) <= 32)
 Heap_Compound_Unit :: struct {
 	components: []Unit_Component,
-	absolute:   bool,
 }
 
 #assert(size_of(Inline_Compound_Unit) <= 32)
@@ -28,8 +27,7 @@ MAX_INLINE_UNITS :: 5
 Inline_Compound_Unit :: struct {
 	comp_base: [MAX_INLINE_UNITS]common.Symbol_ID,
 	comp_exp:  [MAX_INLINE_UNITS]Small_Rat,
-	count:     u8,
-	absolute:  bool,
+	count:     u16,
 }
 
 Unit_Component :: struct {
@@ -68,17 +66,6 @@ get_component :: proc(unit: Compound_Unit, #any_int idx: int) -> Unit_Component 
 	}
 }
 
-is_absolute :: proc(unit: Compound_Unit) -> bool {
-	switch u in unit {
-	case Inline_Compound_Unit:
-		return u.absolute
-	case Heap_Compound_Unit:
-		return u.absolute
-	case:
-		return false
-	}
-}
-
 // arbitrary sort function: order by descending exponent, ascending symbol id
 // symbol id should roughly correlate with declaration order
 _cmp_components :: proc(a, b: Unit_Component) -> slice.Ordering {
@@ -106,10 +93,6 @@ combine_units :: proc(
 	result: Compound_Unit,
 	err: Unit_Error,
 ) {
-	a_is_abs := is_absolute(a)
-	if a_is_abs != is_absolute(b) {
-		return nil, .Absolute_Relative_Mismatch
-	}
 
 	cmp_out := make([dynamic]Unit_Component, 0, num_components(a) + num_components(b))
 	defer if _, is_inline := result.(Inline_Compound_Unit); err != .OK || is_inline {
@@ -146,18 +129,17 @@ combine_units :: proc(
 		}
 	}
 	shrink(&cmp_out)
-	return build_compound_unit(cmp_out[:], a_is_abs), .OK
+	return build_compound_unit(cmp_out[:]), .OK
 }
 
 // creates a compound unit, inline if possible
 // assumes ownership of the given slice and sorts the components
-build_compound_unit :: proc(components: []Unit_Component, absolute: bool) -> Compound_Unit {
+build_compound_unit :: proc(components: []Unit_Component) -> Compound_Unit {
 	slice.sort_by_cmp(components, _cmp_components)
 
 	if len(components) <= MAX_INLINE_UNITS {
 		res := Inline_Compound_Unit {
-			count    = u8(len(components)),
-			absolute = absolute,
+			count = u16(len(components)),
 		}
 		for cmp, i in components {
 			res.comp_base[i] = cmp.unit
@@ -165,8 +147,19 @@ build_compound_unit :: proc(components: []Unit_Component, absolute: bool) -> Com
 		}
 		return res
 	} else {
-		return Heap_Compound_Unit{components = components[:], absolute = absolute}
+		return Heap_Compound_Unit{components = components[:]}
 	}
+}
+
+base_unit :: proc(unit_id: common.Symbol_ID) -> Compound_Unit {
+	unit: Inline_Compound_Unit
+	unit.comp_base[0] = unit_id
+	unit.comp_exp[0] = {
+		n = 1,
+		d = 0,
+	}
+	unit.count = 1
+	return unit
 }
 
 compound_units_equal :: proc(a, b: Compound_Unit) -> bool {

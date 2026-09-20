@@ -16,6 +16,9 @@ Rat :: struct {
 	denominator: Int,
 }
 
+RAT_ONE := Rat{i128(1), i128(1)}
+RAT_ZERO := Rat{i128(0), i128(1)}
+
 // An integer that is an i128 in the general case but promotes to bigint for very large values
 Int :: union #no_nil {
 	i128,
