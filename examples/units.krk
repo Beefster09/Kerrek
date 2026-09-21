@@ -21,6 +21,7 @@ unit foot {
 	to yard: / 3;
 	to mile: / 5280;
 	from football_field: * 120;
+	to fhqwgads: * 1.234;
 }
 unit ft = foot;
 unit inch;

@@ -1,11 +1,17 @@
 package analysis
 
 import "../../common"
+import "../ast"
 import "../diagnostics"
 import "../hir"
 import "../resolver"
 
-resolve :: proc(
+resolve :: proc {
+	resolve_name,
+	resolve_qualname,
+}
+
+resolve_name :: proc(
 	ts: ^Translation_State,
 	scope: resolver.Scope,
 	name: common.Name,
@@ -15,6 +21,20 @@ resolve :: proc(
 		ensure_toplevel_symbol_processed(ts, resolved)
 	} else {
 		diagnostics.emit(.Unresolved_Name, name.span, "'%s' could not be resolved", name.id)
+	}
+	return resolved
+}
+
+resolve_qualname :: proc(
+	ts: ^Translation_State,
+	scope: resolver.Scope,
+	name: ast.Qualified_Name,
+) -> resolver.Symbol {
+	resolved := resolver.resolve(scope, name)
+	if resolved != nil {
+		ensure_toplevel_symbol_processed(ts, resolved)
+	} else {
+		diagnostics.emit(.Unresolved_Name, name.span, "'%s' could not be resolved", name)
 	}
 	return resolved
 }

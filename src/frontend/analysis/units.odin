@@ -1,5 +1,6 @@
 package analysis
 
+import "../../common/exact"
 import "../ast"
 import "../diagnostics"
 import "../hir"
@@ -55,5 +56,35 @@ _canonical_exponent :: proc(exponent: ast.Unit_Exponent) -> (units.Small_Rat, bo
 	case nil:
 		return units.RAT_ONE, true
 	}
+	return {}, false
+}
+
+_get_conversion_operand :: proc(
+	ts: ^Translation_State,
+	scope: resolver.Scope,
+	op: ast.Unit_Conversion_Operand,
+) -> (
+	exact.Rat,
+	bool,
+) {
+	switch op in op {
+	case ast.Qualified_Name:
+		if resolved, ok := resolve(ts, scope, op).(^resolver.Constant); ok {
+			if resolved.state == .Failed {
+				return {}, false
+			}
+			// TODO: check that the value is an untyped and unitless constant
+			return resolved.value.value.(exact.Rat)
+		} else {
+			diagnostics.emit(
+				.Invalid_Type,
+				op.span,
+				"this needs to be a number or untyped numeric constant",
+			)
+		}
+	case exact.Rat:
+		return op, true
+	}
+
 	return {}, false
 }

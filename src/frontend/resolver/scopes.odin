@@ -105,7 +105,7 @@ partial_resolve_qualname :: proc(
 	Symbol,
 	[]Identifier,
 ) {
-	return _resolve_qualname(scope, qualname), nil
+	return resolve_qualname(scope, qualname), nil
 }
 
 partial_resolve_expression :: proc(scope: Scope, expr: ast.Expression) -> (Symbol, []Identifier) {
@@ -137,8 +137,29 @@ resolve :: proc {
 	resolve_expression,
 }
 
-resolve_qualname :: proc(scope: Scope, qualname: ast.Qualified_Name) -> Symbol {
-	return _resolve_qualname(scope, qualname)
+resolve_qualname :: proc(parent: Scope, qualname: ast.Qualified_Name) -> Symbol {
+	if len(qualname.path) == 0 do return nil
+
+	base_name := qualname.path[0]
+	resolved := lookup(parent, base_name.id)
+	if resolved == nil {
+		diagnostics.emit(.Unresolved_Name, base_name.span, "cannot resolve '%s'", base_name.id)
+		return nil
+	}
+
+	for field, i in qualname.path[1:] {
+		resolved = _static_resolve_field(resolved, field)
+		if resolved == nil {
+			diagnostics.emit(
+				.Unresolved_Name,
+				field.span,
+				"cannot resolve component %d of this qualified name",
+				i + 2,
+			)
+			return nil
+		}
+	}
+	return resolved
 }
 
 resolve_expression :: proc(scope: Scope, expr: ast.Expression) -> Symbol {

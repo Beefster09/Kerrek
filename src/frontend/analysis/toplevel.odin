@@ -5,10 +5,12 @@ import "core:reflect"
 import "core:slice"
 
 import "../../common"
+import "../../common/exact"
 import "../ast"
 import "../diagnostics"
 import "../hir"
 import "../resolver"
+import "../units"
 
 
 process_toplevel_items :: proc(ts: ^Translation_State) -> bool {
@@ -130,11 +132,54 @@ ensure_toplevel_symbol_processed :: proc(
 			name = symbol.ast.name,
 		}
 		// TODO: annotations
+		conversions_ok := true
 		for conv in symbol.ast.conversions {
-			// #partial switch resolved in resolve(ts, scope, conv.other) {}
-			// TODO
+			#partial switch other in resolver.resolve_qualname(symbol.defined_in, conv.other) {
+			case ^resolver.Base_Unit:
+				mul, m_ok := _get_conversion_operand(ts, symbol.defined_in, conv.multiplier)
+				div, d_ok := _get_conversion_operand(ts, symbol.defined_in, conv.divisor)
+				if m_ok && d_ok {
+					ratio := exact.div(mul, div)
+					if conv.direction == .To {
+						units.add_conversion(
+							&ts.unit_conversions,
+							conv.span,
+							symbol.id,
+							other.id,
+							ratio,
+						)
+					} else {
+						units.add_conversion(
+							&ts.unit_conversions,
+							conv.span,
+							other.id,
+							symbol.id,
+							ratio,
+						)
+					}
+				}
+			case ^resolver.Unit_Alias:
+				diagnostics.emit(
+					.Not_Implemented,
+					conv.other.span,
+					"unit conversions to aliases not yet implemented",
+				)
+			case nil:
+				conversions_ok = false
+			// diagnostics should have already been emitted
+			case:
+				conversions_ok = false
+				diagnostics.emit(
+					.Invalid_Unit,
+					conv.other.span,
+					"unit conversion defined within '%s' wants to convert %s '%s', which is not a unit",
+					symbol.name,
+					"to" if conv.direction == .To else "from",
+					conv.other,
+				)
+			}
 		}
-		return .OK
+		return .OK if conversions_ok else .Malformed
 
 	case ^resolver.Unit_Alias:
 		return .OK

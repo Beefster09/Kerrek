@@ -367,30 +367,6 @@ _emit_namespace_error :: proc(field: ast.Name, base_name: Identifier, kind: stri
 	)
 }
 
-_resolve_qualname :: proc(parent: Scope, qualname: ast.Qualified_Name) -> Symbol {
-	if len(qualname.path) == 0 do return nil
-
-	base_name := qualname.path[0]
-	resolved := lookup(parent, base_name.id)
-	if resolved == nil {
-		diagnostics.emit(.Unresolved_Name, base_name.span, "cannot resolve '%s'", base_name.id)
-		return nil
-	}
-
-	for field, i in qualname.path[1:] {
-		resolved = _static_resolve_field(resolved, field)
-		if resolved == nil {
-			diagnostics.emit(
-				.Unresolved_Name,
-				field.span,
-				"cannot resolve component %d of this qualified name",
-				i + 2,
-			)
-			return nil
-		}
-	}
-	return resolved
-}
 
 symbol_name :: proc(named: Symbol) -> Identifier {
 	switch symbol in named {

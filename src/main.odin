@@ -6,6 +6,7 @@ import "core:fmt"
 import "core:os"
 
 import "common"
+import "frontend/ast"
 import "frontend/diagnostics"
 import "frontend/resolver"
 import "frontend/units"
@@ -26,6 +27,7 @@ main :: proc() {
 	diagnostics.initialize()
 	resolver.initialize()
 	units.initialize()
+	fmt.register_user_formatter(ast.Qualified_Name, ast.fmt_qualname)
 
 	cmd := os.args[1] if len(os.args) >= 2 else ""
 
