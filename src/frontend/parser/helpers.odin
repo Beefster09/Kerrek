@@ -216,7 +216,18 @@ _attach_annotations :: proc(
 	to: ^$T,
 	annotations: ^[dynamic]^ast.Annotation,
 ) where intrinsics.type_has_field(T, "annotations") {
-	to.annotations = slice.clone(annotations^[:])
+	if annotations == nil || len(annotations^) == 0 {
+		return
+	}
+
+	if to != nil {
+		to.annotations = slice.clone(annotations^[:])
+	} else {
+		for anno in annotations^ {
+			diagnostics.emit(.TBD, anno.span, "this annotation was not applied")
+		}
+	}
+
 	clear(annotations)
 }
 

@@ -3,6 +3,11 @@ package hir
 import "../../common"
 
 
+MAX_DECIMAL_DIGITS :: 1000
+MAX_DECIMAL_SCALE :: 1000
+MIN_DECIMAL_SCALE :: -1000
+
+
 Type :: union {
 	Primitive_Type,
 	Fixed_Decimal,

@@ -64,7 +64,7 @@ _type_expr :: proc(ps: ^Parser_State, allow_generics := false) -> ast.Type_Expre
 		}
 
 	case:
-		typ = _simple_type(ps)
+		typ = _type_atom(ps)
 	}
 
 	if typ == nil {
@@ -96,17 +96,49 @@ _type_expr :: proc(ps: ^Parser_State, allow_generics := false) -> ast.Type_Expre
 }
 
 
-_simple_type :: proc(ps: ^Parser_State) -> ast.Type_Expression {
+_type_atom :: proc(ps: ^Parser_State) -> ast.Type_Expression {
 	qualname, ok := _qualname(ps)
 	if !ok {
 		return nil
 	}
-	simple := new(ast.Simple_Type)
-	simple^ = {
-		span = qualname.span,
-		type = qualname,
+
+	if _just_match(ps, Punctuation.LParen) {
+		args := make([dynamic]ast.Argument)
+		for !_just_match(ps, Punctuation.RParen) {
+			expr := _expr(ps)
+			if expr == nil {
+				_error_here(ps, "expected an expression here")
+				return nil
+			}
+			append(&args, ast.Argument{ast.expression_span(expr), nil, expr})
+
+			if !_just_match(ps, Punctuation.Comma) {
+				if (_peek(ps) or_else {}).what != Punctuation.RParen {
+					_error_here(ps, "expected the parametric type to be closed")
+					return nil
+				}
+				// break
+			}
+		}
+		paren, ok := _peek(ps, -1)
+		assert(ok && paren.what == Punctuation.RParen)
+		shrink(&args)
+		parametric := new(ast.Type_With_Args)
+		parametric^ = {
+			span = common.merge_spans(qualname.span, paren.span),
+			base = qualname,
+			args = args[:],
+		}
+		return parametric
+
+	} else {
+		simple := new(ast.Simple_Type)
+		simple^ = {
+			span = qualname.span,
+			type = qualname,
+		}
+		return simple
 	}
-	return simple
 }
 
 

@@ -78,22 +78,22 @@ unit fahrenheit;
 \\ unit fahrenheit = rankine @fahrenheit_brine;
 
 @pure
-func celsius_to_kelvin(degrees: Decimal | #celsius) -> Decimal | #kelvin {
+func celsius_to_kelvin(degrees: Decimal(18, 8) | #celsius) -> Decimal(18, 8) | #kelvin {
 	return degrees + 273.15 reinterpret unit as #kelvin;
 }
 
 @pure
-func kelvin_to_celsius(heat: Decimal | #kelvin) -> Decimal | #celsius {
+func kelvin_to_celsius(heat: Decimal(18, 8) | #kelvin) -> Decimal(18, 8) | #celsius {
 	return heat - 273.15 reinterpret unit as #celsius;
 }
 
 @pure
-func celsius_to_fahrenheit(degrees: Decimal | #celsius) -> Decimal | #fahrenheit {
+func celsius_to_fahrenheit(degrees: Decimal(18, 8) | #celsius) -> Decimal(18, 8) | #fahrenheit {
 	return 9 * degrees / 5 + 32 reinterpret unit as #fahrenheit;
 }
 
 @pure
-func fahrenheit_to_celsius(degrees: Decimal | #fahrenheit) -> Decimal | #celsius {
+func fahrenheit_to_celsius(degrees: Decimal(18, 8) | #fahrenheit) -> Decimal(18, 8) | #celsius {
 	return (degrees - 32) * 5 / 9 reinterpret unit as #celsius;
 }
 
