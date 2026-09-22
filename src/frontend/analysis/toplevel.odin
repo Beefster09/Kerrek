@@ -172,7 +172,7 @@ ensure_toplevel_symbol_processed :: proc(
 				diagnostics.emit(
 					.Invalid_Unit,
 					conv.other.span,
-					"unit conversion defined within '%s' wants to convert %s '%s', which is not a unit",
+					"unit '%s' defines a conversion %s '%s', which is not a unit",
 					symbol.name,
 					"to" if conv.direction == .To else "from",
 					conv.other,

@@ -1,6 +1,7 @@
 package parser
 
 import "core:fmt"
+import "core:sort"
 
 import "../../common"
 import "../ast"
@@ -85,7 +86,67 @@ _expr_atom :: proc(ps: ^Parser_State) -> ast.Expression {
 		atom = _literal_expr(ps)
 	}
 
+	suffixes: for {
+		tok, ok := _peek(ps)
+		switch tok.what {
+		case Punctuation.Caret:
+			ps.cur_token += 1
+			deref_expr := new(ast.Dereference_Expr)
+			deref_expr^ = {
+				span = common.merge_spans(ast.span(atom), tok.span),
+				expr = atom,
+			}
+			atom = deref_expr
+		case Punctuation.LParen:
+			args, span, ok := _arg_list(ps)
+			if !ok {
+				return nil
+			}
+
+			callish_expr := new(ast.Callish_Expr)
+			callish_expr^ = {
+				span   = common.merge_spans(ast.span(atom), span),
+				callee = atom,
+				args   = args,
+			}
+		case Punctuation.LSquare:
+			diagnostics.emit(.Not_Implemented, tok.span, "index expressions not yet supported")
+		case:
+			break suffixes
+		}
+	}
+
 	return atom
+}
+
+
+_arg_list :: proc(ps: ^Parser_State) -> ([]ast.Argument, common.Span, bool) {
+	lparen, lp_ok := _match(ps, Punctuation.LParen)
+	if !lp_ok {
+		return nil, {}, false
+	}
+
+	args := make([dynamic]ast.Argument)
+	for (_peek(ps) or_else {}).what != Punctuation.RParen {
+		expr := _expr(ps)
+		if expr == nil {
+			_error_here(ps, "expected an expression here")
+			return nil, {}, false
+		}
+		append(&args, ast.Argument{ast.expression_span(expr), nil, expr})
+
+		if !_just_match(ps, Punctuation.Comma) {
+			if (_peek(ps) or_else {}).what != Punctuation.RParen {
+				_error_here(ps, "expected argument list to be closed")
+				return nil, {}, false
+			}
+		}
+	}
+	rparen, rp_ok := _match(ps, Punctuation.RParen)
+	assert(rp_ok)
+	shrink(&args)
+
+	return args[:], common.merge_spans(lparen[0].span, rparen[0].span), true
 }
 
 

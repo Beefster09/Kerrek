@@ -31,10 +31,10 @@ _type_expr :: proc(ps: ^Parser_State, allow_generics := false) -> ast.Type_Expre
 		typ = _pointer_type(ps)
 
 	case Punctuation.LSquare:
-	// Arrays are not implemented in the Python parser yet.
+		panic("TODO")
 
 	case Keyword.Map:
-	// Maps are not implemented in the Python parser yet.
+		panic("TODO")
 
 	case Punctuation.Question:
 		question, _ := _pop(ps)
@@ -102,45 +102,30 @@ _type_atom :: proc(ps: ^Parser_State) -> ast.Type_Expression {
 		return nil
 	}
 
-	if _just_match(ps, Punctuation.LParen) {
-		args := make([dynamic]ast.Argument)
-		for !_just_match(ps, Punctuation.RParen) {
-			expr := _expr(ps)
-			if expr == nil {
-				_error_here(ps, "expected an expression here")
+	if tail, ok := _peek(ps); ok {
+		switch tail.what {
+		case Punctuation.LParen:
+			args, span, ok := _arg_list(ps)
+			if !ok {
 				return nil
 			}
-			append(&args, ast.Argument{ast.expression_span(expr), nil, expr})
-
-			if !_just_match(ps, Punctuation.Comma) {
-				if (_peek(ps) or_else {}).what != Punctuation.RParen {
-					_error_here(ps, "expected the parametric type to be closed")
-					return nil
-				}
-				// break
+			parametric := new(ast.Type_With_Args)
+			parametric^ = {
+				span = common.merge_spans(qualname.span, span),
+				base = qualname,
+				args = args,
 			}
+			return parametric
 		}
-		paren, ok := _peek(ps, -1)
-		assert(ok && paren.what == Punctuation.RParen)
-		shrink(&args)
-		parametric := new(ast.Type_With_Args)
-		parametric^ = {
-			span = common.merge_spans(qualname.span, paren.span),
-			base = qualname,
-			args = args[:],
-		}
-		return parametric
-
-	} else {
-		simple := new(ast.Simple_Type)
-		simple^ = {
-			span = qualname.span,
-			type = qualname,
-		}
-		return simple
 	}
-}
 
+	simple := new(ast.Simple_Type)
+	simple^ = {
+		span = qualname.span,
+		type = qualname,
+	}
+	return simple
+}
 
 _pointer_type :: proc(ps: ^Parser_State) -> ast.Type_Expression {
 	prefix, ok := _pop(ps)

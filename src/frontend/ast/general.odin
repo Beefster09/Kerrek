@@ -38,3 +38,9 @@ fmt_qualname :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	}
 	return true
 }
+
+span :: proc {
+	expression_span,
+	type_span,
+	unit_span,
+}
