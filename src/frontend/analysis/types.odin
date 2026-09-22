@@ -160,7 +160,7 @@ build_type :: proc(
 			return nil, false
 		}
 
-		return hir.Fixed_Decimal{digits = digits, precision = scale}, true
+		return hir.Fixed_Decimal{digits = i32(digits), scale = i32(scale)}, true
 
 	case ^ast.Generic_Type:
 		bound: hir.Type
@@ -263,12 +263,6 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 		return .UInt16, true
 	case "UInt8":
 		return .UInt8, true
-	case "Dec128":
-		return .Dec128, true
-	case "Dec64":
-		return .Dec64, true
-	case "Dec32":
-		return .Dec32, true
 	case "Float64":
 		return .Bin64, true
 	case "Float32":
@@ -298,4 +292,12 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 	}
 
 	return {}, false
+}
+
+is_boolean :: proc(t: Comptime_Type) -> bool {
+	return false // TODO
+}
+
+is_string :: proc(t: Comptime_Type) -> bool {
+	return false // TODO
 }

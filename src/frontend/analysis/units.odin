@@ -88,3 +88,34 @@ _get_conversion_operand :: proc(
 
 	return {}, false
 }
+
+_units_equal :: proc(a, b: hir.Realized_Unit) -> bool {
+	if a_iu, a_ok := a.(hir.Indeterminate_Unit); a_ok {
+		if b_iu, b_ok := b.(hir.Indeterminate_Unit); b_ok {
+			return a_iu == b_iu
+		}
+	}
+
+	if lunit, a_ok := a.(units.Compound_Unit); a_ok {
+		if runit, b_ok := b.(units.Compound_Unit);
+		   b_ok && units.compound_units_equal(lunit, runit) {
+			return true
+		}
+	}
+
+	return false
+}
+
+_unit_is_flexible :: proc(u: hir.Realized_Unit) -> bool {
+	if iu, ok := u.(hir.Indeterminate_Unit); ok {
+		return iu == .Flexible
+	}
+	return false
+}
+
+_is_no_unit :: proc(u: hir.Realized_Unit) -> bool {
+	if iu, ok := u.(hir.Indeterminate_Unit); ok {
+		return iu == .No_Unit
+	}
+	return false
+}

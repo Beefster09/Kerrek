@@ -389,8 +389,8 @@ _count_numeric_digits :: proc(
 	raw: string,
 	format: Number_Format,
 ) -> (
-	digits: u32,
-	precision: u32,
+	digits: i32,
+	precision: i32,
 ) {
 	start := 0
 	#partial switch format {

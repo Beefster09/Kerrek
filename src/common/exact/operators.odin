@@ -25,9 +25,19 @@ div :: proc {
 	rat_div,
 }
 
+floordiv :: proc {
+	int_div,
+	rat_floordiv,
+}
+
 rem :: proc {
 	int_rem,
 	rat_rem,
+}
+
+mod :: proc {
+	int_mod,
+	rat_mod,
 }
 
 cmp :: proc {
@@ -68,6 +78,11 @@ ge :: proc {
 reciprocal :: proc {
 	int_reciprocal,
 	rat_reciprocal,
+}
+
+is_negative :: proc {
+	int_is_negative,
+	rat_is_negative,
 }
 
 is_one :: proc {
@@ -270,16 +285,6 @@ int_ge :: proc(a, b: Int, allocator := bigint_allocator) -> bool {
 	return #force_inline int_cmp(a, b, allocator) != .Less
 }
 
-int_is_negative :: proc(i: Int) -> bool {
-	switch ii in i {
-	case i128:
-		return ii < 0
-	case ^big.Int:
-		return ii.sign == .Negative
-	}
-	return false
-}
-
 rat_reduce :: proc(r: Rat, allocator := bigint_allocator) -> Rat {
 	assert(!int_is_zero(r.denominator), "rational denominator is zero")
 	if int_is_zero(r.numerator) {
@@ -396,6 +401,44 @@ int_reciprocal :: proc "contextless" (i: Int) -> Rat {
 
 rat_reciprocal :: proc "contextless" (r: Rat) -> Rat {
 	return {r.denominator, r.numerator}
+}
+
+_mod :: proc(lhs, rhs: $T, allocator := bigint_allocator) -> T {
+	rem := rem(lhs, rhs, allocator)
+	if !is_negative(rem) {
+		return rem
+	}
+	return add(rhs, rem, allocator)
+}
+rat_mod :: proc(lhs, rhs: Rat, allocator := bigint_allocator) -> Rat {
+	return #force_inline _mod(lhs, rhs, allocator)
+}
+int_mod :: proc(lhs, rhs: Int, allocator := bigint_allocator) -> Int {
+	return #force_inline _mod(lhs, rhs, allocator)
+}
+
+rat_floordiv :: proc(lhs, rhs: Rat, allocator := bigint_allocator) -> Rat {
+	quotient := div(lhs, rhs, allocator)
+	whole := int_div(quotient.numerator, quotient.denominator, allocator)
+	rem := int_rem(quotient.numerator, quotient.denominator, allocator)
+	if rat_is_negative(quotient) && !int_is_zero(rem) {
+		whole = int_sub(whole, Int(i128(1)), allocator)
+	}
+	return Rat{numerator = whole, denominator = i128(1)}
+}
+
+int_is_negative :: proc(i: Int) -> bool {
+	switch ii in i {
+	case i128:
+		return ii < 0
+	case ^big.Int:
+		return ii.sign == .Negative
+	}
+	return false
+}
+
+rat_is_negative :: proc(i: Rat) -> bool {
+	return int_is_negative(i.numerator) != int_is_negative(i.denominator)
 }
 
 int_is_one :: proc(i: Int) -> bool {

@@ -19,6 +19,8 @@ Comptime_Type :: union {
 
 Flexible_Type :: struct {
 	affinity: Flexible_Affinity,
+	digits:   i32,
+	scale:    i32,
 }
 
 Flexible_Affinity :: enum {

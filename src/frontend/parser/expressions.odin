@@ -165,6 +165,8 @@ _literal_expr :: proc(ps: ^Parser_State) -> ast.Expression {
 			span   = common.merge_spans(tok.span, unit.span) if unit != nil else tok.span,
 			value  = value.value,
 			format = value.format,
+			digits = value.digits,
+			scale  = value.precision,
 			unit   = unit,
 		}
 		return literal

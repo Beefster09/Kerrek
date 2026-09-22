@@ -44,6 +44,8 @@ Scalar_Literal_Expr :: struct {
 	span:   Span,
 	value:  exact.Rat,
 	format: lexer.Number_Format,
+	digits: i32,
+	scale:  i32,
 	unit:   ^Compound_Unit,
 }
 

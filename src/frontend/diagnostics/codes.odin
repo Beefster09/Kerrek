@@ -72,6 +72,10 @@ Code :: enum {
 	Arity_Mismatch,
 	// The value needed to be known at compile time, but wasn't
 	Not_Compile_Time_Known,
+	// Type or unit inference is not possible in this context
+	Inference_Failed,
+	// A decimal type was defined or inferred to require more than 64 bits
+	Large_Decimal,
 
 	// == MISC ==
 
@@ -130,9 +134,11 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Invalid_Annotation = {origin = .Semantic, default_level = .Error, stable_id = "A003"},
 	.Arity_Mismatch = {origin = .Semantic, default_level = .Error, stable_id = "A003"},
 	.Not_Compile_Time_Known = {origin = .Semantic, default_level = .Error, stable_id = "A004"},
+	.Inference_Failed = {origin = .Semantic, default_level = .Error, stable_id = "A005"},
 	.Invalid_Type = {origin = .Semantic, default_level = .Error, stable_id = "AT01"},
 	.Invalid_Unit = {origin = .Semantic, default_level = .Error, stable_id = "AU01"},
 	.Invalid_Capability = {origin = .Semantic, default_level = .Error, stable_id = "AC01"},
+	.Large_Decimal = {origin = .Semantic, default_level = .Warning, stable_id = "LGDEC"},
 	.Missing_Entry_Point = {origin = .Semantic, default_level = .Error, stable_id = "MAIN0"},
 	.Invalid_Entry_Point = {origin = .Semantic, default_level = .Error, stable_id = "MAIN1"},
 	// MISC

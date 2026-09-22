@@ -47,8 +47,8 @@ Rune :: struct {
 Numeric :: struct {
 	raw:       string,
 	value:     exact.Rat,
-	digits:    u32, // number of significant digits in total
-	precision: u32, // number of digits to the right of the point
+	digits:    i32, // number of significant digits in total
+	precision: i32, // number of digits to the right of the point
 	format:    Number_Format,
 }
 

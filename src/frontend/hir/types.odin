@@ -36,9 +36,6 @@ Primitive_Type :: enum {
 	UInt32,
 	UInt16,
 	UInt8,
-	Dec128,
-	Dec64,
-	Dec32,
 	Bin64,
 	Bin32,
 	Bin16,
@@ -55,8 +52,8 @@ Primitive_Type :: enum {
 }
 
 Fixed_Decimal :: struct {
-	digits:    int,
-	precision: int,
+	digits: i32,
+	scale:  i32,
 }
 
 Generic_Type :: struct {
