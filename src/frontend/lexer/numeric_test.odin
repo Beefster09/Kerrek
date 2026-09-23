@@ -13,8 +13,8 @@ Numeric_Case :: struct {
 	format:      Number_Format,
 	numerator:   i128,
 	denominator: i128,
-	digits:      u32,
-	precision:   u32,
+	digits:      i32,
+	precision:   i32,
 }
 
 _expect_numeric :: proc(t: ^testing.T, tc: Numeric_Case) {

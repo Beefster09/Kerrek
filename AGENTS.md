@@ -18,3 +18,7 @@ Prefer table-based tests when possible
 Test end-to-end as much as possible. For instance, semantic analysis passes should pass in the minimal amount of source code to produce the desired outcome rather than constructed AST.
 
 Test diagnostic outputs against the Code enum and span, never the message or addendums.
+
+# Refactoring
+
+Use @(rodata) enumerated arrays whenever appropriate. If these are defined as (::) constants, prefer refactoring them into variables (:=) with @(rodata) instead of assigning the enumerated array to a local variable

@@ -51,13 +51,15 @@ Binary_Op :: enum {
 	Or,
 }
 
-UNARY_OP_STRINGS :: [Unary_Op]string {
+@(rodata)
+UNARY_OP_STRINGS := [Unary_Op]string {
 	.Positive = "+",
 	.Negate   = "-",
 	.Not      = "not",
 }
 
-BINARY_OP_STRINGS :: [Binary_Op]string {
+@(rodata)
+BINARY_OP_STRINGS := [Binary_Op]string {
 	.Add           = "+",
 	.Subtract      = "-",
 	.Multiply      = "*",

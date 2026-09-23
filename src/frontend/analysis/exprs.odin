@@ -376,16 +376,11 @@ _singular_type_and_unit :: proc(er: Eval_Result) -> (Comptime_Type, hir.Realized
 	return nil, nil, false
 }
 
-_comptime_binop :: proc(op: common.Binary_Op, lhs, rhs: common.Value) -> common.Value {
-	panic("TODO")
-}
-
 _eval_binop :: proc(
 	ts: ^Translation_State,
 	binop: ^ast.Binop_Expr,
 	scope: resolver.Scope,
 ) -> Eval_Result {
-	op_strings := common.BINARY_OP_STRINGS
 	lhs := evaluate(ts, binop.lhs, scope)
 	rhs := evaluate(ts, binop.rhs, scope)
 	if lhs == nil || rhs == nil {
@@ -446,7 +441,7 @@ _eval_binop :: proc(
 			binop.span,
 			"operator %s is not supported for types %s and %s" +
 			" and no implicit conversion between them exists",
-			op_strings[binop.op],
+			common.BINARY_OP_STRINGS[binop.op],
 			ltype,
 			rtype,
 		)
@@ -459,7 +454,7 @@ _eval_binop :: proc(
 			.TBD,
 			binop.span,
 			"operator %s is not supported for type %v",
-			op_strings[binop.op],
+			common.BINARY_OP_STRINGS[binop.op],
 			coerced_type,
 		)
 		if op_compat.binop_diagnostics != nil {
@@ -738,7 +733,6 @@ _eval_binop_unit :: proc(
 	result_rhs: Eval_Result,
 	all_ok: bool,
 ) {
-	op_strings := common.BINARY_OP_STRINGS
 	_maybe_convert_rhs :: proc(
 		ts: ^Translation_State,
 		binop: ^ast.Binop_Expr,
@@ -847,7 +841,7 @@ _eval_binop_unit :: proc(
 			binop.span,
 			"you cannot multiply a unitless value with a value with units (|%v| %s |%v|)",
 			lunit,
-			op_strings[binop.op],
+			common.BINARY_OP_STRINGS[binop.op],
 			runit,
 		)
 		return
@@ -892,7 +886,7 @@ _eval_binop_unit :: proc(
 			binop.span,
 			"you cannot divide a unitless value by a value with units or vice-versa (|%v| %s |%v|)",
 			lunit,
-			op_strings[binop.op],
+			common.BINARY_OP_STRINGS[binop.op],
 			runit,
 		)
 		return
@@ -984,6 +978,10 @@ _coerce :: proc(
 	Comptime_Type,
 	bool,
 ) {
+	if types_equal(ltype, rtype) {
+		return ltype, true
+	}
+
 	if conv, ok := _implicit_convert(ts, ltype, rtype); ok {
 		return conv, true
 	}

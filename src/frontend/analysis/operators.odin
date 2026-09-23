@@ -1,8 +1,11 @@
 package analysis
 
 import "../../common"
+import "../../common/exact"
 import "../diagnostics"
 import "../hir"
+import "core:fmt"
+import "core:reflect"
 
 Operator_Compat_Category :: enum {
 	Empty,
@@ -171,4 +174,34 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 		}
 	}
 	return .Opaque
+}
+
+_comptime_binop :: proc(op: common.Binary_Op, lhs, rhs: common.Value) -> common.Value {
+	switch op {
+	case .Add:
+	case .Subtract:
+	case .Multiply:
+	case .True_Divide:
+	case .Floor_Divide:
+	case .Remainder:
+	case .Modulo:
+	case .Power:
+	case .Equal:
+	case .Not_Equal:
+	case .Less:
+	case .Less_Equal:
+	case .Greater:
+	case .Greater_Equal:
+	case .Is:
+	case .Is_Not:
+	case .And:
+	case .Or:
+	}
+
+	fmt.panicf(
+		"missing implementation of %T %s %T",
+		reflect.get_union_variant(lhs),
+		common.BINARY_OP_STRINGS[op],
+		reflect.get_union_variant(rhs),
+	)
 }

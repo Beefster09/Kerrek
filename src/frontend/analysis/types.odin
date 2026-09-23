@@ -66,7 +66,7 @@ build_type :: proc(
 			return nil, false
 		}
 
-		// TEMP: Integer and Decimal are hard-coded as the only two types
+		// TEMP: Integer and Decimal are hard-coded as the only two parametric types
 
 		expected_args := 1 if builtin.name == "Integer" else 2
 		if len(node.args) != expected_args {
@@ -295,6 +295,101 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 	}
 
 	return {}, false
+}
+
+types_equal :: proc(a, b: Comptime_Type) -> bool {
+	switch a in a {
+	case Flexible_Type:
+		b, ok := b.(Flexible_Type)
+		return ok && a.affinity == b.affinity
+
+	case hir.Type:
+		b, ok := b.(hir.Type)
+		if !ok {
+			return false
+		}
+
+		switch a in a {
+		case hir.Primitive_Type:
+			b, ok := b.(hir.Primitive_Type)
+			return ok && a == b
+
+		case hir.Fixed_Decimal:
+			b, ok := b.(hir.Fixed_Decimal)
+			return ok && a == b
+
+		case ^hir.Struct_Type:
+			b, ok := b.(^hir.Struct_Type)
+			return ok && a == b
+
+		case ^hir.Enum_Type:
+			b, ok := b.(^hir.Enum_Type)
+			return ok && a == b
+
+		case ^hir.Distinct_Type:
+			b, ok := b.(^hir.Distinct_Type)
+			return ok && a == b
+
+		case ^hir.Interface:
+			b, ok := b.(^hir.Interface)
+			return ok && a == b
+
+		case ^hir.Generic_Type:
+			// TODO: Implement generic type equality.
+			return false
+
+		case ^hir.Fixed_Array_Type:
+			b, ok := b.(^hir.Fixed_Array_Type)
+			if !ok || !types_equal(a.elem, b.elem) || len(a.shape) != len(b.shape) {
+				return false
+			}
+			for size, i in a.shape {
+				if size != b.shape[i] {
+					return false
+				}
+			}
+			return true
+
+		case ^hir.Dynamic_Array_Type:
+			b, ok := b.(^hir.Dynamic_Array_Type)
+			return ok && types_equal(a.elem, b.elem)
+
+		case ^hir.View_Type:
+			b, ok := b.(^hir.View_Type)
+			return ok && a.dimensions == b.dimensions && types_equal(a.elem, b.elem)
+
+		case ^hir.Map_Type:
+			b, ok := b.(^hir.Map_Type)
+			return ok && types_equal(a.key, b.key) && types_equal(a.value, b.value)
+
+		case ^hir.Optional_Type:
+			b, ok := b.(^hir.Optional_Type)
+			return ok && types_equal(a.base, b.base)
+
+		case ^hir.Pointer_Type:
+			b, ok := b.(^hir.Pointer_Type)
+			return(
+				ok &&
+				a.ownership == b.ownership &&
+				a.nullable == b.nullable &&
+				types_equal(a.to, b.to) \
+			)
+
+		case ^hir.Tagged_Type:
+			b, ok := b.(^hir.Tagged_Type)
+			if !ok || !types_equal(a.base, b.base) || len(a.tags) != len(b.tags) {
+				return false
+			}
+			for tag, i in a.tags {
+				if tag != b.tags[i] {
+					return false
+				}
+			}
+			return true
+		}
+	}
+
+	return false
 }
 
 is_boolean :: proc(t: Comptime_Type) -> bool {
