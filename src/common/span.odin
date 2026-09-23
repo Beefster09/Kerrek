@@ -298,7 +298,6 @@ fmt_span :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 
 fmt_cursor :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	assert(arg.id == Cursor)
-	cursor := cast(^Cursor)arg.data
 	switch verb {
 	case 'v':
 		fmt.fmt_struct(
@@ -310,6 +309,24 @@ fmt_cursor :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 			"Cursor",
 		)
 		return true
+	case 's':
+		cursor := cast(^Cursor)arg.data
+		sf, _ := load_source(cursor.file)
+		if sf != nil {
+			io.write_string(fi.writer, sf.file)
+		} else {
+			io.write_string(fi.writer, "<unknown file>")
+		}
+
+		if cursor.line > 0 && cursor.line < MAX_LINE {
+			io.write_uint(fi.writer, uint(cursor.line))
+		} else {
+			io.write_string(fi.writer, "??")
+		}
+		if cursor.col > 0 && cursor.col < MAX_COL {
+			io.write_rune(fi.writer, ':')
+			io.write_uint(fi.writer, uint(cursor.col))
+		}
 	}
 	return false
 }

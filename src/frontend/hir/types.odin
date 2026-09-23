@@ -18,7 +18,7 @@ Type :: union {
 	^Generic_Type,
 	^Fixed_Array_Type,
 	^Dynamic_Array_Type,
-	^Dimensioned_Array_Type,
+	^View_Type,
 	^Map_Type,
 	^Optional_Type,
 	^Pointer_Type,
@@ -70,7 +70,7 @@ Dynamic_Array_Type :: struct {
 	elem: Type,
 }
 
-Dimensioned_Array_Type :: struct {
+View_Type :: struct {
 	elem:       Type,
 	dimensions: int,
 }

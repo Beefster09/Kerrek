@@ -162,7 +162,7 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 		case ^hir.Interface,
 		     ^hir.Generic_Type,
 		     ^hir.Dynamic_Array_Type,
-		     ^hir.Dimensioned_Array_Type,
+		     ^hir.View_Type,
 		     ^hir.Map_Type,
 		     ^hir.Optional_Type,
 		     ^hir.Pointer_Type,

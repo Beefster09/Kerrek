@@ -124,15 +124,21 @@ infer_type :: proc(
 
 build_expr :: proc(
 	ts: ^Translation_State,
-	type_ast: ast.Expression,
+	expr: ast.Expression,
 	scope: resolver.Scope,
 ) -> (
 	hir.Expression,
 	bool,
 ) {
+	switch result in evaluate(ts, expr, scope) {
+	case Comptime_Value:
+		return materialize(ts, result, ast.span(expr))
+	case hir.Expression:
+		return result, true
+	}
+
 	return nil, false
 }
-
 
 evaluate :: proc(
 	ts: ^Translation_State,
@@ -438,7 +444,8 @@ _eval_binop :: proc(
 		diagnostics.emit(
 			.TBD,
 			binop.span,
-			"operator %s is not supported for types %v and %v and no implicit conversion between them exists",
+			"operator %s is not supported for types %s and %s" +
+			" and no implicit conversion between them exists",
 			op_strings[binop.op],
 			ltype,
 			rtype,
@@ -648,7 +655,7 @@ is_zeroable :: proc(typ: Comptime_Type) -> bool {
 			return true
 		case ^hir.Generic_Type:
 		case ^hir.Dynamic_Array_Type:
-		case ^hir.Dimensioned_Array_Type:
+		case ^hir.View_Type:
 		case ^hir.Map_Type:
 			return true
 		case ^hir.Optional_Type:

@@ -1,6 +1,9 @@
 package analysis
 
+import "core:fmt"
+import "core:io"
 import "core:math/big"
+import "core:reflect"
 
 import "../../common"
 import "../../common/exact"
@@ -300,4 +303,135 @@ is_boolean :: proc(t: Comptime_Type) -> bool {
 
 is_string :: proc(t: Comptime_Type) -> bool {
 	return false // TODO
+}
+
+
+fmt_comptime_type :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
+	assert(arg.id == Comptime_Type)
+	switch verb {
+	case 's':
+		write_comptime_type(fi.writer, (cast(^Comptime_Type)arg.data)^)
+		return true
+	}
+
+	return false
+}
+
+write_comptime_type :: proc(w: io.Writer, type: Comptime_Type) {
+	switch type in type {
+	case Flexible_Type:
+		switch type.affinity {
+		case .Contextual:
+			io.write_string(w, "unknown type")
+		case .Unsigned_Integer:
+			io.write_string(w, "flexible unsigned integer")
+		case .Integer:
+			io.write_string(w, "flexible integer")
+		case .Decimal:
+			io.write_string(w, "flexible decimal")
+		case .Binary_Float:
+			io.write_string(w, "flexible binary float")
+		case .Rational:
+			io.write_string(w, "flexible rational number")
+		case .Boolean:
+			io.write_string(w, "flexible boolean")
+		case .String:
+			io.write_string(w, "flexible string")
+		case .Rune:
+			io.write_string(w, "flexible rune")
+		case .Byte:
+			io.write_string(w, "flexible byte")
+		}
+	case hir.Type:
+		write_type(w, type)
+	}
+}
+
+write_type :: proc(w: io.Writer, type: hir.Type) {
+	switch type in type {
+	case hir.Primitive_Type:
+		io.write_string(w, reflect.enum_string(type))
+
+	case hir.Fixed_Decimal:
+		if type.scale == 0 {
+			io.write_string(w, "Integer(")
+			io.write_int(w, int(type.digits))
+			io.write_rune(w, ')')
+		} else {
+			io.write_string(w, "Decimal(")
+			io.write_int(w, int(type.digits))
+			io.write_string(w, ", ")
+			io.write_int(w, int(type.scale))
+			io.write_rune(w, ')')
+		}
+
+	case ^hir.Struct_Type:
+		io.write_string(w, string(type.name.id))
+	case ^hir.Enum_Type:
+		io.write_string(w, string(type.name.id))
+	case ^hir.Distinct_Type:
+		io.write_string(w, string(type.name.id))
+	case ^hir.Interface:
+		io.write_string(w, string(type.name.id))
+
+	case ^hir.Fixed_Array_Type:
+		io.write_rune(w, '[')
+		for size, i in type.shape {
+			if i > 0 {
+				io.write_string(w, ", ")
+			}
+			io.write_int(w, int(size))
+		}
+		io.write_rune(w, ']')
+		write_type(w, type.elem)
+
+	case ^hir.Dynamic_Array_Type:
+		io.write_string(w, "[dynamic]")
+		write_type(w, type.elem)
+
+	case ^hir.View_Type:
+		io.write_rune(w, '[')
+		if type.dimensions > 1 {
+			io.write_rune(w, '#')
+			io.write_int(w, type.dimensions)
+		}
+		io.write_rune(w, ']')
+		write_type(w, type.elem)
+
+	case ^hir.Map_Type:
+		io.write_string(w, "map[")
+		write_type(w, type.key)
+		io.write_rune(w, ']')
+		write_type(w, type.value)
+
+	case ^hir.Optional_Type:
+		io.write_rune(w, '?')
+		write_type(w, type.base)
+
+	case ^hir.Pointer_Type:
+		switch type.ownership {
+		case .Borrow:
+			io.write_rune(w, '^')
+		case .Owned:
+			io.write_string(w, "owned ")
+		case .Shared:
+			io.write_string(w, "shared ")
+		case .Weak:
+			io.write_string(w, "weak ")
+		case .Unsafe:
+			io.write_string(w, "unsafe.Pointer(")
+		}
+		write_type(w, type.to)
+		if type.ownership == .Unsafe {
+			io.write_rune(w, ')')
+		}
+
+	case ^hir.Tagged_Type:
+		write_type(w, type.base)
+		for tag in type.tags {
+			// TODO
+		}
+
+	case ^hir.Generic_Type:
+	}
 }

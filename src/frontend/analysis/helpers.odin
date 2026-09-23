@@ -1,5 +1,7 @@
 package analysis
 
+import "core:fmt"
+
 import "../../common"
 import "../ast"
 import "../diagnostics"
@@ -43,4 +45,10 @@ poison :: proc(ts: ^Translation_State, span: common.Span) -> ^hir.Poison {
 	p := new(hir.Poison, ts.output.allocator)
 	p.span = span
 	return p
+}
+
+init_formatters :: proc() {
+	fmt.register_user_formatter(ast.Qualified_Name, ast.fmt_qualname)
+	fmt.register_user_formatter(Comptime_Type, fmt_comptime_type)
+	fmt.println(fmt._user_formatters)
 }
