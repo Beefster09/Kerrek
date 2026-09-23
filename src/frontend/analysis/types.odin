@@ -27,6 +27,14 @@ build_type :: proc(
 		case ^resolver.Builtin:
 			if primitive, ok := _primitive_type(symbol); ok {
 				return primitive, true
+			} else if symbol.kind == .Parametric_Type {
+				diagnostics.emit(
+					.Invalid_Type,
+					node.span,
+					"builtin type '%s' requires arguments",
+					node.type,
+				)
+				return nil, false
 			}
 		case ^resolver.Type_Alias:
 			if symbol.hir != nil {

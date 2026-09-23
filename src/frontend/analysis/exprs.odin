@@ -416,7 +416,7 @@ _eval_binop :: proc(
 		return _eval_boolean_multiply(ts, rhs, lhs, ltype, binop, binop.lhs)
 	}
 
-	if binop.op == .Add && is_string(ltype) && is_string(rtype) {
+	if binop.op == .Add {
 		if l, l_ok := lhs.(Comptime_Value); l_ok {
 			if r, r_ok := rhs.(Comptime_Value); r_ok {
 				if lstr, lstr_ok := l.value.(string); lstr_ok {
@@ -437,7 +437,7 @@ _eval_binop :: proc(
 	coerced_type, ok := _coerce(ts, ltype, rtype)
 	if !ok {
 		diagnostics.emit(
-			.TBD,
+			.Binop_Not_Defined,
 			binop.span,
 			"operator %s is not supported for types %s and %s" +
 			" and no implicit conversion between them exists",
@@ -451,9 +451,9 @@ _eval_binop :: proc(
 	op_compat := OP_CATEGORY_DEFS[_op_category_of(coerced_type)]
 	if binop.op not_in op_compat.supported_binops {
 		diag := diagnostics.emit(
-			.TBD,
+			.Binop_Not_Defined,
 			binop.span,
-			"operator %s is not supported for type %v",
+			"operator %s is not supported for type %s",
 			common.BINARY_OP_STRINGS[binop.op],
 			coerced_type,
 		)

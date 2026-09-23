@@ -76,6 +76,8 @@ Code :: enum {
 	Inference_Failed,
 	// A decimal type was defined or inferred to require more than 64 bits
 	Large_Decimal,
+	// A binary operator is not defined for the type(s)
+	Binop_Not_Defined,
 
 	// == MISC ==
 
@@ -135,6 +137,7 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Arity_Mismatch = {origin = .Semantic, default_level = .Error, stable_id = "A003"},
 	.Not_Compile_Time_Known = {origin = .Semantic, default_level = .Error, stable_id = "A004"},
 	.Inference_Failed = {origin = .Semantic, default_level = .Error, stable_id = "A005"},
+	.Binop_Not_Defined = {origin = .Semantic, default_level = .Error, stable_id = "A006"},
 	.Invalid_Type = {origin = .Semantic, default_level = .Error, stable_id = "AT01"},
 	.Invalid_Unit = {origin = .Semantic, default_level = .Error, stable_id = "AU01"},
 	.Invalid_Capability = {origin = .Semantic, default_level = .Error, stable_id = "AC01"},

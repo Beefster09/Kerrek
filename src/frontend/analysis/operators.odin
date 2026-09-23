@@ -6,6 +6,7 @@ import "../diagnostics"
 import "../hir"
 import "core:fmt"
 import "core:reflect"
+import "core:strings"
 
 Operator_Compat_Category :: enum {
 	Empty,
@@ -179,23 +180,38 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 _comptime_binop :: proc(op: common.Binary_Op, lhs, rhs: common.Value) -> common.Value {
 	switch op {
 	case .Add:
+		return exact.add(lhs.(exact.Rat), rhs.(exact.Rat))
 	case .Subtract:
+		return exact.sub(lhs.(exact.Rat), rhs.(exact.Rat))
 	case .Multiply:
+		return exact.mul(lhs.(exact.Rat), rhs.(exact.Rat))
 	case .True_Divide:
+		return exact.div(lhs.(exact.Rat), rhs.(exact.Rat))
 	case .Floor_Divide:
+		return exact.floordiv(lhs.(exact.Rat), rhs.(exact.Rat))
 	case .Remainder:
+		return exact.rem(lhs.(exact.Rat), rhs.(exact.Rat))
 	case .Modulo:
+		return exact.mod(lhs.(exact.Rat), rhs.(exact.Rat))
 	case .Power:
 	case .Equal:
+		return _comptime_equal(lhs, rhs)
 	case .Not_Equal:
+		return !_comptime_equal(lhs, rhs)
 	case .Less:
+		return _comptime_less(lhs, rhs)
 	case .Less_Equal:
+		return !_comptime_less(rhs, lhs)
 	case .Greater:
+		return _comptime_less(rhs, lhs)
 	case .Greater_Equal:
+		return !_comptime_less(lhs, rhs)
 	case .Is:
 	case .Is_Not:
 	case .And:
+		return lhs.(bool) && rhs.(bool)
 	case .Or:
+		return lhs.(bool) || rhs.(bool)
 	}
 
 	fmt.panicf(
@@ -204,4 +220,38 @@ _comptime_binop :: proc(op: common.Binary_Op, lhs, rhs: common.Value) -> common.
 		common.BINARY_OP_STRINGS[op],
 		reflect.get_union_variant(rhs),
 	)
+}
+
+_comptime_equal :: proc(lhs, rhs: common.Value) -> bool {
+	switch l in lhs {
+	case exact.Rat:
+		return exact.eq(l, rhs.(exact.Rat))
+	case string:
+		return l == rhs.(string)
+	case rune:
+		return l == rhs.(rune)
+	case byte:
+		return l == rhs.(byte)
+	case bool:
+		return l == rhs.(bool)
+	case common.Untyped_Value:
+		panic("untyped values should have already been coerced")
+	}
+	return false
+}
+
+_comptime_less :: proc(lhs, rhs: common.Value) -> bool {
+	switch l in lhs {
+	case exact.Rat:
+		return exact.lt(l, rhs.(exact.Rat))
+	case string:
+		return strings.compare(l, rhs.(string)) < 0
+	case rune:
+		return l < rhs.(rune)
+	case byte:
+		return l < rhs.(byte)
+	case bool, common.Untyped_Value:
+		panic("value does not support ordering")
+	}
+	return false
 }
