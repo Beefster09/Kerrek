@@ -3,6 +3,7 @@ package diagnostics
 import "core:encoding/json"
 import "core:fmt"
 import "core:io"
+import "core:reflect"
 
 
 Code :: enum {
@@ -94,60 +95,54 @@ Code_Metadata :: struct {
 	origin:        Origin,
 	category:      Category,
 	default_level: Level,
-	stable_id:     string,
+	description:   string,
 }
 
 @(rodata)
 CODE_METADATA := [Code]Code_Metadata {
-	.TBD = {stable_id = "0000"},
+	.TBD = {},
 	// Lexer diagnostics
-	.Invalid_Number_Literal = {origin = .Lexer, default_level = .Error, stable_id = "L00"},
+	.Invalid_Number_Literal = {origin = .Lexer, default_level = .Error},
 	.Number_Followed_By_Identifier = {
 		origin = .Lexer,
 		category = .Style,
 		default_level = .Warning,
-		stable_id = "L01",
 	},
-	.Invalid_Escape = {origin = .Lexer, default_level = .Error, stable_id = "L10"},
-	.Empty_Rune = {origin = .Lexer, default_level = .Error, stable_id = "L11"},
-	.Unclosed_Rune = {origin = .Lexer, default_level = .Error, stable_id = "L12"},
-	.Unclosed_String = {origin = .Lexer, default_level = .Error, stable_id = "L13"},
+	.Invalid_Escape = {origin = .Lexer, default_level = .Error},
+	.Empty_Rune = {origin = .Lexer, default_level = .Error},
+	.Unclosed_Rune = {origin = .Lexer, default_level = .Error},
+	.Unclosed_String = {origin = .Lexer, default_level = .Error},
 	// Parser diagnostics
-	.Syntax_Error = {origin = .Parser, default_level = .Error, stable_id = "P00"},
-	.Empty_Statement = {origin = .Parser, default_level = .Notice, stable_id = "P10"},
+	.Syntax_Error = {origin = .Parser, default_level = .Error},
+	.Empty_Statement = {origin = .Parser, default_level = .Notice},
 	// Resolver diagnostics
-	.Unresolved_Name = {origin = .Resolution, default_level = .Error, stable_id = "R00"},
-	.Incomplete_Resolution = {origin = .Resolution, default_level = .Error, stable_id = "R01"},
-	.Invalid_Namespace_Access = {origin = .Resolution, default_level = .Error, stable_id = "R02"},
-	.Builtin_Shadowing = {origin = .Resolution, default_level = .Notice, stable_id = "R10"},
-	.Duplicate_Global = {origin = .Resolution, default_level = .Error, stable_id = "R11"},
-	.Duplicate_Local = {origin = .Resolution, default_level = .Error, stable_id = "R12"},
-	.Dubious_Shadowing = {
-		origin = .Resolution,
-		category = .Dubious,
-		default_level = .Warning,
-		stable_id = "R13",
-	},
-	.Import_Conflict = {origin = .Resolution, default_level = .Error, stable_id = "R20"},
-	.Import_Not_Found = {origin = .Resolution, default_level = .Error, stable_id = "R21"},
+	.Unresolved_Name = {origin = .Resolution, default_level = .Error},
+	.Incomplete_Resolution = {origin = .Resolution, default_level = .Error},
+	.Invalid_Namespace_Access = {origin = .Resolution, default_level = .Error},
+	.Builtin_Shadowing = {origin = .Resolution, default_level = .Notice},
+	.Duplicate_Global = {origin = .Resolution, default_level = .Error},
+	.Duplicate_Local = {origin = .Resolution, default_level = .Error},
+	.Dubious_Shadowing = {origin = .Resolution, category = .Dubious, default_level = .Warning},
+	.Import_Conflict = {origin = .Resolution, default_level = .Error},
+	.Import_Not_Found = {origin = .Resolution, default_level = .Error},
 	// Semantic analysis diagnostics
-	.Cyclical_Dependency = {origin = .Semantic, default_level = .Error, stable_id = "A001"},
-	.Wrong_Symbol_Kind = {origin = .Semantic, default_level = .Error, stable_id = "A002"},
-	.Invalid_Annotation = {origin = .Semantic, default_level = .Error, stable_id = "A003"},
-	.Arity_Mismatch = {origin = .Semantic, default_level = .Error, stable_id = "A003"},
-	.Not_Compile_Time_Known = {origin = .Semantic, default_level = .Error, stable_id = "A004"},
-	.Inference_Failed = {origin = .Semantic, default_level = .Error, stable_id = "A005"},
-	.Binop_Not_Defined = {origin = .Semantic, default_level = .Error, stable_id = "A006"},
-	.Invalid_Type = {origin = .Semantic, default_level = .Error, stable_id = "AT01"},
-	.Invalid_Unit = {origin = .Semantic, default_level = .Error, stable_id = "AU01"},
-	.Invalid_Capability = {origin = .Semantic, default_level = .Error, stable_id = "AC01"},
-	.Large_Decimal = {origin = .Semantic, default_level = .Warning, stable_id = "LGDEC"},
-	.Missing_Entry_Point = {origin = .Semantic, default_level = .Error, stable_id = "MAIN0"},
-	.Invalid_Entry_Point = {origin = .Semantic, default_level = .Error, stable_id = "MAIN1"},
+	.Cyclical_Dependency = {origin = .Semantic, default_level = .Error},
+	.Wrong_Symbol_Kind = {origin = .Semantic, default_level = .Error},
+	.Invalid_Annotation = {origin = .Semantic, default_level = .Error},
+	.Arity_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Not_Compile_Time_Known = {origin = .Semantic, default_level = .Error},
+	.Inference_Failed = {origin = .Semantic, default_level = .Error},
+	.Binop_Not_Defined = {origin = .Semantic, default_level = .Error},
+	.Invalid_Type = {origin = .Semantic, default_level = .Error},
+	.Invalid_Unit = {origin = .Semantic, default_level = .Error},
+	.Invalid_Capability = {origin = .Semantic, default_level = .Error},
+	.Large_Decimal = {origin = .Semantic, default_level = .Warning},
+	.Missing_Entry_Point = {origin = .Semantic, default_level = .Error},
+	.Invalid_Entry_Point = {origin = .Semantic, default_level = .Error},
 	// MISC
-	.Not_Implemented = {origin = .Unknown, default_level = .Error, stable_id = "NOIMPL"},
+	.Not_Implemented = {origin = .Unknown, default_level = .Error},
 	// TEST
-	.Test = {origin = .Resolution, default_level = .Notice, stable_id = "TEST"},
+	.Test = {origin = .Resolution, default_level = .Notice},
 }
 
 
@@ -156,10 +151,10 @@ _fmt_code :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	switch verb {
 	case 'v':
 		fmt.fmt_enum(fi, arg, verb)
-	case 's', 'q':
+	case 's':
 		code := (cast(^Code)arg.data)^
 		meta := CODE_METADATA[code]
-		fmt.fmt_string(fi, meta.stable_id, verb)
+		fmt.fmt_string(fi, reflect.enum_name_from_value(code) or_else "???", verb)
 	case:
 		return false
 	}
@@ -168,6 +163,6 @@ _fmt_code :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 
 _marshal_code :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
 	assert(v.id == Code)
-	kind := (cast(^Code)v.data)^
-	return json.marshal_to_writer(w, CODE_METADATA[kind].stable_id, opt)
+	code := (cast(^Code)v.data)^
+	return json.marshal_to_writer(w, reflect.enum_name_from_value(code) or_else "???", opt)
 }

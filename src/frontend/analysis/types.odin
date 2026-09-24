@@ -400,12 +400,145 @@ types_equal :: proc(a, b: Comptime_Type) -> bool {
 	return false
 }
 
+is_integer :: proc(t: Comptime_Type) -> bool {
+	switch comptime_type in t {
+	case Flexible_Type:
+		#partial switch comptime_type.affinity {
+		case .Unsigned_Integer, .Integer:
+			return true
+		}
+	case hir.Type:
+		#partial switch concrete in comptime_type {
+		case ^hir.Distinct_Type:
+			return is_integer(concrete.underlying)
+		case hir.Fixed_Decimal:
+			return concrete.scale == 0
+		case hir.Primitive_Type:
+			switch concrete {
+			case .Int128,
+			     .Int64,
+			     .Int32,
+			     .Int16,
+			     .Int8,
+			     .UInt128,
+			     .UInt64,
+			     .UInt32,
+			     .UInt16,
+			     .UInt8:
+				return true
+			case .Bin64,
+			     .Bin32,
+			     .Bin16,
+			     .Boolean,
+			     .String,
+			     .Rune,
+			     .Byte,
+			     .Any,
+			     .Opaque,
+			     .Opaque8,
+			     .Opaque16,
+			     .Opaque32,
+			     .Opaque64:
+				return false
+			}
+		}
+	}
+	return false
+}
+
+is_decimal :: proc(t: Comptime_Type) -> bool {
+	switch comptime_type in t {
+	case Flexible_Type:
+		return comptime_type.affinity == .Decimal
+	case hir.Type:
+		#partial switch concrete in comptime_type {
+		case ^hir.Distinct_Type:
+			return is_decimal(concrete.underlying)
+		case hir.Fixed_Decimal:
+			return concrete.scale != 0
+		}
+	}
+	return false
+}
+
+is_binfloat :: proc(t: Comptime_Type) -> bool {
+	switch comptime_type in t {
+	case Flexible_Type:
+		return comptime_type.affinity == .Binary_Float
+	case hir.Type:
+		#partial switch concrete in comptime_type {
+		case ^hir.Distinct_Type:
+			return is_binfloat(concrete.underlying)
+		case hir.Primitive_Type:
+			#partial switch concrete {
+			case .Bin64, .Bin32, .Bin16:
+				return true
+			}
+		}
+	}
+	return false
+}
+
 is_boolean :: proc(t: Comptime_Type) -> bool {
-	return false // TODO
+	switch comptime_type in t {
+	case Flexible_Type:
+		return comptime_type.affinity == .Boolean
+	case hir.Type:
+		#partial switch concrete in comptime_type {
+		case ^hir.Distinct_Type:
+			return is_boolean(concrete.underlying)
+		case hir.Primitive_Type:
+			return concrete == .Boolean
+		}
+	}
+	return false
 }
 
 is_string :: proc(t: Comptime_Type) -> bool {
-	return false // TODO
+	switch comptime_type in t {
+	case Flexible_Type:
+		return comptime_type.affinity == .String
+	case hir.Type:
+		#partial switch concrete in comptime_type {
+		case ^hir.Distinct_Type:
+			return is_string(concrete.underlying)
+		case hir.Primitive_Type:
+			return concrete == .String
+		}
+	}
+	return false
+}
+
+is_rune :: proc(t: Comptime_Type) -> bool {
+	switch comptime_type in t {
+	case Flexible_Type:
+		return comptime_type.affinity == .Rune
+	case hir.Type:
+		#partial switch concrete in comptime_type {
+		case ^hir.Distinct_Type:
+			return is_rune(concrete.underlying)
+		case hir.Primitive_Type:
+			return concrete == .Rune
+		}
+	}
+	return false
+}
+
+is_pointer :: proc(t: Comptime_Type) -> bool {
+	switch comptime_type in t {
+	case Flexible_Type:
+		return false
+	case hir.Type:
+		#partial switch concrete in comptime_type {
+		case ^hir.Distinct_Type:
+			return is_pointer(concrete.underlying)
+		case ^hir.Tagged_Type:
+			return is_pointer(concrete.base)
+		case ^hir.Pointer_Type:
+			return true
+		}
+	}
+	return false
 }
 
 
