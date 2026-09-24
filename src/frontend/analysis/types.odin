@@ -541,6 +541,42 @@ is_pointer :: proc(t: Comptime_Type) -> bool {
 	return false
 }
 
+is_zeroable :: proc(typ: Comptime_Type) -> bool {
+	switch comptime_type in typ {
+	case Flexible_Type:
+		return true
+	case hir.Type:
+		switch concrete in comptime_type {
+		case ^hir.Interface:
+			return false
+		case ^hir.Enum_Type, ^hir.Struct_Type:
+			return false
+		case ^hir.Fixed_Array_Type:
+			return is_zeroable(concrete.elem)
+		case ^hir.Pointer_Type:
+			return concrete.nullable
+		case ^hir.Distinct_Type:
+			return is_zeroable(concrete.underlying)
+		case ^hir.Tagged_Type:
+			return is_zeroable(concrete.base)
+		case hir.Primitive_Type:
+			return true
+		case hir.Fixed_Decimal:
+			return true
+		case ^hir.Generic_Type:
+		case ^hir.Dynamic_Array_Type:
+		case ^hir.View_Type:
+		case ^hir.Map_Type:
+			return true
+		case ^hir.Optional_Type:
+			return true
+		case:
+			return true
+		}
+	}
+	return false
+}
+
 
 fmt_comptime_type :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	assert(arg.id == Comptime_Type)

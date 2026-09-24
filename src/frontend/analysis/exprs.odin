@@ -7,6 +7,7 @@ import "core:strings"
 
 import "../../common"
 import "../../common/exact"
+import "../../util"
 import "../ast"
 import "../diagnostics"
 import "../hir"
@@ -416,26 +417,8 @@ _eval_binop :: proc(
 		return _eval_boolean_multiply(ts, rhs, lhs, ltype, binop, binop.lhs)
 	}
 
-	if binop.op == .Add {
-		if l, l_ok := lhs.(Comptime_Value); l_ok {
-			if r, r_ok := rhs.(Comptime_Value); r_ok {
-				if lstr, lstr_ok := l.value.(string); lstr_ok {
-					if rstr, rstr_ok := r.value.(string); rstr_ok {
-						typ, ok := _coerce(ts, ltype, rtype)
-						assert(ok, "there is a bug in type coercion logic, probably")
-						return Comptime_Value {
-							value = strings.concatenate({lstr, rstr}, ts.allocator),
-							type = typ,
-							unit = hir.Indeterminate_Unit.No_Unit,
-						}
-					}
-				}
-			}
-		}
-	}
-
-	coerced_type, ok := _coerce(ts, ltype, rtype)
-	if !ok {
+	coerced_type, coerce_ok := _coerce(ts, ltype, rtype)
+	if !coerce_ok {
 		diagnostics.emit(
 			.Binop_Not_Defined,
 			binop.span,
@@ -446,6 +429,18 @@ _eval_binop :: proc(
 			rtype,
 		)
 		return nil
+	}
+
+	if binop.op == .Add {
+		if l, r, ok := util.extract_pair(lhs, rhs, Comptime_Value); ok {
+			if lstr, rstr, str_ok := util.extract_pair(l.value, r.value, string); str_ok {
+				return Comptime_Value {
+					value = strings.concatenate({lstr, rstr}, ts.output.allocator),
+					type = coerced_type,
+					unit = hir.Indeterminate_Unit.No_Unit,
+				}
+			}
+		}
 	}
 
 	op_compat := OP_CATEGORY_DEFS[_op_category_of(coerced_type)]
@@ -564,15 +559,14 @@ _eval_boolean_multiply :: proc(
 
 	switch boolean in boolval {
 	case Comptime_Value:
-		value, ok := boolean.value.(bool)
-		assert(ok)
+		value := boolean.value.(bool)
 		if value {
 			return nonbool
+		} else {
+			_, unit, singular := _singular_type_and_unit(nonbool)
+			assert(singular)
+			return Comptime_Value{value = zero_of(nonbool_type), type = nonbool_type, unit = unit}
 		}
-
-		_, unit, singular := _singular_type_and_unit(nonbool)
-		assert(singular)
-		return Comptime_Value{value = zero_of(nonbool_type), type = nonbool_type, unit = unit}
 
 	case hir.Expression:
 		if known, ok := nonbool.(Comptime_Value); ok {
@@ -599,67 +593,32 @@ _eval_boolean_multiply :: proc(
 				unit      = unit,
 			}
 			return hir.Expression(result)
-		}
 
-		nonbool_expr := nonbool.(hir.Expression)
-		typ, unit, singular := hir.singular_type_and_unit(nonbool_expr)
-		assert(singular)
-		if_false := new(hir.Const_Expr, ts.output.allocator)
-		if_false^ = {
-			span = ast.expression_span(nonbool_ast),
-			value = hir.Zero_Of{type = typ},
-			type = typ,
-			unit = unit,
+		} else {
+			nonbool_expr := nonbool.(hir.Expression)
+			typ, unit, singular := hir.singular_type_and_unit(nonbool_expr)
+			assert(singular)
+			if_false := new(hir.Const_Expr, ts.output.allocator)
+			if_false^ = {
+				span = ast.expression_span(nonbool_ast),
+				value = hir.Zero_Of{type = typ},
+				type = typ,
+				unit = unit,
+			}
+			result := new(hir.Condition_Expr, ts.output.allocator)
+			result^ = {
+				span      = binop.span,
+				condition = boolean,
+				if_true   = nonbool_expr,
+				if_false  = if_false,
+				type      = typ,
+				unit      = unit,
+			}
+			return hir.Expression(result)
 		}
-		result := new(hir.Condition_Expr, ts.output.allocator)
-		result^ = {
-			span      = binop.span,
-			condition = boolean,
-			if_true   = nonbool_expr,
-			if_false  = if_false,
-			type      = typ,
-			unit      = unit,
-		}
-		return hir.Expression(result)
 	}
 
 	panic("unreachable")
-}
-
-is_zeroable :: proc(typ: Comptime_Type) -> bool {
-	switch comptime_type in typ {
-	case Flexible_Type:
-		return true
-	case hir.Type:
-		switch concrete in comptime_type {
-		case ^hir.Interface:
-			return false
-		case ^hir.Enum_Type, ^hir.Struct_Type:
-			return false
-		case ^hir.Fixed_Array_Type:
-			return is_zeroable(concrete.elem)
-		case ^hir.Pointer_Type:
-			return concrete.nullable
-		case ^hir.Distinct_Type:
-			return is_zeroable(concrete.underlying)
-		case ^hir.Tagged_Type:
-			return is_zeroable(concrete.base)
-		case hir.Primitive_Type:
-			return true
-		case hir.Fixed_Decimal:
-			return true
-		case ^hir.Generic_Type:
-		case ^hir.Dynamic_Array_Type:
-		case ^hir.View_Type:
-		case ^hir.Map_Type:
-			return true
-		case ^hir.Optional_Type:
-			return true
-		case:
-			return true
-		}
-	}
-	return false
 }
 
 zero_of :: proc(typ: Comptime_Type) -> common.Value {
@@ -968,39 +927,4 @@ _coerce_units :: proc(
 	// TODO: find conversion from one to the other
 
 	return nil, {}, false
-}
-
-_coerce :: proc(
-	ts: ^Translation_State,
-	ltype: Comptime_Type,
-	rtype: Comptime_Type,
-) -> (
-	Comptime_Type,
-	bool,
-) {
-	if types_equal(ltype, rtype) {
-		return ltype, true
-	}
-
-	if conv, ok := _implicit_convert(ts, ltype, rtype); ok {
-		return conv, true
-	}
-
-	if conv, ok := _implicit_convert(ts, rtype, ltype); ok {
-		return conv, true
-	}
-
-	return nil, false
-}
-
-_implicit_convert :: proc(
-	ts: ^Translation_State,
-	dest: Comptime_Type,
-	src: Comptime_Type,
-) -> (
-	Comptime_Type,
-	bool,
-) {
-	// TODO
-	return nil, false
 }

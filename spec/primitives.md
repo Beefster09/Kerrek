@@ -126,7 +126,7 @@ Strings have value semantics and behave like values under all conditions which d
 
 ## Rune
 
-A rune represents a single unicode codepoint and must be able to represent, at minimum, values from U+0000 to U+10FFFF, inclusive
+A rune represents a single unicode codepoint and is able to represent values from U+0000 to U+10FFFF, inclusive
 
 The zero value is U+0000
 
