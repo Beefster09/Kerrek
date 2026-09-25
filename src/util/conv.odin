@@ -32,3 +32,21 @@ chain_extract :: proc(
 	}
 	return {}, false
 }
+
+chain_extract_pair :: proc(
+	a, b: $U,
+	$V1: typeid,
+	$V2: typeid,
+) -> (
+	V2,
+	V2,
+	bool,
+) where intrinsics.type_is_union(U) &&
+	intrinsics.type_is_variant_of(U, V1) &&
+	intrinsics.type_is_union(V1) &&
+	intrinsics.type_is_variant_of(V1, V2) {
+	if av, bv, ok := extract_pair(a, b, V1); ok {
+		return extract_pair(av, bv, V2)
+	}
+	return {}, {}, false
+}

@@ -417,7 +417,7 @@ _eval_binop :: proc(
 		return _eval_boolean_multiply(ts, rhs, lhs, ltype, binop, binop.lhs)
 	}
 
-	coerced_type, coerce_ok := _coerce(ts, ltype, rtype)
+	coerced_type, coerce_ok := coerce(ltype, rtype)
 	if !coerce_ok {
 		diagnostics.emit(
 			.Binop_Not_Defined,
