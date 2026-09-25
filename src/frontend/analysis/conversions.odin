@@ -317,6 +317,7 @@ _type_implicitly_converts :: proc(dest: Comptime_Type, src: Comptime_Type) -> bo
 		case hir.Primitive_Type:
 			return _primitive_implicitly_converts(src, dest)
 		case hir.Fixed_Decimal:
+			return _fixed_decimal_implicitly_converts(src, dest)
 		case ^hir.Fixed_Array_Type:
 		case ^hir.Optional_Type:
 		case ^hir.Tagged_Type:
@@ -461,4 +462,64 @@ _primitive_implicitly_converts :: proc(prim: hir.Primitive_Type, to: hir.Type) -
 	}
 
 	return false
+}
+
+_fixed_decimal_implicitly_converts :: proc(dec: hir.Fixed_Decimal, to: hir.Type) -> bool {
+	#partial switch to in to {
+	case hir.Primitive_Type:
+		if to == .Any {
+			return true
+		}
+		meta := PRIMITIVE_TYPE_METADATA[to]
+		switch meta.numeric_class {
+		case .Integer:
+			return(
+				meta.signedness == .Signed &&
+				dec.scale <= 0 &&
+				int(dec.digits - dec.scale) <= meta.decimal_digits \
+			)
+		case .Float:
+			return _fixed_decimal_fits_binary_precision(dec, meta.significant_bits)
+		case .Not_A_Number, .Unknown:
+			return false
+		}
+
+	case hir.Fixed_Decimal:
+		return dec.scale <= to.scale && dec.digits - dec.scale <= to.digits - to.scale
+
+	case ^hir.Optional_Type:
+		return _fixed_decimal_implicitly_converts(dec, to.base)
+	case ^hir.Fixed_Array_Type:
+		if _fixed_decimal_implicitly_converts(dec, to.elem) {
+			return slice.all_of(to.shape, 1) // fixed array is actually a scalar
+		}
+	}
+
+	return false
+}
+
+_fixed_decimal_fits_binary_precision :: proc(
+	dec: hir.Fixed_Decimal,
+	significant_bits: int,
+) -> bool {
+	if dec.scale > 0 {
+		return false
+	}
+
+	limit := u64(1) << uint(significant_bits)
+	max_significand: u64
+	for _ in 0 ..< dec.digits {
+		if max_significand > (limit - 10) / 10 {
+			return false
+		}
+		max_significand = max_significand * 10 + 9
+	}
+	// The power of two in 10^-scale changes the exponent without consuming precision.
+	for _ in 0 ..< -dec.scale {
+		if max_significand > (limit - 1) / 5 {
+			return false
+		}
+		max_significand *= 5
+	}
+	return true
 }
