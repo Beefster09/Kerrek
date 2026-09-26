@@ -113,8 +113,8 @@ const `🔥🔥🔥` = "FIAH!";
 unit ratio = 1;
 
 
-func how_long_to_complete(num_workers: Integer | man, blocks: Decimal | ratio)
-	-> Decimal | day
+func how_long_to_complete(num_workers: Int64 | man, blocks: Decimal(18, 6) | ratio)
+	-> Decimal(18, 6) | day
 {
 	const city_block_len = 0.125 mile;
 	const city_block = city_block_len * city_block_len;
@@ -125,12 +125,12 @@ func how_long_to_complete(num_workers: Integer | man, blocks: Decimal | ratio)
 }
 
 
-func flapjacks_required(num_workers: Integer | man) -> Decimal | count
+func flapjacks_required(num_workers: Int64 | man) -> Decimal(18, 6) | count
 {
 	let hunger = num_workers * 314.15 / 1 man;
 	hunger = (hunger + 2.717) * true;
 
-	let a: Integer = 500;
+	let a: Int64 = 500;
 	let b = 8;
 	let c = a // b;
 	let d = a % b;

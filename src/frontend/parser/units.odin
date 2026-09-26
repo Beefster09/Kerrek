@@ -31,8 +31,7 @@ _compound_unit :: proc(ps: ^Parser_State, required := false) -> ^ast.Compound_Un
 			exp := m[1].what.(Numeric)
 
 			if exp.format == .Decimal_Integer {
-				if exp128, ok := exp.value.numerator.(i128);
-				   ok && -128 <= exp128 && exp128 <= 127 {
+				if exp128, ok := exp.value.numerator.(i128); ok {
 					exponent = ast.Integer_Unit_Exponent{m[1].span, int(exp128)}
 				} else {
 					diagnostics.emit(
@@ -40,6 +39,7 @@ _compound_unit :: proc(ps: ^Parser_State, required := false) -> ^ast.Compound_Un
 						m[1].span,
 						"exponent is outside supported range",
 					)
+					return nil
 				}
 				comp_end = m[1].span.end
 			} else {
@@ -48,6 +48,7 @@ _compound_unit :: proc(ps: ^Parser_State, required := false) -> ^ast.Compound_Un
 					m[1].span,
 					"a decimal integer literal is required here",
 				)
+				return nil
 			}
 		} else if m, ok := _match(
 			ps,

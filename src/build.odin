@@ -14,8 +14,8 @@ build :: proc(entry_point: string, backend_id: string = "c99") {
 	defer resolver.destroy(&res)
 
 	entry_pkg, err := resolver.load_package(&res, entry_point, file_as_package = true)
+	diagnostics.report_and_exit()
 	if err != .OK {
-		diagnostics.report_and_exit()
 		os.exit(1)
 	}
 
