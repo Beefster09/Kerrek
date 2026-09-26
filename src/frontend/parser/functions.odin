@@ -79,7 +79,8 @@ _func_def :: proc(ps: ^Parser_State) -> ^ast.Func_Definition {
 		}
 	}
 
-	// Capability requirements are a TODO in pykerrek as well.
+	// TODO: capabilities, defer with, etc...
+
 	body := _block(ps)
 	_end_of_statement(ps, required = false)
 	if body == nil {

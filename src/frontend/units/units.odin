@@ -13,7 +13,7 @@ Compound_Unit :: union {
 
 #assert(size_of(Heap_Compound_Unit) <= 32)
 Heap_Compound_Unit :: struct {
-	components: []Unit_Component,
+	components: []Component,
 }
 
 #assert(size_of(Inline_Compound_Unit) <= 32)
@@ -24,9 +24,13 @@ Inline_Compound_Unit :: struct {
 	count:     u16,
 }
 
-Unit_Component :: struct {
+Component :: struct {
 	unit: common.Symbol_ID,
 	exp:  Small_Rat,
+}
+
+Builder :: struct {
+	components: [dynamic]Component,
 }
 
 Unit_Error :: enum {
@@ -46,7 +50,7 @@ num_components :: proc(unit: Compound_Unit) -> int {
 	}
 }
 
-get_component :: proc(unit: Compound_Unit, #any_int idx: int) -> Unit_Component {
+get_component :: proc(unit: Compound_Unit, #any_int idx: int) -> Component {
 	switch u in unit {
 	case Inline_Compound_Unit:
 		when !ODIN_NO_BOUNDS_CHECK {
@@ -60,9 +64,87 @@ get_component :: proc(unit: Compound_Unit, #any_int idx: int) -> Unit_Component 
 	}
 }
 
+builder_init :: proc(b: ^Builder, allocator := context.temp_allocator) {
+	b.components = make([dynamic]Component, allocator)
+}
+
+builder_destroy :: proc(b: ^Builder) {
+	delete(b.components)
+}
+
+builder_add :: proc {
+	builder_add_base_unit,
+	builder_add_compound_unit,
+}
+
+builder_add_base_unit :: proc(
+	b: ^Builder,
+	unit: common.Symbol_ID,
+	exp: Small_Rat = RAT_ONE,
+) -> Unit_Error {
+	for &existing, i in b.components {
+		if unit == existing.unit {
+			ok: bool
+			existing.exp, ok = rat_add(existing.exp, exp)
+			if !ok {
+				return .Unrepresentable_Exponent
+			}
+
+			if eq(existing.exp, RAT_ZERO) {
+				unordered_remove(&b.components, i)
+			}
+			return .OK
+		}
+	}
+
+	append(&b.components, Component{unit, exp})
+	return .OK
+}
+
+builder_add_compound_unit :: proc(
+	b: ^Builder,
+	unit: Compound_Unit,
+	exp: Small_Rat = RAT_ONE,
+) -> Unit_Error {
+	for i in 0 ..< num_components(unit) {
+		comp := get_component(unit, i)
+		new_exp, ok := rat_mul(comp.exp, exp)
+		if !ok {
+			return .Unrepresentable_Exponent
+		}
+
+		err := builder_add_base_unit(b, comp.unit, comp.exp)
+		if err != .OK {
+			return err
+		}
+	}
+
+	return .OK
+}
+
+combine_units :: proc(
+	unit1: Compound_Unit,
+	exp1: Small_Rat,
+	unit2: Compound_Unit,
+	exp2: Small_Rat,
+	allocator := context.allocator,
+) -> (
+	result: Compound_Unit,
+	err: Unit_Error,
+) {
+	b: Builder
+	builder_init(&b, context.temp_allocator)
+	defer builder_destroy(&b)
+
+	builder_add(&b, unit1, exp1)
+	builder_add(&b, unit2, exp2)
+
+	return to_compound_unit(&b, allocator), .OK
+}
+
 // arbitrary sort function: order by descending exponent, ascending symbol id
 // symbol id should roughly correlate with declaration order
-_cmp_components :: proc(a, b: Unit_Component) -> slice.Ordering {
+_cmp_components :: proc(a, b: Component) -> slice.Ordering {
 	exp_cmp := rat_cmp(a.exp, b.exp)
 	if exp_cmp != .Equal {
 		return -exp_cmp
@@ -78,70 +160,22 @@ _cmp_components :: proc(a, b: Unit_Component) -> slice.Ordering {
 	return .Equal
 }
 
-combine_units :: proc(
-	a: Compound_Unit,
-	a_exp: Small_Rat,
-	b: Compound_Unit,
-	b_exp: Small_Rat,
-) -> (
-	result: Compound_Unit,
-	err: Unit_Error,
-) {
-
-	cmp_out := make([dynamic]Unit_Component, 0, num_components(a) + num_components(b))
-	defer if _, is_inline := result.(Inline_Compound_Unit); err != .OK || is_inline {
-		delete(cmp_out)
-	}
-
-	#unroll for x in ([?]struct {
-			cu:  Compound_Unit,
-			exp: Small_Rat,
-		}{{a, a_exp}, {b, b_exp}}) {
-		next_component: for i in 0 ..< num_components(x.cu) {
-			comp := get_component(x.cu, i)
-			new_exp, ok := rat_mul(comp.exp, x.exp)
-			if !ok {
-				return nil, .Unrepresentable_Exponent
-			}
-
-			for &existing, i in cmp_out {
-
-				if comp.unit == existing.unit {
-					existing.exp, ok = rat_add(existing.exp, new_exp)
-					if !ok {
-						return nil, .Unrepresentable_Exponent
-					}
-
-					if eq(existing.exp, RAT_ZERO) {
-						unordered_remove(&cmp_out, i)
-					}
-					continue next_component
-				}
-			}
-
-			append(&cmp_out, Unit_Component{comp.unit, new_exp})
-		}
-	}
-	shrink(&cmp_out)
-	return build_compound_unit(cmp_out[:]), .OK
-}
-
 // creates a compound unit, inline if possible
-// assumes ownership of the given slice and sorts the components
-build_compound_unit :: proc(components: []Unit_Component) -> Compound_Unit {
-	slice.sort_by_cmp(components, _cmp_components)
+// sorts the components and clones the slice with the given allocator if necessary
+to_compound_unit :: proc(builder: ^Builder, allocator := context.allocator) -> Compound_Unit {
+	slice.sort_by_cmp(builder.components[:], _cmp_components)
 
-	if len(components) <= MAX_INLINE_UNITS {
+	if len(builder.components) <= MAX_INLINE_UNITS {
 		res := Inline_Compound_Unit {
-			count = u16(len(components)),
+			count = u16(len(builder.components)),
 		}
-		for cmp, i in components {
+		for cmp, i in builder.components {
 			res.comp_base[i] = cmp.unit
 			res.comp_exp[i] = cmp.exp
 		}
 		return res
 	} else {
-		return Heap_Compound_Unit{components = components[:]}
+		return Heap_Compound_Unit{components = slice.clone(builder.components[:], allocator)}
 	}
 }
 

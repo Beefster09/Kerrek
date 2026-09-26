@@ -182,7 +182,13 @@ ensure_toplevel_symbol_processed :: proc(
 		return .OK if conversions_ok else .Malformed
 
 	case ^resolver.Unit_Alias:
-		return .OK
+		if unit, ok := get_canonical_unit(ts, symbol.ast.orig, symbol.defined_in); ok {
+			symbol.canonical = unit
+			// TODO: register in conversions (once I figure out how compound units are encoded there)
+			return .OK
+		} else {
+			return .Malformed
+		}
 
 	case ^resolver.Struct_Type:
 		return .Not_Implemented

@@ -103,29 +103,10 @@ translate_function_signature :: proc(
 
 	for ret, i in func.returns {
 		rtype, rt_ok := build_type(ts, ret.type, scope)
-
-		if !rt_ok {
-			diagnostics.emit(
-				.Invalid_Type,
-				ast.type_span(ret.type),
-				"type missing on func return %d",
-				i,
-			)
-		}
-
 		runit, ru_ok := build_unit(ts, ret.unit, scope)
 
-		if !ru_ok {
-			diagnostics.emit(
-				.Invalid_Unit,
-				ast.unit_span(ret.unit),
-				"unit missing on func return %d",
-				i,
-			)
-		}
-
 		if !rt_ok || !ru_ok {
-			continue
+			return .Invalid_Types
 		}
 
 		hir_ret := new(hir.Func_Return)
