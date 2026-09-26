@@ -110,7 +110,7 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 	switch comptime_type in typ {
 	case Flexible_Type:
 		switch comptime_type.affinity {
-		case .Contextual, .Boolean:
+		case .Boolean:
 			return .Boolean
 		case .String, .Rune:
 			return .Ordered
@@ -122,6 +122,8 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 			return .Bin_Float
 		case .Byte:
 			return .Opaque
+		case .Nil, .Any_Zero:
+			return .Opaque // maybe needs to be "unknown"?
 		}
 
 	case hir.Type:
@@ -177,7 +179,10 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 	return .Opaque
 }
 
-_comptime_binop :: proc(op: common.Binary_Op, lhs, rhs: common.Value) -> common.Value {
+_comptime_binop :: proc(
+	op: common.Binary_Op,
+	lhs, rhs: common.Primitive_Value,
+) -> common.Primitive_Value {
 	switch op {
 	case .Add:
 		return exact.add(lhs.(exact.Rat), rhs.(exact.Rat))
@@ -222,7 +227,7 @@ _comptime_binop :: proc(op: common.Binary_Op, lhs, rhs: common.Value) -> common.
 	)
 }
 
-_comptime_equal :: proc(lhs, rhs: common.Value) -> bool {
+_comptime_equal :: proc(lhs, rhs: common.Primitive_Value) -> bool {
 	switch l in lhs {
 	case exact.Rat:
 		return exact.eq(l, rhs.(exact.Rat))
@@ -234,13 +239,13 @@ _comptime_equal :: proc(lhs, rhs: common.Value) -> bool {
 		return l == rhs.(byte)
 	case bool:
 		return l == rhs.(bool)
-	case common.Untyped_Value:
+	case Untyped_Nil, Untyped_Zero:
 		panic("untyped values should have already been coerced")
 	}
 	return false
 }
 
-_comptime_less :: proc(lhs, rhs: common.Value) -> bool {
+_comptime_less :: proc(lhs, rhs: common.Primitive_Value) -> bool {
 	switch l in lhs {
 	case exact.Rat:
 		return exact.lt(l, rhs.(exact.Rat))
@@ -250,7 +255,7 @@ _comptime_less :: proc(lhs, rhs: common.Value) -> bool {
 		return l < rhs.(rune)
 	case byte:
 		return l < rhs.(byte)
-	case bool, common.Untyped_Value:
+	case bool, Untyped_Nil, Untyped_Zero:
 		panic("value does not support ordering")
 	}
 	return false

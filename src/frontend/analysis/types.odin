@@ -593,8 +593,10 @@ write_comptime_type :: proc(w: io.Writer, type: Comptime_Type) {
 	switch type in type {
 	case Flexible_Type:
 		switch type.affinity {
-		case .Contextual:
-			io.write_string(w, "unknown type")
+		case .Nil:
+			io.write_string(w, "flexible nil")
+		case .Any_Zero:
+			io.write_string(w, "flexible zero")
 		case .Unsigned_Integer:
 			io.write_string(w, "flexible unsigned integer")
 		case .Integer:

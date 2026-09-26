@@ -7,7 +7,7 @@ import "../hir"
 
 
 Comptime_Value :: struct {
-	value: common.Value,
+	value: common.Primitive_Value,
 	type:  Comptime_Type,
 	unit:  hir.Realized_Unit,
 }
@@ -24,7 +24,8 @@ Flexible_Type :: struct {
 }
 
 Flexible_Affinity :: enum {
-	Contextual,
+	Nil,
+	Any_Zero,
 	Unsigned_Integer,
 	Integer,
 	Decimal,

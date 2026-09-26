@@ -339,32 +339,29 @@ _type_implicitly_converts :: proc(dest: Comptime_Type, src: Comptime_Type) -> bo
 }
 
 _flex_converts_to :: proc(flex: Flexible_Type, to: Comptime_Type) -> bool {
-	if flex.affinity == .Contextual {
-		// TODO: Split Contextual into Nil and Zero affinities.
-		return false
-	}
-
 	switch dest in to {
 	case Flexible_Type:
 		if flex.affinity == dest.affinity {
 			return true
 		}
 		switch dest.affinity {
-		case .Contextual:
-			// TODO: Split Contextual into Nil and Zero affinities.
+		case .Nil, .Any_Zero:
 			return false
 		case .Integer:
-			return flex.affinity == .Unsigned_Integer
+			#partial switch flex.affinity {
+			case .Unsigned_Integer, .Any_Zero:
+				return true
+			}
 		case .Decimal, .Binary_Float:
 			#partial switch flex.affinity {
-			case .Unsigned_Integer, .Integer, .Rational:
+			case .Unsigned_Integer, .Integer, .Rational, .Any_Zero:
 				return true
 			}
 		case .Rational:
 			switch flex.affinity {
-			case .Unsigned_Integer, .Integer, .Decimal, .Binary_Float, .Rational:
+			case .Unsigned_Integer, .Integer, .Decimal, .Binary_Float, .Rational, .Any_Zero:
 				return true
-			case .Contextual, .Boolean, .String, .Rune, .Byte:
+			case .Nil, .Boolean, .String, .Rune, .Byte:
 				return false
 			}
 		case .Byte:
@@ -379,16 +376,18 @@ _flex_converts_to :: proc(flex: Flexible_Type, to: Comptime_Type) -> bool {
 		#partial switch concrete in dest {
 		case hir.Fixed_Decimal:
 			switch flex.affinity {
-			case .Unsigned_Integer, .Integer:
+			case .Unsigned_Integer, .Integer, .Any_Zero:
 				return true
 			case .Decimal, .Rational:
 				return concrete.scale != 0
-			case .Contextual, .Binary_Float, .Boolean, .String, .Rune, .Byte:
+			case .Nil, .Binary_Float, .Boolean, .String, .Rune, .Byte:
 				return false
 			}
 
 		case hir.Primitive_Type:
 			switch flex.affinity {
+			case .Any_Zero:
+				return true
 			case .Unsigned_Integer, .Integer:
 				switch concrete {
 				case .Int128,
@@ -430,7 +429,7 @@ _flex_converts_to :: proc(flex: Flexible_Type, to: Comptime_Type) -> bool {
 				return concrete == .Rune || concrete == .Byte || concrete == .Any
 			case .Byte:
 				return concrete == .Byte || concrete == .Any
-			case .Contextual:
+			case .Nil:
 				return false
 			}
 		}

@@ -51,7 +51,12 @@ Scalar_Literal_Expr :: struct {
 
 Simple_Literal_Expr :: struct {
 	span:  Span,
-	value: common.Value,
+	value: common.Primitive_Value,
+}
+
+Typed_Zero_Expr :: struct {
+	span: Span,
+	type: Type_Expression,
 }
 
 Implicit_Enum_Expr :: struct {

@@ -14,7 +14,8 @@ import "../hir"
 import "../resolver"
 import "../units"
 
-Untyped_Value :: common.Untyped_Value
+Untyped_Nil :: common.Untyped_Nil
+Untyped_Zero :: common.Untyped_Zero
 Comptime_Value :: resolver.Comptime_Value
 Comptime_Type :: resolver.Comptime_Type
 Flexible_Type :: resolver.Flexible_Type
@@ -40,16 +41,13 @@ materialize :: proc(
 
 	real_value: hir.Value
 	switch v in value.value {
-	case Untyped_Value:
-		switch v {
-		case .Nil:
-			real_value = hir.Nil_Of {
-				type = real_type,
-			}
-		case .Zero:
-			real_value = hir.Zero_Of {
-				type = real_type,
-			}
+	case Untyped_Nil:
+		real_value = hir.Nil_Of {
+			type = real_type,
+		}
+	case Untyped_Zero:
+		real_value = hir.Zero_Of {
+			type = real_type,
 		}
 	case exact.Rat:
 		real_value = v
@@ -109,7 +107,7 @@ infer_type :: proc(
 			return hir.Primitive_Type.Rune, true
 		case .Byte:
 			return hir.Primitive_Type.Byte, true
-		case .Rational, .Contextual:
+		case .Rational, .Nil, .Any_Zero:
 			diagnostics.emit(
 				.Inference_Failed,
 				diagnostic_span,
@@ -184,10 +182,16 @@ evaluate :: proc(
 				type = Flexible_Type{affinity = .Boolean},
 				unit = .No_Unit,
 			}
-		case Untyped_Value:
+		case Untyped_Nil:
 			return Comptime_Value {
 				value = value,
-				type = Flexible_Type{affinity = .Contextual},
+				type = Flexible_Type{affinity = .Nil},
+				unit = .No_Unit,
+			}
+		case Untyped_Zero:
+			return Comptime_Value {
+				value = value,
+				type = Flexible_Type{affinity = .Any_Zero},
 				unit = .No_Unit,
 			}
 		}
@@ -565,7 +569,11 @@ _eval_boolean_multiply :: proc(
 		} else {
 			_, unit, singular := _singular_type_and_unit(nonbool)
 			assert(singular)
-			return Comptime_Value{value = zero_of(nonbool_type), type = nonbool_type, unit = unit}
+			return Comptime_Value {
+				value = _primitive_zero(nonbool_type),
+				type = nonbool_type,
+				unit = unit,
+			}
 		}
 
 	case hir.Expression:
@@ -621,7 +629,7 @@ _eval_boolean_multiply :: proc(
 	panic("unreachable")
 }
 
-zero_of :: proc(typ: Comptime_Type) -> common.Value {
+_primitive_zero :: proc(typ: Comptime_Type) -> common.Primitive_Value {
 	switch comptime_type in typ {
 	case Flexible_Type:
 		switch comptime_type.affinity {
@@ -635,8 +643,10 @@ zero_of :: proc(typ: Comptime_Type) -> common.Value {
 			return rune(0)
 		case .Byte:
 			return u8(0)
-		case .Contextual:
-			panic("zero_of(...) should only be called with zeroable types")
+		case .Nil:
+			return Untyped_Nil{}
+		case .Any_Zero:
+			return Untyped_Zero{}
 		}
 	case hir.Type:
 		#partial switch concrete in comptime_type {
@@ -668,15 +678,15 @@ zero_of :: proc(typ: Comptime_Type) -> common.Value {
 				return ""
 
 			case .Any, .Opaque, .Opaque8, .Opaque16, .Opaque32, .Opaque64:
-				panic("zero_of(...) should only be called with zeroable types")
+				panic("_primitive_zero(...) should only be called with zeroable types")
 			}
 		case ^hir.Pointer_Type, ^hir.Optional_Type:
-			return Untyped_Value.Nil
+			return Untyped_Nil{}
 		case:
-			panic("zero_of(...) should only be called with zeroable types")
+			panic("_primitive_zero(...) should only be called with zeroable types")
 		}
 	}
-	panic("zero_of(...) should only be called with zeroable types")
+	panic("_primitive_zero(...) should only be called with zeroable types")
 }
 
 _eval_binop_unit :: proc(

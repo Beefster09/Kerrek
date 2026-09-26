@@ -2,8 +2,9 @@ package common
 
 import "exact"
 
-Value :: union #no_nil {
-	Untyped_Value,
+Primitive_Value :: union #no_nil {
+	Untyped_Nil,
+	Untyped_Zero,
 	exact.Rat,
 	string,
 	rune,
@@ -11,10 +12,8 @@ Value :: union #no_nil {
 	bool,
 }
 
-Untyped_Value :: enum {
-	Nil,
-	Zero,
-}
+Untyped_Nil :: struct {}
+Untyped_Zero :: struct {}
 
 Pointer_Ownership :: enum {
 	Borrow,

@@ -192,33 +192,58 @@ _literal_expr :: proc(ps: ^Parser_State) -> ast.Expression {
 	case Keyword:
 		#partial switch value {
 		case .True:
+			ps.cur_token += 1
 			literal := new(ast.Simple_Literal_Expr)
 			literal^ = {
 				span  = tok.span,
 				value = true,
 			}
-			ps.cur_token += 1
 			return literal
 		case .False:
+			ps.cur_token += 1
 			literal := new(ast.Simple_Literal_Expr)
 			literal^ = {
 				span  = tok.span,
 				value = false,
 			}
-			ps.cur_token += 1
 			return literal
 		case .Nil:
+			ps.cur_token += 1
 			literal := new(ast.Simple_Literal_Expr)
 			literal^ = {
 				span  = tok.span,
-				value = common.Untyped_Value.Nil,
+				value = common.Untyped_Nil{},
 			}
-			ps.cur_token += 1
 			return literal
+		case .Zero:
+			ps.cur_token += 1
+			if lparen, lp_ok := _match(ps, Punctuation.LParen); lp_ok {
+				type := _type_expr(ps)
+				if type == nil {
+					_error_here(ps, "expected a type here")
+				}
+				rparen, rp_ok := _match(ps, Punctuation.RParen)
+				if !rp_ok {
+					_error_here(ps, "expected ')' here")
+					return nil
+				}
+				literal := new(ast.Typed_Zero_Expr)
+				literal^ = {
+					span = common.merge_spans(tok.span, rparen[0].span),
+					type = type,
+				}
+			} else {
+				literal := new(ast.Simple_Literal_Expr)
+				literal^ = {
+					span  = tok.span,
+					value = common.Untyped_Zero{},
+				}
+				return literal
+			}
 		case .Placeholder:
+			ps.cur_token += 1
 			placeholder := new(ast.Placeholder_Expr)
 			placeholder.span = tok.span
-			ps.cur_token += 1
 			return placeholder
 		case:
 			return nil
