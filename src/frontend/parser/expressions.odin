@@ -10,7 +10,7 @@ import "../lexer"
 
 
 _expr :: proc(ps: ^Parser_State) -> ast.Expression {
-	expr := _expr_atom(ps)
+	expr := _unary_expr(ps)
 	if expr == nil {
 		return nil
 	}
@@ -51,6 +51,36 @@ _expr :: proc(ps: ^Parser_State) -> ast.Expression {
 	}
 
 	return expr
+}
+
+
+_unary_expr :: proc(ps: ^Parser_State) -> ast.Expression {
+	op_tok, has_op := _peek(ps)
+	if !has_op {
+		return nil
+	}
+	op, has_unary_op := _unary_op(op_tok)
+	if !has_unary_op {
+		return _expr_atom(ps)
+	}
+
+	ps.cur_token += 1
+	expr := _unary_expr(ps)
+	if expr == nil {
+		return nil
+	}
+	expr = _binop_expr(ps, expr, UNOP_PRECEDENCE[op])
+	if expr == nil {
+		return nil
+	}
+
+	unary := new(ast.Unary_Expr)
+	unary^ = {
+		span = common.merge_spans(op_tok.span, ast.expression_span(expr)),
+		op   = op,
+		expr = expr,
+	}
+	return unary
 }
 
 
@@ -109,6 +139,7 @@ _expr_atom :: proc(ps: ^Parser_State) -> ast.Expression {
 				callee = atom,
 				args   = args,
 			}
+			atom = callish_expr
 		case Punctuation.LSquare:
 			diagnostics.emit(.Not_Implemented, tok.span, "index expressions not yet supported")
 		case:
@@ -232,6 +263,7 @@ _literal_expr :: proc(ps: ^Parser_State) -> ast.Expression {
 					span = common.merge_spans(tok.span, rparen[0].span),
 					type = type,
 				}
+				return literal
 			} else {
 				literal := new(ast.Simple_Literal_Expr)
 				literal^ = {
@@ -275,7 +307,7 @@ _binop_expr :: proc(
 		}
 
 		ps.cur_token += 1
-		rhs := _expr_atom(ps)
+		rhs := _unary_expr(ps)
 		if rhs == nil {
 			_error_here(ps, "expected a sub-expression here")
 			return nil
@@ -323,6 +355,20 @@ _binop_expr :: proc(
 }
 
 
+_unary_op :: proc "contextless" (tok: lexer.Token) -> (common.Unary_Op, bool) {
+	#partial switch what in tok.what {
+	case Punctuation:
+		op := PUNCT_UNOP[what]
+		return op, op != common.Unary_Op(0)
+	case Keyword:
+		op := KW_UNOP[what]
+		return op, op != common.Unary_Op(0)
+	case:
+		return common.Unary_Op(0), false
+	}
+}
+
+
 _binary_op :: proc "contextless" (tok: lexer.Token) -> (common.Binary_Op, bool) {
 	#partial switch what in tok.what {
 	case Punctuation:
@@ -359,6 +405,8 @@ _set_expression_span :: proc "contextless" (expr: ast.Expression, span: ast.Span
 	case ^ast.Scalar_Literal_Expr:
 		node.span = span
 	case ^ast.Simple_Literal_Expr:
+		node.span = span
+	case ^ast.Typed_Zero_Expr:
 		node.span = span
 	case ^ast.Implicit_Enum_Expr:
 		node.span = span

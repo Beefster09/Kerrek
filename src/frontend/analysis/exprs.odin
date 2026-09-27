@@ -346,6 +346,8 @@ evaluate :: proc(
 
 	case ^ast.Placeholder_Expr:
 		return _not_implemented(ts, node)
+	case ^ast.Typed_Zero_Expr:
+		return _not_implemented(ts, node)
 	case ^ast.FieldAccess_Expr:
 		return _not_implemented(ts, node)
 	case ^ast.Implicit_Enum_Expr:

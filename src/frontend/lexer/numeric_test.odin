@@ -2,6 +2,7 @@
 package lexer
 
 import "core:strings"
+import "core:sync"
 import "core:testing"
 
 import "../../common"
@@ -266,9 +267,12 @@ _expect_invalid_numeric_diagnostic :: proc(t: ^testing.T, source: string, span_l
 
 @(test)
 test_numeric_literals :: proc(t: ^testing.T) {
+	sync.lock(&common.Test_Global_State_Lock)
+	defer sync.unlock(&common.Test_Global_State_Lock)
 	diagnostics.initialize()
 	defer diagnostics.destroy()
 	defer common.destroy_source_storage_for_testing()
+	strings.intern_init(&common.ident_intern)
 	defer strings.intern_destroy(&common.ident_intern)
 
 	cases := [?]Numeric_Case {

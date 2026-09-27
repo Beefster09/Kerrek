@@ -466,6 +466,8 @@ expression_span :: proc(expr: ast.Expression) -> common.Span {
 		return node.span
 	case ^ast.Simple_Literal_Expr:
 		return node.span
+	case ^ast.Typed_Zero_Expr:
+		return node.span
 	case ^ast.Implicit_Enum_Expr:
 		return node.span
 	case ^ast.Move_Expr:

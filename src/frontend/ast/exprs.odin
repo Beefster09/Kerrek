@@ -10,6 +10,7 @@ Expression :: union {
 	^FieldAccess_Expr,
 	^Scalar_Literal_Expr,
 	^Simple_Literal_Expr,
+	^Typed_Zero_Expr,
 	^Implicit_Enum_Expr,
 	^Move_Expr,
 	^Binop_Expr,
@@ -144,6 +145,8 @@ expression_span :: proc "contextless" (expr: Expression) -> Span {
 	case ^Scalar_Literal_Expr:
 		return expr.span
 	case ^Simple_Literal_Expr:
+		return expr.span
+	case ^Typed_Zero_Expr:
 		return expr.span
 	case ^Implicit_Enum_Expr:
 		return expr.span
