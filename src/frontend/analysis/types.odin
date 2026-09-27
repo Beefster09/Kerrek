@@ -171,7 +171,7 @@ build_type :: proc(
 			return nil, false
 		}
 
-		return hir.Fixed_Decimal{digits = i32(digits), scale = i32(scale)}, true
+		return hir.Fixed_Decimal{digits = u8(digits), scale = i8(scale)}, true
 
 	case ^ast.Generic_Type:
 		bound: hir.Type

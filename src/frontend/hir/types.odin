@@ -3,9 +3,10 @@ package hir
 import "../../common"
 
 
-MAX_DECIMAL_DIGITS :: 1000
-MAX_DECIMAL_SCALE :: 1000
-MIN_DECIMAL_SCALE :: -1000
+INT256_DECIMAL_DIGITS :: 76
+MAX_DECIMAL_DIGITS :: INT256_DECIMAL_DIGITS
+MAX_DECIMAL_SCALE :: INT256_DECIMAL_DIGITS
+MIN_DECIMAL_SCALE :: -INT256_DECIMAL_DIGITS
 
 
 Type :: union {
@@ -52,8 +53,13 @@ Primitive_Type :: enum {
 }
 
 Fixed_Decimal :: struct {
-	digits: i32,
-	scale:  i32,
+	digits:    u8,
+	scale:     i8,
+	flags:     bit_set[enum {
+		Inferred,
+		Intermediate,
+	};u16],
+	magnitude: f32,
 }
 
 Generic_Type :: struct {

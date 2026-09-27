@@ -20,11 +20,6 @@ When an irrational number is demanded by some calculation, the result must have 
 
 ## Integers
 
-- `Integer(digits)`: An signed integer able to hold exactly `digits` decimal digits
-	- stored in the smallest power-of-two sized machine integer that will fit that many digits
-		- if no standard machine integer will fit it, it overflows into a multi-word integer (e.g. Int128) with the smallest number of 64-bit legs that will hold the desired range
-		- requesting more digits than can fit in an Int128 (i.e. 34 digits) will emit a diagnostic warning to alert the user that operations on it may be slower than expected
-	- exceeding the defined decimal range will emit an `OverflowError` that must be handled
 - Sized integers (`Int64`, `UInt32`, etc...) behave as expected for machine integers
 	- overflow and underflow wrap by default for machine integers, as that is the behavior most commonly expected for machine integers
 	- you can set the overflow behavior to saturating arithmetic or to emit `OverflowError`
@@ -37,15 +32,33 @@ Division by zero emits a `ZeroDivisionError` which panics by default
 
 ## Decimals
 
+Decimals are intended as the "business" and "accounting" numeric type, with statically-known precision and scale.
+
 The Decimal types are:
 - `Decimal(digits, scale)`: Signed fixed point decimal with enough storage for at least `digits` significant  digits and exactly `scale` of those digits after the decimal point
-	- Follows the same size and storage rules of `Integer(digits)`, including diagnostic warning conditions.
-	- `digits` must be a compile-time known positive integer
-	- `scale` must be a compile-time known integer
-		- negative `scale` and `scale > digits` are both well-formed and allowed, but both cases will trigger diagnostic warnings unless silenced, as it may be surprising and unintended
-	- `Integer(d)` and `Decimal(d, 0)` are the same type, including the absence of the `/` operator
+	- stored in the smallest power-of-two sized machine integer that will fit that many digits
+		- if no standard machine integer will fit it, it overflows into a multi-word integer (e.g. Int128) with the smallest number of 64-bit legs that will hold the desired range
+		- requesting more digits than can fit in an i64 (i.e. 18 digits) will emit a diagnostic warning to alert the user that operations on it may be slower than expected
+	- `digits` must be a compile-time known positive integer within [1, 76]
+		- 76 is chosen because it is the number of decimal digits that could be held by an i256
+	- `scale` must be a compile-time known integer within [-76, 76]
+		- negative `scale` and `scale > digits` are both well-formed and allowed
+	- Intermediate values of decimal arithmetic must hold the digits and scale that would result from maximum values in either operand. The compiler is free to use a smaller machine integer than would normally be expected by the digit count (e.g. a Decimal(19, 3) in an i64) if it can definitively prove the value would never exceed the bounds of the machine integer
+		- if an intermediate result cannot fit within the 76 digits, it may produce a compiler error. The compiler may allow use of the headroom past 76 decimal digits in an i256 for intermediate values as long as it can prove all possible value would fit.
+	- Narrowing is an explicit operation required to fit results back into a narrower type than was produced by an expression. Trying to assign a value that possibly wouldn't fit losslessly in the destination without defining how to narrow it is a compile-time error.
 
 Floating point decimal and arbitrary precision decimal are not primitive types, as they do not have widespread support on consumer hardware.
+
+### Operator Semantics
+
+Addition and subtraction both widen intermediate results to something slightly larger than the largest magnitude
+
+Multiplication widens into the sum of the digits and the sum of the scale
+
+Division is only defined if the destination defines a Decimal with scale that is at least as large as the largest scale of the two operands.
+
+Remainder and modulo narrow into the magnitude of the divisor/modulus and the larger precision
+
 
 ## Binary Floats
 

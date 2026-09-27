@@ -88,7 +88,12 @@ infer_type :: proc(
 		case .Unsigned_Integer:
 			return hir.Primitive_Type.UInt64, true
 		case .Decimal:
-			dec := hir.Fixed_Decimal{max(INT64_DECIMAL_DIGITS, typ.digits), typ.scale}
+			dec := hir.Fixed_Decimal {
+				digits    = u8(typ.digits),
+				scale     = i8(typ.scale),
+				flags     = {.Inferred},
+				magnitude = f32(typ.digits),
+			}
 			if dec.digits > INT64_DECIMAL_DIGITS {
 				diagnostics.emit(
 					.Large_Decimal,

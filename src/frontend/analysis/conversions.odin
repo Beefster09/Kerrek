@@ -280,16 +280,18 @@ coerce :: proc(ltype, rtype: Comptime_Type) -> (Comptime_Type, bool) {
 	}
 
 	if ldec, rdec, ok := util.chain_extract_pair(ltype, rtype, hir.Type, hir.Fixed_Decimal); ok {
-		digits_before := max(ldec.digits - ldec.scale, rdec.digits - rdec.scale)
-		digits_after := max(ldec.scale, rdec.scale)
-		digits := digits_before + digits_after
-		scale := digits_after
+		digits_before := max(
+			i16(ldec.digits) - i16(ldec.scale),
+			i16(rdec.digits) - i16(rdec.scale),
+		)
+		scale := max(ldec.scale, rdec.scale)
+		digits := digits_before + i16(scale)
 		if digits > hir.MAX_DECIMAL_DIGITS ||
 		   scale > hir.MAX_DECIMAL_SCALE ||
 		   scale < hir.MIN_DECIMAL_SCALE {
 			return nil, false
 		}
-		return hir.Type(hir.Fixed_Decimal{digits, scale}), true
+		return hir.Type(hir.Fixed_Decimal{digits = u8(digits), scale = i8(scale)}), true
 	}
 
 	if _type_implicitly_converts(ltype, rtype) {
@@ -449,7 +451,7 @@ _primitive_implicitly_converts :: proc(prim: hir.Primitive_Type, to: hir.Type) -
 		return(
 			meta.numeric_class == .Integer &&
 			to.scale >= 0 &&
-			meta.decimal_digits < int(to.digits - to.scale) \
+			meta.decimal_digits < int(i16(to.digits) - i16(to.scale)) \
 		)
 
 	case ^hir.Optional_Type:
@@ -475,7 +477,7 @@ _fixed_decimal_implicitly_converts :: proc(dec: hir.Fixed_Decimal, to: hir.Type)
 			return(
 				meta.signedness == .Signed &&
 				dec.scale <= 0 &&
-				int(dec.digits - dec.scale) <= meta.decimal_digits \
+				int(dec.digits) - int(dec.scale) <= meta.decimal_digits \
 			)
 		case .Float:
 			return _fixed_decimal_fits_binary_precision(dec, meta.significant_bits)
@@ -484,7 +486,10 @@ _fixed_decimal_implicitly_converts :: proc(dec: hir.Fixed_Decimal, to: hir.Type)
 		}
 
 	case hir.Fixed_Decimal:
-		return dec.scale <= to.scale && dec.digits - dec.scale <= to.digits - to.scale
+		return(
+			int(dec.scale) <= int(to.scale) &&
+			int(dec.digits) - int(dec.scale) <= int(to.digits) - int(to.scale) \
+		)
 
 	case ^hir.Optional_Type:
 		return _fixed_decimal_implicitly_converts(dec, to.base)

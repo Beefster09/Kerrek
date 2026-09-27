@@ -36,34 +36,94 @@ Fixed_Decimal_Primitive_Case :: struct {
 
 @(rodata)
 FIXED_DECIMAL_COERCION_CASES := [?]Fixed_Decimal_Coercion_Case {
-	{"identical types", {1, 0}, {1, 0}, {1, 0}, true},
-	{"wider precision at zero scale", {3, 0}, {9, 0}, {9, 0}, true},
-	{"wider precision at equal positive scale", {3, 2}, {7, 2}, {7, 2}, true},
-	{"wider precision at equal negative scale", {3, -2}, {7, -2}, {7, -2}, true},
-	{"greater scale needs no extra integer digits", {5, 2}, {5, 4}, {7, 4}, true},
-	{"positive and negative scales", {3, -2}, {3, 2}, {7, 2}, true},
-	{"both scales exceed precision", {1, 3}, {2, 4}, {2, 4}, true},
-	{"both scales are negative", {3, -2}, {5, -4}, {7, -2}, true},
+	{
+		"identical types",
+		{digits = 1, scale = 0},
+		{digits = 1, scale = 0},
+		{digits = 1, scale = 0},
+		true,
+	},
+	{
+		"wider precision at zero scale",
+		{digits = 3, scale = 0},
+		{digits = 9, scale = 0},
+		{digits = 9, scale = 0},
+		true,
+	},
+	{
+		"wider precision at equal positive scale",
+		{digits = 3, scale = 2},
+		{digits = 7, scale = 2},
+		{digits = 7, scale = 2},
+		true,
+	},
+	{
+		"wider precision at equal negative scale",
+		{digits = 3, scale = -2},
+		{digits = 7, scale = -2},
+		{digits = 7, scale = -2},
+		true,
+	},
+	{
+		"greater scale needs no extra integer digits",
+		{digits = 5, scale = 2},
+		{digits = 5, scale = 4},
+		{digits = 7, scale = 4},
+		true,
+	},
+	{
+		"positive and negative scales",
+		{digits = 3, scale = -2},
+		{digits = 3, scale = 2},
+		{digits = 7, scale = 2},
+		true,
+	},
+	{
+		"both scales exceed precision",
+		{digits = 1, scale = 3},
+		{digits = 2, scale = 4},
+		{digits = 2, scale = 4},
+		true,
+	},
+	{
+		"both scales are negative",
+		{digits = 3, scale = -2},
+		{digits = 5, scale = -4},
+		{digits = 7, scale = -2},
+		true,
+	},
 	{
 		"minimum scale",
-		{1, hir.MIN_DECIMAL_SCALE},
-		{2, hir.MIN_DECIMAL_SCALE},
-		{2, hir.MIN_DECIMAL_SCALE},
+		{digits = 1, scale = hir.MIN_DECIMAL_SCALE},
+		{digits = 2, scale = hir.MIN_DECIMAL_SCALE},
+		{digits = 2, scale = hir.MIN_DECIMAL_SCALE},
 		true,
 	},
 	{
 		"maximum scale",
-		{1, hir.MAX_DECIMAL_SCALE},
-		{2, hir.MAX_DECIMAL_SCALE},
-		{2, hir.MAX_DECIMAL_SCALE},
+		{digits = 1, scale = hir.MAX_DECIMAL_SCALE},
+		{digits = 2, scale = hir.MAX_DECIMAL_SCALE},
+		{digits = 2, scale = hir.MAX_DECIMAL_SCALE},
 		true,
 	},
-	{"result has maximum digits", {999, 0}, {1000, 1}, {hir.MAX_DECIMAL_DIGITS, 1}, true},
-	{"one digit beyond maximum", {1000, 0}, {1000, 1}, {}, false},
+	{
+		"result has maximum digits",
+		{digits = hir.MAX_DECIMAL_DIGITS - 1, scale = 0},
+		{digits = hir.MAX_DECIMAL_DIGITS, scale = 1},
+		{digits = hir.MAX_DECIMAL_DIGITS, scale = 1},
+		true,
+	},
+	{
+		"one digit beyond maximum",
+		{digits = hir.MAX_DECIMAL_DIGITS, scale = 0},
+		{digits = hir.MAX_DECIMAL_DIGITS, scale = 1},
+		{},
+		false,
+	},
 	{
 		"opposite scale limits exceed maximum",
-		{1, hir.MIN_DECIMAL_SCALE},
-		{1, hir.MAX_DECIMAL_SCALE},
+		{digits = 1, scale = hir.MIN_DECIMAL_SCALE},
+		{digits = 1, scale = hir.MAX_DECIMAL_SCALE},
 		{},
 		false,
 	},
@@ -102,18 +162,33 @@ NON_INTEGER_PRIMITIVES := [?]hir.Primitive_Type {
 
 @(rodata)
 FIXED_DECIMAL_CONVERSION_CASES := [?]Fixed_Decimal_Conversion_Case {
-	{"identical", {5, 2}, {5, 2}, true},
-	{"greater scale and precision", {5, 2}, {7, 4}, true},
-	{"greater scale with enough integer digits", {5, 2}, {6, 3}, true},
-	{"greater integer capacity", {5, 2}, {6, 2}, true},
-	{"smaller scale", {5, 2}, {5, 1}, false},
-	{"insufficient integer capacity", {5, 2}, {6, 4}, false},
-	{"negative scale to zero", {3, -2}, {5, 0}, true},
-	{"negative scale widened", {3, -2}, {4, -1}, true},
-	{"negative scale with insufficient range", {3, -2}, {3, -1}, false},
-	{"negative scale loses precision", {3, -2}, {4, -3}, false},
-	{"scale exceeds digits", {1, 3}, {2, 4}, true},
-	{"scale exceeds digits with insufficient range", {2, 3}, {2, 4}, false},
+	{"identical", {digits = 5, scale = 2}, {digits = 5, scale = 2}, true},
+	{"greater scale and precision", {digits = 5, scale = 2}, {digits = 7, scale = 4}, true},
+	{
+		"greater scale with enough integer digits",
+		{digits = 5, scale = 2},
+		{digits = 6, scale = 3},
+		true,
+	},
+	{"greater integer capacity", {digits = 5, scale = 2}, {digits = 6, scale = 2}, true},
+	{"smaller scale", {digits = 5, scale = 2}, {digits = 5, scale = 1}, false},
+	{"insufficient integer capacity", {digits = 5, scale = 2}, {digits = 6, scale = 4}, false},
+	{"negative scale to zero", {digits = 3, scale = -2}, {digits = 5, scale = 0}, true},
+	{"negative scale widened", {digits = 3, scale = -2}, {digits = 4, scale = -1}, true},
+	{
+		"negative scale with insufficient range",
+		{digits = 3, scale = -2},
+		{digits = 3, scale = -1},
+		false,
+	},
+	{"negative scale loses precision", {digits = 3, scale = -2}, {digits = 4, scale = -3}, false},
+	{"scale exceeds digits", {digits = 1, scale = 3}, {digits = 2, scale = 4}, true},
+	{
+		"scale exceeds digits with insufficient range",
+		{digits = 2, scale = 3},
+		{digits = 2, scale = 4},
+		false,
+	},
 }
 
 @(rodata)
@@ -127,22 +202,27 @@ SIGNED_INTEGER_DECIMAL_CAPACITIES := [?]Integer_Primitive_Decimal_Case {
 
 @(rodata)
 FIXED_DECIMAL_PRIMITIVE_CASES := [?]Fixed_Decimal_Primitive_Case {
-	{"Bin16 positive scale", {1, 1}, .Bin16, false},
-	{"Bin16 exact integer range", {3, 0}, .Bin16, true},
-	{"Bin16 excessive integer range", {4, 0}, .Bin16, false},
-	{"Bin16 exact negative scale", {1, -3}, .Bin16, true},
-	{"Bin16 inexact negative scale", {2, -2}, .Bin16, false},
-	{"Bin32 positive scale", {1, 1}, .Bin32, false},
-	{"Bin32 exact integer range", {7, 0}, .Bin32, true},
-	{"Bin32 excessive integer range", {8, 0}, .Bin32, false},
-	{"Bin32 exact negative scale", {6, -1}, .Bin32, true},
-	{"Bin32 inexact negative scale", {7, -1}, .Bin32, false},
-	{"Bin64 positive scale", {1, 1}, .Bin64, false},
-	{"Bin64 exact integer range", {15, 0}, .Bin64, true},
-	{"Bin64 excessive integer range", {16, 0}, .Bin64, false},
-	{"Bin64 exact negative scale", {15, -1}, .Bin64, true},
-	{"Bin64 inexact negative scale", {16, -1}, .Bin64, false},
-	{"Any destination", {hir.MAX_DECIMAL_DIGITS, hir.MAX_DECIMAL_SCALE}, .Any, true},
+	{"Bin16 positive scale", {digits = 1, scale = 1}, .Bin16, false},
+	{"Bin16 exact integer range", {digits = 3, scale = 0}, .Bin16, true},
+	{"Bin16 excessive integer range", {digits = 4, scale = 0}, .Bin16, false},
+	{"Bin16 exact negative scale", {digits = 1, scale = -3}, .Bin16, true},
+	{"Bin16 inexact negative scale", {digits = 2, scale = -2}, .Bin16, false},
+	{"Bin32 positive scale", {digits = 1, scale = 1}, .Bin32, false},
+	{"Bin32 exact integer range", {digits = 7, scale = 0}, .Bin32, true},
+	{"Bin32 excessive integer range", {digits = 8, scale = 0}, .Bin32, false},
+	{"Bin32 exact negative scale", {digits = 6, scale = -1}, .Bin32, true},
+	{"Bin32 inexact negative scale", {digits = 7, scale = -1}, .Bin32, false},
+	{"Bin64 positive scale", {digits = 1, scale = 1}, .Bin64, false},
+	{"Bin64 exact integer range", {digits = 15, scale = 0}, .Bin64, true},
+	{"Bin64 excessive integer range", {digits = 16, scale = 0}, .Bin64, false},
+	{"Bin64 exact negative scale", {digits = 15, scale = -1}, .Bin64, true},
+	{"Bin64 inexact negative scale", {digits = 16, scale = -1}, .Bin64, false},
+	{
+		"Any destination",
+		{digits = hir.MAX_DECIMAL_DIGITS, scale = hir.MAX_DECIMAL_SCALE},
+		.Any,
+		true,
+	},
 }
 
 @(rodata)
@@ -281,35 +361,35 @@ test_fixed_decimal_implicit_conversions :: proc(t: ^testing.T) {
 		_expect_fixed_decimal_to_primitive_conversion(
 			t,
 			"exact signed integer capacity",
-			{tc.required_digits, 0},
+			{digits = u8(tc.required_digits), scale = 0},
 			tc.primitive,
 			true,
 		)
 		_expect_fixed_decimal_to_primitive_conversion(
 			t,
 			"excessive signed integer capacity",
-			{tc.required_digits + 1, 0},
+			{digits = u8(tc.required_digits + 1), scale = 0},
 			tc.primitive,
 			false,
 		)
 		_expect_fixed_decimal_to_primitive_conversion(
 			t,
 			"exact negative scale capacity",
-			{tc.required_digits - 1, -1},
+			{digits = u8(tc.required_digits - 1), scale = -1},
 			tc.primitive,
 			true,
 		)
 		_expect_fixed_decimal_to_primitive_conversion(
 			t,
 			"excessive negative scale capacity",
-			{tc.required_digits, -1},
+			{digits = u8(tc.required_digits), scale = -1},
 			tc.primitive,
 			false,
 		)
 		_expect_fixed_decimal_to_primitive_conversion(
 			t,
 			"positive scale to integer",
-			{1, 1},
+			{digits = 1, scale = 1},
 			tc.primitive,
 			false,
 		)
@@ -323,7 +403,7 @@ test_fixed_decimal_implicit_conversions :: proc(t: ^testing.T) {
 		_expect_fixed_decimal_to_primitive_conversion(
 			t,
 			"non-signed-integer destination",
-			{1, 0},
+			{digits = 1, scale = 0},
 			primitive,
 			false,
 		)
@@ -337,31 +417,41 @@ test_primitive_to_fixed_decimal_implicit_conversions :: proc(t: ^testing.T) {
 		_expect_primitive_to_fixed_decimal_conversion(
 			t,
 			tc.primitive,
-			{tc.required_digits - 1, 0},
-			false,
-		)
-		_expect_primitive_to_fixed_decimal_conversion(t, tc.primitive, {tc.required_digits, 0}, true)
-		_expect_primitive_to_fixed_decimal_conversion(
-			t,
-			tc.primitive,
-			{tc.required_digits + 1, 2},
+			{digits = u8(tc.required_digits - 1), scale = 0},
 			false,
 		)
 		_expect_primitive_to_fixed_decimal_conversion(
 			t,
 			tc.primitive,
-			{tc.required_digits + 2, 2},
+			{digits = u8(tc.required_digits), scale = 0},
 			true,
 		)
 		_expect_primitive_to_fixed_decimal_conversion(
 			t,
 			tc.primitive,
-			{tc.required_digits + 1, -1},
+			{digits = u8(tc.required_digits + 1), scale = 2},
+			false,
+		)
+		_expect_primitive_to_fixed_decimal_conversion(
+			t,
+			tc.primitive,
+			{digits = u8(tc.required_digits + 2), scale = 2},
+			true,
+		)
+		_expect_primitive_to_fixed_decimal_conversion(
+			t,
+			tc.primitive,
+			{digits = u8(tc.required_digits + 1), scale = -1},
 			false,
 		)
 	}
 
 	for primitive in NON_INTEGER_PRIMITIVES {
-		_expect_primitive_to_fixed_decimal_conversion(t, primitive, {hir.MAX_DECIMAL_DIGITS, 0}, false)
+		_expect_primitive_to_fixed_decimal_conversion(
+			t,
+			primitive,
+			{digits = hir.MAX_DECIMAL_DIGITS, scale = 0},
+			false,
+		)
 	}
 }
