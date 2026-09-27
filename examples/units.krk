@@ -112,6 +112,8 @@ const `🔥🔥🔥` = "FIAH!";
 
 unit ratio = 1;
 
+const exp_test = 5**(0-123);
+
 
 func how_long_to_complete(num_workers: Int64 | man, blocks: Decimal(18, 6) | ratio)
 	-> Decimal(18, 6) | day

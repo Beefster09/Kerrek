@@ -74,16 +74,14 @@ build_type :: proc(
 			return nil, false
 		}
 
-		// TEMP: Integer and Decimal are hard-coded as the only two parametric types
+		// TEMP: Decimal is hard-coded as the only parametric type
 
-		expected_args := 1 if builtin.name == "Integer" else 2
-		if len(node.args) != expected_args {
+		if len(node.args) != 2 {
 			diagnostics.emit(
 				.Invalid_Type,
 				node.span,
-				"'%s' expects %d type arguments, got %d",
+				"'%s' expects 2 type arguments, got %d",
 				builtin.name,
-				expected_args,
 				len(node.args),
 			)
 			return nil, false
@@ -252,8 +250,6 @@ build_type :: proc(
 
 _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool) {
 	switch builtin.name {
-	// The unsized language-level defaults use the widest required primitive
-	// representation until range-driven narrowing is implemented.
 	case "Int128":
 		return .Int128, true
 	case "Int64":
@@ -412,7 +408,7 @@ is_integer :: proc(t: Comptime_Type) -> bool {
 		case ^hir.Distinct_Type:
 			return is_integer(concrete.underlying)
 		case hir.Fixed_Decimal:
-			return concrete.scale == 0
+			return concrete.scale < 0
 		case hir.Primitive_Type:
 			switch concrete {
 			case .Int128,

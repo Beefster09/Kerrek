@@ -32,7 +32,6 @@ FIRST_USER_SYMBOL_ID :: 10_000
 // ID, and makes adding a builtin unable to collide with an existing ID.
 BUILTINS := [?]Builtin {
 	// Types.
-	{name = "Integer", kind = .Parametric_Type},
 	{name = "Int128", kind = .Primitive_Type},
 	{name = "Int64", kind = .Primitive_Type},
 	{name = "Int32", kind = .Primitive_Type},
@@ -44,9 +43,6 @@ BUILTINS := [?]Builtin {
 	{name = "UInt16", kind = .Primitive_Type},
 	{name = "UInt8", kind = .Primitive_Type},
 	{name = "Decimal", kind = .Parametric_Type},
-	{name = "Dec128", kind = .Primitive_Type},
-	{name = "Dec64", kind = .Primitive_Type},
-	{name = "Dec32", kind = .Primitive_Type},
 	{name = "Float64", kind = .Primitive_Type, namespace = .Floats},
 	{name = "Float32", kind = .Primitive_Type, namespace = .Floats},
 	{name = "Float16", kind = .Primitive_Type, namespace = .Floats},
@@ -61,6 +57,8 @@ BUILTINS := [?]Builtin {
 	{name = "Opaque32", kind = .Primitive_Type},
 	{name = "Opaque64", kind = .Primitive_Type},
 	// Annotations.
+	{name = "doc", kind = .Annotation},
+	{name = "backing", kind = .Annotation},
 	{name = "deprecated", kind = .Annotation},
 	{name = "pure", kind = .Annotation},
 	{name = "layout", kind = .Annotation},

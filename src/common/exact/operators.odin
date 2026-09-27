@@ -20,6 +20,12 @@ mul :: proc {
 	rat_mul,
 }
 
+pow :: proc {
+	int_pow_int,
+	rat_pow_int,
+// rat_pow_rat,
+}
+
 div :: proc {
 	int_div,
 	rat_div,
@@ -350,6 +356,36 @@ rat_rem :: proc(a, b: Rat, allocator := bigint_allocator) -> Rat {
 		{int_rem(left, right, allocator), int_mul(a.denominator, b.denominator, allocator)},
 		allocator,
 	)
+}
+
+int_pow_int :: proc(base: Int, pow: uint, allocator := bigint_allocator) -> Int {
+	result := Int(i128(1))
+	cur_sq := base
+	for i in 0 ..< (size_of(type_of(pow)) * 8) - intrinsics.count_leading_zeros(pow) {
+		bit := (pow >> u8(i)) & 0b1
+		if bit != 0 {
+			result = mul(result, cur_sq, context.temp_allocator)
+		}
+		cur_sq = mul(cur_sq, cur_sq, context.temp_allocator)
+	}
+	return clone(result, allocator)
+}
+
+rat_pow_int :: proc(base: Rat, pow: int, allocator := bigint_allocator) -> Rat {
+	result := RAT_ONE
+	cur_sq := base
+	unsigned_pow := uint(abs(pow))
+	for i in 0 ..< (size_of(type_of(unsigned_pow)) * 8) - intrinsics.count_leading_zeros(unsigned_pow) {
+		bit := (unsigned_pow >> u8(i)) & 0b1
+		if bit != 0 {
+			result = mul(result, cur_sq, context.temp_allocator)
+		}
+		cur_sq = mul(cur_sq, cur_sq, context.temp_allocator)
+	}
+	if pow < 0 {
+		result = reciprocal(result)
+	}
+	return clone(result, allocator)
 }
 
 rat_cmp :: proc(a, b: Rat, allocator := bigint_allocator) -> slice.Ordering {

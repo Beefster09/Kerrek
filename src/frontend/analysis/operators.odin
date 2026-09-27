@@ -137,9 +137,6 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 		case ^hir.Fixed_Array_Type:
 			return _op_category_of(concrete.elem)
 		case hir.Fixed_Decimal:
-			if concrete.scale == 0 {
-				return .Integer
-			}
 			return .Rational
 		case hir.Primitive_Type:
 			switch concrete {
@@ -199,6 +196,19 @@ _comptime_binop :: proc(
 	case .Modulo:
 		return exact.mod(lhs.(exact.Rat), rhs.(exact.Rat))
 	case .Power:
+		r := rhs.(exact.Rat)
+		if exact.is_one(r.denominator) &&
+		   r.numerator.(i128) >= -i128(max(int)) &&
+		   r.numerator.(i128) <= i128(max(int)) {
+			return exact.pow(lhs.(exact.Rat), int(r.numerator.(i128)))
+		} else {
+			fmt.panicf(
+				"%T %s %T is only supported for integer exponents in 64-bit signed integer range",
+				reflect.get_union_variant(lhs),
+				common.BINARY_OP_STRINGS[op],
+				reflect.get_union_variant(rhs),
+			)
+		}
 	case .Equal:
 		return _comptime_equal(lhs, rhs)
 	case .Not_Equal:
