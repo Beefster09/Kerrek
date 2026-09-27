@@ -71,6 +71,8 @@ Code :: enum {
 	Wrong_Symbol_Kind,
 	// The number of expected values does not match the actual number of values
 	Arity_Mismatch,
+	// An expression produces a value that isn't used
+	Unused_Value,
 	// The value needed to be known at compile time, but wasn't
 	Not_Compile_Time_Known,
 	// Type or unit inference is not possible in this context
@@ -132,6 +134,7 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Wrong_Symbol_Kind = {origin = .Semantic, default_level = .Error},
 	.Invalid_Annotation = {origin = .Semantic, default_level = .Error},
 	.Arity_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Unused_Value = {origin = .Semantic, default_level = .Warning},
 	.Not_Compile_Time_Known = {origin = .Semantic, default_level = .Error},
 	.Inference_Failed = {origin = .Semantic, default_level = .Error},
 	.Binop_Not_Defined = {origin = .Semantic, default_level = .Error},

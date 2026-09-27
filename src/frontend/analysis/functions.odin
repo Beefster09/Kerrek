@@ -94,7 +94,7 @@ translate_function_signature :: proc(
 		}
 
 		append(&params, param)
-		resolver.define_local(params_scope, ast_param.name, param)
+		resolver.define_local(params_scope, ast_param.name, param, warn_shadowing = {.Builtins})
 	}
 
 	returns := [dynamic]^hir.Func_Return{}
@@ -173,9 +173,10 @@ build_function_body :: proc(
 	symbol: ^resolver.Function,
 	scope: resolver.Scope,
 ) -> Func_Translation_Error {
+	assert(symbol != nil)
 	assert(symbol.ast != nil)
 	assert(symbol.hir != nil)
-	body := build_block(ts, symbol.ast.body, scope)
+	body := build_block(ts, symbol.ast.body, symbol, scope)
 	assert(body != nil)
 	symbol.hir.body = body
 	return .OK

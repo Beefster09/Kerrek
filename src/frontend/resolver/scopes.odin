@@ -48,12 +48,16 @@ define_local :: proc(
 	scope: ^Lexical_Scope,
 	name: common.Name,
 	symbol: Symbol,
+	warn_shadowing: bit_set[enum {
+		Builtins,
+		Outer_Scopes,
+	}] = {.Builtins, .Outer_Scopes},
 ) -> Define_Local_Error {
 	if existing, exists := scope.locals[name.id]; exists {
 		diag := diagnostics.emit(
 			.Duplicate_Local,
 			name.span,
-			"name '%s' is already defined",
+			"name '%s' is already defined in this scope",
 			name.id,
 		)
 		if name_span, ok := span_of_name(existing); ok {
@@ -63,6 +67,42 @@ define_local :: proc(
 	}
 
 	scope.locals[name.id] = symbol
+
+	if warn_shadowing == {} {
+		return .OK
+	}
+
+	shadowed := lookup(scope.parent, name.id)
+
+	#partial switch previous in shadowed {
+	case ^Builtin:
+		if .Builtins in warn_shadowing {
+			diagnostics.emit(
+				.Builtin_Shadowing,
+				diagnostics.Level.Warning,
+				name.span,
+				"'%s' shadows a builtin",
+				name.id,
+			)
+		}
+	case:
+		if .Outer_Scopes in warn_shadowing {
+			diag := diagnostics.emit(
+				.Dubious_Shadowing,
+				name.span,
+				"'%s' shadows a previously defined name",
+				name.id,
+			)
+			if previous_span, ok := span_of_name(previous); ok {
+				diagnostics.reference(
+					diag,
+					previous_span,
+					"'%s' was previously defined here",
+					name.id,
+				)
+			}
+		}
+	}
 
 	return .OK
 }
