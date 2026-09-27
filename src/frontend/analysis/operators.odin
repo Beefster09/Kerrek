@@ -22,7 +22,9 @@ Operator_Compat_Category :: enum {
 Operator_Compat_Data :: struct {
 	name:              string,
 	supported_binops:  bit_set[common.Binary_Op],
+	supported_unops:   bit_set[common.Unary_Op],
 	binop_diagnostics: proc(_: ^diagnostics.Diagnostic, _: common.Binary_Op),
+	unop_diagnostics:  proc(_: ^diagnostics.Diagnostic, _: common.Unary_Op),
 }
 
 @(rodata)
@@ -44,6 +46,7 @@ OP_CATEGORY_DEFS := [Operator_Compat_Category]Operator_Compat_Data {
 			.Greater,
 			.Greater_Equal,
 		},
+		supported_unops = {.Positive, .Negate},
 		binop_diagnostics = proc(diag: ^diagnostics.Diagnostic, op: common.Binary_Op) {
 			#partial switch op {
 			case .True_Divide:
@@ -69,6 +72,7 @@ OP_CATEGORY_DEFS := [Operator_Compat_Category]Operator_Compat_Data {
 			.Greater,
 			.Greater_Equal,
 		},
+		supported_unops = {.Positive, .Negate},
 	},
 	.Bin_Float = {
 		name = "binary floating point",
@@ -86,6 +90,7 @@ OP_CATEGORY_DEFS := [Operator_Compat_Category]Operator_Compat_Data {
 			.Greater,
 			.Greater_Equal,
 		},
+		supported_unops = {.Positive, .Negate},
 		binop_diagnostics = proc(diag: ^diagnostics.Diagnostic, op: common.Binary_Op) {
 			#partial switch op {
 			case .Equal, .Not_Equal:
@@ -100,7 +105,11 @@ OP_CATEGORY_DEFS := [Operator_Compat_Category]Operator_Compat_Data {
 		name = "ordered",
 		supported_binops = {.Equal, .Not_Equal, .Less, .Less_Equal, .Greater, .Greater_Equal},
 	},
-	.Boolean = {name = "boolean", supported_binops = {.Equal, .Not_Equal, .And, .Or}},
+	.Boolean = {
+		name = "boolean",
+		supported_binops = {.Equal, .Not_Equal, .And, .Or},
+		supported_unops = {.Not},
+	},
 	.Enum = {name = "enum", supported_binops = {.Is, .Is_Not}},
 	.Opaque = {name = "opaque", supported_binops = {.Equal, .Not_Equal}},
 	.Empty = {name = "no-operator", supported_binops = {}},
@@ -174,6 +183,26 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 		}
 	}
 	return .Opaque
+}
+
+_comptime_unop :: proc(
+	op: common.Unary_Op,
+	value: common.Primitive_Value,
+) -> common.Primitive_Value {
+	switch op {
+	case .Positive:
+		return value.(exact.Rat)
+	case .Negate:
+		return exact.negate(value.(exact.Rat))
+	case .Not:
+		return !value.(bool)
+	}
+
+	fmt.panicf(
+		"missing implementation of %s %T",
+		common.UNARY_OP_STRINGS[op],
+		reflect.get_union_variant(value),
+	)
 }
 
 _comptime_binop :: proc(

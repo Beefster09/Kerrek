@@ -79,6 +79,8 @@ Code :: enum {
 	Large_Decimal,
 	// A binary operator is not defined for the type(s)
 	Binop_Not_Defined,
+	// A unary operator is not defined for the type
+	Unop_Not_Defined,
 
 	// == MISC ==
 
@@ -133,6 +135,7 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Not_Compile_Time_Known = {origin = .Semantic, default_level = .Error},
 	.Inference_Failed = {origin = .Semantic, default_level = .Error},
 	.Binop_Not_Defined = {origin = .Semantic, default_level = .Error},
+	.Unop_Not_Defined = {origin = .Semantic, default_level = .Error},
 	.Invalid_Type = {origin = .Semantic, default_level = .Error},
 	.Invalid_Unit = {origin = .Semantic, default_level = .Error},
 	.Invalid_Capability = {origin = .Semantic, default_level = .Error},

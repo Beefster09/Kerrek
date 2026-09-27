@@ -23,7 +23,6 @@ mul :: proc {
 pow :: proc {
 	int_pow_int,
 	rat_pow_int,
-// rat_pow_rat,
 }
 
 div :: proc {
@@ -79,6 +78,11 @@ gt :: proc {
 ge :: proc {
 	int_ge,
 	rat_ge,
+}
+
+negate :: proc {
+	int_negate,
+	rat_negate,
 }
 
 reciprocal :: proc {
@@ -152,6 +156,12 @@ _int_big_op :: proc(a, b: Int, op: _Int_Op, allocator := bigint_allocator) -> In
 		return inline
 	}
 	return result
+}
+
+int_negate :: proc(i: Int, allocator := bigint_allocator) -> Int {
+	i := clone(i, allocator)
+	inplace_negate_int(&i, allocator)
+	return i
 }
 
 int_add :: proc(a, b: Int, allocator := bigint_allocator) -> Int {
@@ -297,16 +307,20 @@ rat_reduce :: proc(r: Rat, allocator := bigint_allocator) -> Rat {
 		return {0, 1}
 	}
 
-	factor := int_gcd(r.numerator, r.denominator, allocator)
+	factor := int_gcd(r.numerator, r.denominator, context.temp_allocator)
 	result := Rat {
 		int_div(r.numerator, factor, allocator),
 		int_div(r.denominator, factor, allocator),
 	}
 	if int_is_negative(result.denominator) {
-		inplace_negate_int(&result.numerator)
-		inplace_negate_int(&result.denominator)
+		inplace_negate_int(&result.numerator, allocator)
+		inplace_negate_int(&result.denominator, allocator)
 	}
 	return result
+}
+
+rat_negate :: proc(r: Rat, allocator := bigint_allocator) -> Rat {
+	return {int_negate(r.numerator, allocator), r.denominator}
 }
 
 rat_add :: proc(a, b: Rat, allocator := bigint_allocator) -> Rat {
@@ -509,11 +523,11 @@ rat_is_zero :: proc(r: Rat) -> bool {
 
 I128_MIN :: -1 << 127
 
-inplace_negate_int :: proc(i: ^Int) {
+inplace_negate_int :: proc(i: ^Int, allocator := bigint_allocator) {
 	switch &ii in i^ {
 	case i128:
 		if intrinsics.unlikely(ii == I128_MIN) {
-			result := _promote(ii)
+			result := _promote(ii, allocator)
 			result.sign = .Zero_or_Positive
 			i^ = result
 		} else {

@@ -231,6 +231,9 @@ evaluate :: proc(
 	case ^ast.Binop_Expr:
 		return _eval_binop(ts, node, scope)
 
+	case ^ast.Unary_Expr:
+		return _eval_unary(ts, node, scope)
+
 	case ^ast.Name_Expr:
 		var_expr :: #force_inline proc(
 			ts: ^Translation_State,
@@ -354,8 +357,6 @@ evaluate :: proc(
 		return _not_implemented(ts, node)
 	case ^ast.Move_Expr:
 		return _not_implemented(ts, node)
-	case ^ast.Unary_Expr:
-		return _not_implemented(ts, node)
 	case ^ast.Address_Of_Expr:
 		return _not_implemented(ts, node)
 	case ^ast.Dereference_Expr:
@@ -388,6 +389,72 @@ _singular_type_and_unit :: proc(er: Eval_Result) -> (Comptime_Type, hir.Realized
 	return nil, nil, false
 }
 
+_eval_unary :: proc(
+	ts: ^Translation_State,
+	unary: ^ast.Unary_Expr,
+	scope: resolver.Scope,
+) -> Eval_Result {
+	expr := evaluate(ts, unary.expr, scope)
+	assert(expr != nil)
+	if poison, is_poison := util.chain_extract(expr, hir.Expression, ^hir.Poison); is_poison {
+		poison.span = unary.span
+		return hir.Expression(poison)
+	}
+
+	type, unit, is_single := _singular_type_and_unit(expr)
+
+	if !is_single {
+		diagnostics.emit(
+			.Arity_Mismatch,
+			ast.span(unary.expr),
+			"this expression does not return exactly one value",
+		)
+		return hir.Expression(poison(ts, unary.span))
+	}
+
+	op_compat := OP_CATEGORY_DEFS[_op_category_of(type)]
+	if unary.op not_in op_compat.supported_unops {
+		diag := diagnostics.emit(
+			.Unop_Not_Defined,
+			unary.span,
+			"operator %s is not supported for type %s",
+			common.UNARY_OP_STRINGS[unary.op],
+			type,
+		)
+		if op_compat.unop_diagnostics != nil {
+			op_compat.unop_diagnostics(diag, unary.op)
+		}
+		return hir.Expression(poison(ts, unary.span))
+	}
+
+	switch expr in expr {
+	case Comptime_Value:
+		return Comptime_Value {
+			value = _comptime_unop(unary.op, expr.value),
+			type = type,
+			unit = unit,
+		}
+	case hir.Expression:
+		inferred_type, inferred := infer_type(type, unary.span)
+		if !inferred {
+			return hir.Expression(poison(ts, unary.span))
+		}
+		result := new(hir.Unary_Expr, ts.output.allocator)
+		result^ = {
+			span = unary.span,
+			op   = unary.op,
+			expr = expr,
+			type = inferred_type,
+			unit = unit,
+		}
+		return hir.Expression(result)
+	}
+
+	panic("unreachable")
+}
+
+//--
+
 _eval_binop :: proc(
 	ts: ^Translation_State,
 	binop: ^ast.Binop_Expr,
@@ -395,8 +462,14 @@ _eval_binop :: proc(
 ) -> Eval_Result {
 	lhs := evaluate(ts, binop.lhs, scope)
 	rhs := evaluate(ts, binop.rhs, scope)
-	if lhs == nil || rhs == nil {
-		return nil
+	assert(lhs != nil && rhs != nil)
+	if poison, is_poison := util.chain_extract(lhs, hir.Expression, ^hir.Poison); is_poison {
+		poison.span = binop.span
+		return hir.Expression(poison)
+	}
+	if poison, is_poison := util.chain_extract(rhs, hir.Expression, ^hir.Poison); is_poison {
+		poison.span = binop.span
+		return hir.Expression(poison)
 	}
 
 	ltype, lunit, lok := _singular_type_and_unit(lhs)
@@ -408,7 +481,7 @@ _eval_binop :: proc(
 			ast.expression_span(binop.lhs),
 			"this expression does not return exactly one value",
 		)
-		return nil
+		return hir.Expression(poison(ts, binop.span))
 	}
 
 	if !rok {
@@ -417,7 +490,7 @@ _eval_binop :: proc(
 			ast.expression_span(binop.rhs),
 			"this expression does not return exactly one value",
 		)
-		return nil
+		return hir.Expression(poison(ts, binop.span))
 	}
 
 	if binop.op == .Multiply && is_boolean(ltype) {
@@ -439,7 +512,7 @@ _eval_binop :: proc(
 			ltype,
 			rtype,
 		)
-		return nil
+		return hir.Expression(poison(ts, binop.span))
 	}
 
 	if binop.op == .Add {
@@ -466,21 +539,19 @@ _eval_binop :: proc(
 		if op_compat.binop_diagnostics != nil {
 			op_compat.binop_diagnostics(diag, binop.op)
 		}
-		return nil
+		return hir.Expression(poison(ts, binop.span))
 	}
 
 	res_unit, u_lhs, u_rhs, unit_ok := _eval_binop_unit(ts, binop, lhs, lunit, rhs, runit)
 	if !unit_ok {
-		return nil
+		return hir.Expression(poison(ts, binop.span))
 	}
 
-	if l, l_ok := u_lhs.(Comptime_Value); l_ok {
-		if r, r_ok := u_rhs.(Comptime_Value); r_ok {
-			return Comptime_Value {
-				value = _comptime_binop(binop.op, l.value, r.value),
-				type = coerced_type,
-				unit = res_unit,
-			}
+	if l, r, ok := util.extract_pair(u_lhs, u_rhs, Comptime_Value); ok {
+		return Comptime_Value {
+			value = _comptime_binop(binop.op, l.value, r.value),
+			type = coerced_type,
+			unit = res_unit,
 		}
 	}
 
@@ -501,12 +572,12 @@ _eval_binop :: proc(
 		r = value
 	}
 	if !l_ok || !r_ok {
-		return nil
+		return hir.Expression(poison(ts, binop.span))
 	}
 
 	inferred_type, inferred := infer_type(coerced_type, binop.span)
 	if !inferred {
-		return nil
+		return hir.Expression(poison(ts, binop.span))
 	}
 
 	if _, flexible := ltype.(Flexible_Type); !flexible && ltype != coerced_type {
