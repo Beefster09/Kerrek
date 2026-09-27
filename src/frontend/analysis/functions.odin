@@ -173,7 +173,12 @@ build_function_body :: proc(
 	symbol: ^resolver.Function,
 	scope: resolver.Scope,
 ) -> Func_Translation_Error {
-	return .OK // TODO
+	assert(symbol.ast != nil)
+	assert(symbol.hir != nil)
+	body := build_block(ts, symbol.ast.body, scope)
+	assert(body != nil)
+	symbol.hir.body = body
+	return .OK
 }
 
 _process_func_annotations :: proc(

@@ -400,7 +400,7 @@ _set_expression_span :: proc "contextless" (expr: ast.Expression, span: ast.Span
 		node.span = span
 	case ^ast.Placeholder_Expr:
 		node.span = span
-	case ^ast.FieldAccess_Expr:
+	case ^ast.Field_Access_Expr:
 		node.span = span
 	case ^ast.Scalar_Literal_Expr:
 		node.span = span

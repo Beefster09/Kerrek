@@ -113,7 +113,7 @@ partial_resolve_expression :: proc(scope: Scope, expr: ast.Expression) -> (Symbo
 	case ^ast.Name_Expr:
 		return lookup(scope, node.name.id), nil
 
-	case ^ast.FieldAccess_Expr:
+	case ^ast.Field_Access_Expr:
 		base, rest := partial_resolve_expression(scope, node.base)
 		if base != nil {
 			if field := _static_resolve_field(base, node.field); field != nil {

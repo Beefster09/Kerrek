@@ -145,8 +145,8 @@ _test_expressions_equal :: proc(left, right: ast.Expression) -> bool {
 	case ^ast.Placeholder_Expr:
 		_, ok := right.(^ast.Placeholder_Expr)
 		return ok
-	case ^ast.FieldAccess_Expr:
-		other, ok := right.(^ast.FieldAccess_Expr)
+	case ^ast.Field_Access_Expr:
+		other, ok := right.(^ast.Field_Access_Expr)
 		return ok &&
 		       _test_expressions_equal(node.base, other.base) &&
 		       _test_names_equal(node.field, other.field)

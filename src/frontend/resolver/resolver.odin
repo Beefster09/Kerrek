@@ -458,7 +458,7 @@ expression_span :: proc(expr: ast.Expression) -> common.Span {
 	switch node in expr {
 	case ^ast.Name_Expr:
 		return node.span
-	case ^ast.FieldAccess_Expr:
+	case ^ast.Field_Access_Expr:
 		return node.span
 	case ^ast.Placeholder_Expr:
 		return node.span

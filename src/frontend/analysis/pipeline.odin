@@ -33,6 +33,7 @@ build_hir :: proc(
 	ts: Translation_State
 	init_state(&ts, res, entry_package, tu)
 	defer destroy_state(&ts)
+	context.temp_allocator = ts.allocator
 
 	top_ok := process_toplevel_items(&ts)
 
@@ -42,6 +43,7 @@ build_hir :: proc(
 	for pending_func in ts.pending_bodies {
 		err := build_function_body(&ts, pending_func.func, pending_func.root_scope)
 		bodies_ok &&= err != .OK
+		free_all(ts.allocator)
 	}
 	if !(top_ok && bodies_ok) {
 		return nil, .Semantic_Analysis_Failed

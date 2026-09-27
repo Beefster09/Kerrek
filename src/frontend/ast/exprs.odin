@@ -7,7 +7,7 @@ import "../lexer"
 Expression :: union {
 	^Name_Expr,
 	^Placeholder_Expr,
-	^FieldAccess_Expr,
+	^Field_Access_Expr,
 	^Scalar_Literal_Expr,
 	^Simple_Literal_Expr,
 	^Typed_Zero_Expr,
@@ -35,7 +35,7 @@ Placeholder_Expr :: struct {
 	span: Span,
 }
 
-FieldAccess_Expr :: struct {
+Field_Access_Expr :: struct {
 	span:  Span,
 	base:  Expression,
 	field: Name,
@@ -140,7 +140,7 @@ expression_span :: proc "contextless" (expr: Expression) -> Span {
 		return expr.span
 	case ^Placeholder_Expr:
 		return expr.span
-	case ^FieldAccess_Expr:
+	case ^Field_Access_Expr:
 		return expr.span
 	case ^Scalar_Literal_Expr:
 		return expr.span

@@ -2,7 +2,6 @@ package analysis
 
 import "base:runtime"
 import "core:reflect"
-import "core:slice"
 import "core:strings"
 
 import "../../common"
@@ -351,7 +350,7 @@ evaluate :: proc(
 		return _not_implemented(ts, node)
 	case ^ast.Typed_Zero_Expr:
 		return _not_implemented(ts, node)
-	case ^ast.FieldAccess_Expr:
+	case ^ast.Field_Access_Expr:
 		return _not_implemented(ts, node)
 	case ^ast.Implicit_Enum_Expr:
 		return _not_implemented(ts, node)
@@ -452,8 +451,6 @@ _eval_unary :: proc(
 
 	panic("unreachable")
 }
-
-//--
 
 _eval_binop :: proc(
 	ts: ^Translation_State,
