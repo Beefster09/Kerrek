@@ -36,22 +36,21 @@ build_block :: proc(
 				)
 
 			case hir.Expression:
-				num_values := hir.value_count(expr)
-				if num_values != 0 {
-					if num_values == 1 {
-						diagnostics.emit(
-							.Unused_Value,
-							ast.expression_span(stmt.expr),
-							"this expression returns a value, but it was not used",
-						)
-					} else {
-						diagnostics.emit(
-							.Unused_Value,
-							ast.expression_span(stmt.expr),
-							"this expression returns %d values, but none were used",
-							num_values,
-						)
-					}
+				switch num_values := hir.value_count(expr); num_values {
+				case 0:
+				case 1:
+					diagnostics.emit(
+						.Unused_Value,
+						ast.expression_span(stmt.expr),
+						"this expression returns a value, but it was not used",
+					)
+				case:
+					diagnostics.emit(
+						.Unused_Value,
+						ast.expression_span(stmt.expr),
+						"this expression returns %d values, but none were used",
+						num_values,
+					)
 				}
 				out := new(hir.Expr_Statement)
 				out.span = stmt.span
@@ -78,20 +77,25 @@ build_block :: proc(
 				resolver.Local_Variable,
 				stmt.name.id,
 			)
+			symbol.ast = stmt
+			symbol.state = .Processing
+			symbol.defined_in = func.defined_in
+
+			resolver.define_local(
+				&locals,
+				stmt.name,
+				symbol,
+				warn_shadowing = {} if same_name else {.Builtins, .Outer_Scopes},
+			)
+
 			variable := build_local_var(ts, stmt, &locals, symbol.id)
 			if variable != nil {
 				append(&body, variable)
 
-				symbol.ast = stmt
 				symbol.hir = variable
 				symbol.state = .Done
-				symbol.defined_in = func.defined_in
-				resolver.define_local(
-					&locals,
-					stmt.name,
-					symbol,
-					warn_shadowing = {} if same_name else {.Builtins, .Outer_Scopes},
-				)
+			} else {
+				symbol.state = .Failed
 			}
 
 		case ^ast.Constant_Def:
@@ -277,13 +281,12 @@ _build_var :: proc(
 
 	result := new(H, ts.output.allocator)
 	result^ = {
-		span        = src.span,
-		id          = id,
-		name        = src.name,
-		type        = var_type,
-		unit        = unit,
-		expr        = value,
-		annotations = nil,
+		span = src.span,
+		id   = id,
+		name = src.name,
+		type = var_type,
+		unit = unit,
+		expr = value,
 	}
 	return result
 }

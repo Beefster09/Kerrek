@@ -137,6 +137,8 @@ func flapjacks_required(num_workers: Int64 | man) -> Decimal(18, 6) | count
 	let c = a // b;
 	let d = a % b;
 
+	1 + 2 + 3;
+
 	a, b = b, a;
 
 	let e = a + b * 123 mod c;

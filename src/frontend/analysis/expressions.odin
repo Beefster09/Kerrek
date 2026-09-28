@@ -239,6 +239,9 @@ evaluate :: proc(
 			node: ^ast.Name_Expr,
 			symbol: $S,
 		) -> hir.Expression {
+			if symbol.hir == nil {
+				return poison(ts, node.span)
+			}
 			expr := new(hir.Var_Expr, ts.output.allocator)
 			expr^ = {
 				span       = node.span,
