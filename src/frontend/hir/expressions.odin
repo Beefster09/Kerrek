@@ -95,6 +95,54 @@ singular_type_and_unit :: proc "contextless" (expr: Expression) -> (Type, Realiz
 	return nil, nil, false
 }
 
+expression_types_and_units :: proc(expr: Expression) -> ([]Type, []Realized_Unit) {
+	_wrap :: proc(t: Type, u: Realized_Unit) -> ([]Type, []Realized_Unit) {
+		t_arr := make([]Type, 1, context.temp_allocator)
+		t_arr[0] = t
+
+		u_arr := make([]Realized_Unit, 1, context.temp_allocator)
+		u_arr[0] = u
+
+		return t_arr, u_arr
+	}
+
+	switch node in expr {
+	case ^Var_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Const_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Field_Access_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Enum_Value:
+		return _wrap(node.type, node.unit)
+	case ^Move_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Condition_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Binop_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Unary_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Address_Of_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Dereference_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Cast_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Unit_Conversion_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Unit_Reinterpret_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Index_Expr:
+		return _wrap(node.type, node.unit)
+	case ^Func_Call_Expr:
+		return node.types, node.units
+	case ^Poison:
+	}
+
+	return nil, nil
+}
+
 value_count :: proc "contextless" (expr: Expression) -> int {
 	switch node in expr {
 	case ^Var_Expr:

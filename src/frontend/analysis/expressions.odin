@@ -218,7 +218,7 @@ evaluate :: proc(
 		if unit, ok := get_canonical_unit(ts, node.unit, scope); ok {
 			out_unit = unit
 		} else {
-			out_unit = .No_Unit
+			out_unit = .Flexible
 		}
 
 		return Comptime_Value {

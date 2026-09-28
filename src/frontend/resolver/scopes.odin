@@ -73,6 +73,9 @@ define_local :: proc(
 	}
 
 	shadowed := lookup(scope.parent, name.id)
+	if shadowed == nil {
+		return .OK
+	}
 
 	#partial switch previous in shadowed {
 	case ^Builtin:

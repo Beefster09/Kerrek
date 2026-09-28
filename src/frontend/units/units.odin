@@ -5,6 +5,7 @@ import "core:io"
 import "core:slice"
 
 import "../../common"
+import "../../util"
 
 Compound_Unit :: union {
 	Inline_Compound_Unit,
@@ -223,12 +224,28 @@ compound_units_equal :: proc(a, b: Compound_Unit) -> bool {
 SUPERSCRIPT_DIGITS := [10]rune{'⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'}
 SUPERSCRIPT_NEGATIVE :: '⁻'
 
-write_compound_unit :: proc(
-	w: io.Writer,
-	unit: Compound_Unit,
-	get_unit_name: proc(data: ^$D, id: common.Symbol_ID) -> (string, bool),
-	get_unit_name_data: ^D,
-) {
+Name_Getter :: struct {
+	get:  proc(data: rawptr, id: common.Symbol_ID) -> (string, bool),
+	data: rawptr,
+}
+
+_default_unit_namer := Name_Getter {
+	get = proc(data: rawptr, id: common.Symbol_ID) -> (string, bool) {
+		return "", false
+	},
+}
+
+name_getter :: proc(
+	data: ^$T,
+	get: proc(data: ^T, id: common.Symbol_ID) -> (string, bool),
+) -> Name_Getter {
+	return {
+		get = cast(proc(data: rawptr, id: common.Symbol_ID) -> (string, bool))get,
+		data = cast(rawptr)data,
+	}
+}
+
+write_compound_unit :: proc(w: io.Writer, unit: Compound_Unit, get_unit_name: Name_Getter) {
 	for i in 0 ..< num_components(unit) {
 		if i > 0 {
 			io.write_rune(w, ' ')
@@ -236,32 +253,51 @@ write_compound_unit :: proc(
 
 		comp := get_component(unit, i)
 
-		if comp_name, ok := get_unit_name(get_unit_name_data, comp.unit); ok {
+		if comp_name, ok := get_unit_name.get(get_unit_name.data, comp.unit); ok {
 			io.write_string(w, string(comp_name))
 		} else {
 			io.write_string(w, "UNIT#")
 			io.write_int(w, int(comp.unit))
 		}
 
-		if comp.exp.d == 0 {
-			sup_digits: [dynamic; 4]rune
-			x := abs(i16(comp.exp.n))
-			for x > 0 {
-				append(&sup_digits, SUPERSCRIPT_DIGITS[x % 10])
-				x /= 10
+		if comp.exp.n != 1 {
+			if comp.exp.d == 0 {
+				sup_digits: [dynamic; 4]rune
+				x := abs(i16(comp.exp.n))
+				for x > 0 {
+					append(&sup_digits, SUPERSCRIPT_DIGITS[x % 10])
+					x /= 10
+				}
+				if comp.exp.n < 0 {
+					io.write_rune(w, SUPERSCRIPT_NEGATIVE)
+				}
+				#reverse for digit in sup_digits {
+					io.write_rune(w, digit)
+				}
+			} else {
+				io.write_string(w, "^(")
+				io.write_int(w, int(comp.exp.n))
+				io.write_rune(w, '/')
+				io.write_int(w, int(comp.exp.d + 1))
+				io.write_rune(w, ')')
 			}
-			if comp.exp.n < 0 {
-				io.write_rune(w, SUPERSCRIPT_NEGATIVE)
-			}
-			#reverse for digit in sup_digits {
-				io.write_rune(w, digit)
-			}
-		} else {
-			io.write_string(w, "^(")
-			io.write_int(w, int(comp.exp.n))
-			io.write_rune(w, '/')
-			io.write_int(w, int(comp.exp.d + 1))
-			io.write_rune(w, ')')
 		}
 	}
+}
+
+fmt_compound_unit :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
+	assert(arg.id == Compound_Unit)
+
+	switch verb {
+	case 's', 'v':
+		unit := cast(^Compound_Unit)arg.data
+		getter := util.find_ctx_var_of(Name_Getter)
+		if getter == nil {
+			getter = &_default_unit_namer
+		}
+		write_compound_unit(fi.writer, unit^, getter^)
+		return true
+	}
+
+	return false
 }

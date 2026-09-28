@@ -122,7 +122,18 @@ ensure_toplevel_symbol_processed :: proc(
 		}
 
 	case ^resolver.Global_Variable:
-		return .Not_Implemented
+		variable := _build_var(
+			ts,
+			symbol.ast,
+			symbol.defined_in,
+			symbol.id,
+			hir.Global_Variable,
+		)
+		if variable == nil {
+			return .Malformed
+		}
+		symbol.hir = variable
+		append(&ts.hir_items.variables, variable)
 
 	case ^resolver.Base_Unit:
 		symbol.hir = new(hir.Base_Unit, ts.output.allocator)

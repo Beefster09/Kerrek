@@ -10,6 +10,7 @@ import "frontend/analysis"
 import "frontend/diagnostics"
 import "frontend/resolver"
 import "frontend/units"
+import "util"
 
 _user_formatters: map[typeid]fmt.User_Formatter
 _json_marshalers: map[typeid]json.User_Marshaler
@@ -22,6 +23,8 @@ main :: proc() {
 	fmt.set_user_formatters(&_user_formatters)
 	_json_marshalers = make(map[typeid]json.User_Marshaler)
 	json.set_user_marshalers(&_json_marshalers)
+
+	fmt.register_user_formatter(util.Interpolator, util.fmt_interpolator)
 
 	common.initialize()
 	diagnostics.initialize()

@@ -233,6 +233,7 @@ _process_func_annotations :: proc(
 					symbol.deprecated_msg = "TODO: this needs to be handled properly"
 				}
 			case "calling_convention":
+			case "doc":
 			case:
 				diagnostics.emit(
 					.Invalid_Annotation,

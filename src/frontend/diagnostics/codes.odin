@@ -71,6 +71,8 @@ Code :: enum {
 	Wrong_Symbol_Kind,
 	// The number of expected values does not match the actual number of values
 	Arity_Mismatch,
+	// An expression that returns no values was used in a context where values are normally expected
+	Dubious_Nullary_Expression,
 	// An expression produces a value that isn't used
 	Unused_Value,
 	// The value needed to be known at compile time, but wasn't
@@ -133,6 +135,7 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Cyclical_Dependency = {origin = .Semantic, default_level = .Error},
 	.Wrong_Symbol_Kind = {origin = .Semantic, default_level = .Error},
 	.Invalid_Annotation = {origin = .Semantic, default_level = .Error},
+	.Dubious_Nullary_Expression = {origin = .Semantic, default_level = .Warning},
 	.Arity_Mismatch = {origin = .Semantic, default_level = .Error},
 	.Unused_Value = {origin = .Semantic, default_level = .Warning},
 	.Not_Compile_Time_Known = {origin = .Semantic, default_level = .Error},

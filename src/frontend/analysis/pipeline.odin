@@ -1,5 +1,6 @@
 package analysis
 
+import "../../util"
 import "../hir"
 import "../resolver"
 import "../units"
@@ -24,6 +25,20 @@ build_hir :: proc(
 ) {
 	assert(res != nil)
 	assert(entry_package != nil)
+
+	ctxvar := util.Context_Var {
+		var  = units.name_getter(
+			res,
+			proc(res: ^resolver.Resolver, id: resolver.Symbol_ID) -> (string, bool) {
+				if base_unit, ok := res.units_by_id[id]; ok {
+					return string(base_unit.name), true
+				}
+				return "", false
+			},
+		),
+		next = cast(^util.Context_Var)context.user_ptr,
+	}
+	context.user_ptr = &ctxvar
 
 	arena: mem.Dynamic_Arena
 	mem.dynamic_arena_init(&arena)
