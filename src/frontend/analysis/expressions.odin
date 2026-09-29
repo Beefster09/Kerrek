@@ -237,87 +237,7 @@ evaluate :: proc(
 		return _eval_unary(ts, node, scope)
 
 	case ^ast.Name_Expr:
-		var_expr :: #force_inline proc(
-			ts: ^Translation_State,
-			node: ^ast.Name_Expr,
-			symbol: $S,
-		) -> hir.Expression {
-			if symbol.hir == nil {
-				return poison(ts, node.span)
-			}
-			expr := new(hir.Var_Expr, ts.output.allocator)
-			expr^ = {
-				span       = node.span,
-				references = symbol.hir,
-				type       = symbol.hir.type,
-				unit       = symbol.hir.unit,
-			}
-			return expr
-		}
-
-		switch resolved in resolve(ts, scope, node.name) {
-		case ^resolver.Constant:
-			if resolved.state == .Done {
-				return resolved.value
-			} else {
-				return hir.Expression(poison(ts, node.span))
-			}
-
-		case ^resolver.Local_Variable:
-			return var_expr(ts, node, resolved)
-		case ^resolver.Global_Variable:
-			return var_expr(ts, node, resolved)
-		case ^resolver.Formal_Parameter:
-			return var_expr(ts, node, resolved)
-		case ^resolver.Named_Return:
-			return var_expr(ts, node, resolved)
-
-		case ^resolver.Base_Unit:
-			return Comptime_Value {
-				value = exact.RAT_ONE,
-				type = Flexible_Type{affinity = .Integer, scale = 0},
-				unit = units.base_unit(resolved.id),
-			}
-
-		case ^resolver.Unit_Alias:
-			if resolved.canonical != nil {
-				return Comptime_Value {
-					value = exact.RAT_ONE,
-					type = Flexible_Type{affinity = .Integer, scale = 0},
-					unit = resolved.canonical,
-				}
-			} else {
-				return hir.Expression(poison(ts, node.span))
-			}
-
-		case nil:
-			return hir.Expression(poison(ts, node.span))
-		case ^resolver.Function:
-		case ^resolver.Type_Alias:
-			return hir.Expression(hir.Type(resolved.hir))
-		case ^resolver.Distinct_Type:
-			return hir.Expression(hir.Type(resolved.hir))
-		case ^resolver.Struct_Type:
-			return hir.Expression(hir.Type(resolved.hir))
-		case ^resolver.Enum_Type:
-			return hir.Expression(hir.Type(resolved.hir))
-		case ^resolver.Import:
-		case ^resolver.Builtin:
-
-		case ^resolver.Annotation, ^resolver.Capability:
-			diag := diagnostics.emit(
-				.Wrong_Symbol_Kind,
-				node.name.span,
-				"'%s' references a %T, which is not valid anywhere in an expression context",
-				node.name.id,
-				reflect.get_union_variant(resolved),
-			)
-			if name_span, ok := resolver.span_of_name(resolved); ok {
-				diagnostics.reference(diag, name_span, "defined here")
-			}
-		}
-
-		return _not_implemented(ts, node)
+		return _eval_name_expr(ts, node, scope)
 
 	case ^ast.Unit_Reinterpret_Expr:
 		new_unit: hir.Realized_Unit
@@ -402,6 +322,111 @@ evaluate :: proc(
 	}
 
 	panic("unreachable")
+}
+
+_eval_name_expr :: proc(
+	ts: ^Translation_State,
+	node: ^ast.Name_Expr,
+	scope: resolver.Scope,
+) -> Eval_Result {
+	var_expr :: #force_inline proc(
+		ts: ^Translation_State,
+		node: ^ast.Name_Expr,
+		symbol: $S,
+	) -> hir.Expression {
+		if symbol.hir == nil {
+			return poison(ts, node.span)
+		}
+		expr := new(hir.Var_Expr, ts.output.allocator)
+		expr^ = {
+			span       = node.span,
+			references = symbol.hir,
+			type       = symbol.hir.type,
+			unit       = symbol.hir.unit,
+		}
+		return expr
+	}
+
+	switch resolved in resolve(ts, scope, node.name) {
+	case ^resolver.Constant:
+		if resolved.state == .Done {
+			return resolved.value
+		} else {
+			return hir.Expression(poison(ts, node.span))
+		}
+
+	case ^resolver.Local_Variable:
+		return var_expr(ts, node, resolved)
+	case ^resolver.Global_Variable:
+		return var_expr(ts, node, resolved)
+	case ^resolver.Formal_Parameter:
+		return var_expr(ts, node, resolved)
+	case ^resolver.Named_Return:
+		return var_expr(ts, node, resolved)
+
+	case ^resolver.Base_Unit:
+		return Comptime_Value {
+			value = exact.RAT_ONE,
+			type = Flexible_Type{affinity = .Integer, scale = 0},
+			unit = units.base_unit(resolved.id),
+		}
+
+	case ^resolver.Unit_Alias:
+		if resolved.canonical != nil {
+			return Comptime_Value {
+				value = exact.RAT_ONE,
+				type = Flexible_Type{affinity = .Integer, scale = 0},
+				unit = resolved.canonical,
+			}
+		} else {
+			return hir.Expression(poison(ts, node.span))
+		}
+
+	case ^resolver.Function:
+	case ^resolver.Type_Alias:
+		return hir.Expression(hir.Type(resolved.hir))
+	case ^resolver.Distinct_Type:
+		return hir.Expression(hir.Type(resolved.hir))
+	case ^resolver.Struct_Type:
+		return hir.Expression(hir.Type(resolved.hir))
+	case ^resolver.Enum_Type:
+		return hir.Expression(hir.Type(resolved.hir))
+	case ^resolver.Import:
+		return resolved
+	case ^resolver.Builtin:
+		switch resolved.kind {
+		case .Primitive_Type:
+			if prim, ok := _primitive_type(resolved); ok {
+				return hir.Expression(hir.Type(prim))
+			}
+			panic("could not resolve primitive type")
+		case .Parametric_Type:
+		case .Function:
+		case .Annotation:
+			diag := diagnostics.emit(
+				.Wrong_Symbol_Kind,
+				node.name.span,
+				"'%s' references a builtin annotation, which is not valid anywhere in an expression context",
+				node.name.id,
+			)
+		}
+
+	case ^resolver.Annotation, ^resolver.Capability:
+		diag := diagnostics.emit(
+			.Wrong_Symbol_Kind,
+			node.name.span,
+			"'%s' references a %T, which is not valid anywhere in an expression context",
+			node.name.id,
+			reflect.get_union_variant(resolved),
+		)
+		if name_span, ok := resolver.span_of_name(resolved); ok {
+			diagnostics.reference(diag, name_span, "defined here")
+		}
+	}
+
+	// no diagnostic message required for nil; was already emitted by resolve proc
+
+	return hir.Expression(poison(ts, node.span))
 }
 
 _singular_type_and_unit :: proc(er: Eval_Result) -> (Comptime_Type, hir.Realized_Unit, bool) {
