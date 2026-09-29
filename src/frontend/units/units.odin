@@ -114,7 +114,7 @@ builder_add_compound_unit :: proc(
 			return .Unrepresentable_Exponent
 		}
 
-		err := builder_add_base_unit(b, comp.unit, comp.exp)
+		err := builder_add_base_unit(b, comp.unit, new_exp)
 		if err != .OK {
 			return err
 		}

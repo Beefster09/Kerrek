@@ -55,9 +55,11 @@ _func_def :: proc(ps: ^Parser_State) -> ^ast.Func_Definition {
 				unit = parsed_unit
 				end_span = parsed_unit.span
 			} else {
-				unit := new(ast.No_Unit)
-				unit.span = _span_between(ps)
+				no_unit := new(ast.No_Unit)
+				no_unit.span = _span_between(ps)
+				unit = no_unit
 			}
+			assert(unit != nil)
 
 			result := new(ast.Func_Return)
 			result^ = {
@@ -121,11 +123,18 @@ _param_list :: proc(ps: ^Parser_State) -> ([]^ast.Formal_Parameter, bool) {
 
 		unit: ast.Declared_Unit
 		if _just_match(ps, Punctuation.Bar) {
-			unit = _compound_unit(ps)
+			parsed_unit := _compound_unit(ps)
+			if parsed_unit == nil {
+				_error_here(ps, "expected a unit here")
+				return nil, false
+			}
+			unit = parsed_unit
 		} else {
-			unit := new(ast.Inferred_Unit)
-			unit.span = _span_between(ps)
+			inferred_unit := new(ast.Inferred_Unit)
+			inferred_unit.span = _span_between(ps)
+			unit = inferred_unit
 		}
+		assert(unit != nil)
 
 		default: ast.Expression
 		if _just_match(ps, Punctuation.Assign) {
