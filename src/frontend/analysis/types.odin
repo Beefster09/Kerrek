@@ -120,7 +120,7 @@ build_type :: proc(
 					}
 				case:
 				}
-			case hir.Expression:
+			case hir.Expression, ^resolver.Import:
 			}
 
 			if !argument_ok {

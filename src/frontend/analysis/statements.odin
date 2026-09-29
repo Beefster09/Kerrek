@@ -27,36 +27,31 @@ build_block :: proc(
 				append(&body, inner)
 			}
 		case ^ast.Expr_Statement:
-			switch expr in evaluate(ts, stmt.expr, &locals) {
-			case Comptime_Value:
+			expr, ok := build_expr(ts, stmt.expr, &locals)
+			if !ok {
+				continue process_stmts
+			}
+			switch num_values := hir.value_count(expr); num_values {
+			case 0:
+			case 1:
 				diagnostics.emit(
 					.Unused_Value,
 					ast.expression_span(stmt.expr),
-					"this expression does nothing",
+					"this expression returns a value, but it was not used",
 				)
-
-			case hir.Expression:
-				switch num_values := hir.value_count(expr); num_values {
-				case 0:
-				case 1:
-					diagnostics.emit(
-						.Unused_Value,
-						ast.expression_span(stmt.expr),
-						"this expression returns a value, but it was not used",
-					)
-				case:
-					diagnostics.emit(
-						.Unused_Value,
-						ast.expression_span(stmt.expr),
-						"this expression returns %d values, but none were used",
-						num_values,
-					)
-				}
-				out := new(hir.Expr_Statement)
-				out.span = stmt.span
-				out.expr = expr
-				append(&body, out)
+			case:
+				diagnostics.emit(
+					.Unused_Value,
+					ast.expression_span(stmt.expr),
+					"this expression returns %d values, but none were used",
+					num_values,
+				)
 			}
+			out := new(hir.Expr_Statement)
+			out.span = stmt.span
+			out.expr = expr
+			append(&body, out)
+
 
 		case ^ast.Assign_Statement:
 			for dest in stmt.dests {
@@ -125,6 +120,13 @@ build_block :: proc(
 						"this expression is not constant at compile time",
 					)
 				}
+				all_ok = false
+			case ^resolver.Import:
+				diagnostics.emit(
+					.Wrong_Symbol_Kind,
+					ast.expression_span(stmt.expr),
+					"imports cannot be aliased as constants",
+				)
 				all_ok = false
 			}
 		case ^ast.Return_Statement:

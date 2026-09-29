@@ -23,6 +23,7 @@ Flexible_Affinity :: resolver.Flexible_Affinity
 Eval_Result :: union {
 	Comptime_Value,
 	hir.Expression,
+	^resolver.Import,
 }
 
 materialize :: proc(
@@ -138,6 +139,8 @@ build_expr :: proc(
 		return materialize(ts, result, ast.span(expr))
 	case hir.Expression:
 		return result, true
+	case ^resolver.Import:
+		diagnostics.emit(.Wrong_Symbol_Kind, ast.span(expr), "imports are not valid as values")
 	}
 
 	return nil, false
@@ -359,6 +362,12 @@ evaluate :: proc(
 					hir.value_count(result),
 				)
 			}
+		case ^resolver.Import:
+			diagnostics.emit(
+				.Wrong_Symbol_Kind,
+				node.span,
+				"this is an import, which is not a valid value",
+			)
 		}
 
 		return hir.Expression(poison(ts, node.span))
@@ -401,6 +410,7 @@ _singular_type_and_unit :: proc(er: Eval_Result) -> (Comptime_Type, hir.Realized
 		return er.type, er.unit, true
 	case hir.Expression:
 		return hir.singular_type_and_unit(er)
+	case ^resolver.Import:
 	}
 
 	return nil, nil, false
@@ -465,6 +475,14 @@ _eval_unary :: proc(
 			unit = unit,
 		}
 		return hir.Expression(result)
+	case ^resolver.Import:
+		diagnostics.emit(
+			.Wrong_Symbol_Kind,
+			unary.span,
+			"this is an import, which is not a valid operand of unary %s",
+			common.UNARY_OP_STRINGS[unary.op],
+		)
+		return hir.Expression(poison(ts, unary.span))
 	}
 
 	panic("unreachable")
@@ -577,6 +595,14 @@ _eval_binop :: proc(
 		l, l_ok = materialize(ts, value, ast.expression_span(binop.lhs))
 	case hir.Expression:
 		l = value
+	case ^resolver.Import:
+		diagnostics.emit(
+			.Wrong_Symbol_Kind,
+			binop.span,
+			"this is an import, which is not a valid operand of %s",
+			common.BINARY_OP_STRINGS[binop.op],
+		)
+		return hir.Expression(poison(ts, binop.span))
 	}
 	r: hir.Expression
 	r_ok := true
@@ -585,6 +611,14 @@ _eval_binop :: proc(
 		r, r_ok = materialize(ts, value, ast.expression_span(binop.rhs))
 	case hir.Expression:
 		r = value
+	case ^resolver.Import:
+		diagnostics.emit(
+			.Wrong_Symbol_Kind,
+			binop.span,
+			"this is an import, which is not a valid operand of %s",
+			common.BINARY_OP_STRINGS[binop.op],
+		)
+		return hir.Expression(poison(ts, binop.span))
 	}
 	if !l_ok || !r_ok {
 		return hir.Expression(poison(ts, binop.span))
@@ -717,6 +751,14 @@ _eval_boolean_multiply :: proc(
 			}
 			return hir.Expression(result)
 		}
+	case ^resolver.Import:
+		diagnostics.emit(
+			.Wrong_Symbol_Kind,
+			ast.expression_span(nonbool_ast),
+			"imports cannot participate in boolean multiplication",
+			common.BINARY_OP_STRINGS[binop.op],
+		)
+		return hir.Expression(poison(ts, binop.span))
 	}
 
 	panic("unreachable")
