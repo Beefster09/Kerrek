@@ -270,11 +270,11 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 		return .UInt16, true
 	case "UInt8":
 		return .UInt8, true
-	case "Float64":
+	case "Bin64":
 		return .Bin64, true
-	case "Float32":
+	case "Bin32":
 		return .Bin32, true
-	case "Float16":
+	case "Bin16":
 		return .Bin16, true
 	case "Boolean":
 		return .Boolean, true
@@ -296,6 +296,8 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 		return .Opaque32, true
 	case "Opaque64":
 		return .Opaque64, true
+	case "TypeID":
+		return .Type, true
 	}
 
 	return {}, false
@@ -430,6 +432,7 @@ is_integer :: proc(t: Comptime_Type) -> bool {
 			     .Rune,
 			     .Byte,
 			     .Any,
+			     .Type,
 			     .Opaque,
 			     .Opaque8,
 			     .Opaque16,
@@ -556,7 +559,7 @@ is_zeroable :: proc(typ: Comptime_Type) -> bool {
 		case ^hir.Tagged_Type:
 			return is_zeroable(concrete.base)
 		case hir.Primitive_Type:
-			return true
+			return concrete != .Type
 		case hir.Fixed_Decimal:
 			return true
 		case ^hir.Generic_Type:

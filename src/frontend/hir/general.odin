@@ -50,6 +50,7 @@ Symbol :: union {
 	^Formal_Parameter,
 	^Func_Definition,
 	^Func_Overload_Group,
+	^Func_Return,
 	^Struct_Type,
 	^Interface,
 	^Interface_Impl,

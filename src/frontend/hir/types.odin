@@ -44,12 +44,13 @@ Primitive_Type :: enum {
 	String,
 	Rune,
 	Byte,
-	Any,
 	Opaque,
 	Opaque8,
 	Opaque16,
 	Opaque32,
 	Opaque64,
+	Type,
+	Any,
 }
 
 Fixed_Decimal :: struct {

@@ -222,3 +222,4 @@ examples/*.c
 /units
 /kerrek
 /*.bin
+*.sublime-*

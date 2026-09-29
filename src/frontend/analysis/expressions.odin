@@ -252,7 +252,7 @@ evaluate :: proc(
 			return expr
 		}
 
-		#partial switch resolved in resolve(ts, scope, node.name) {
+		switch resolved in resolve(ts, scope, node.name) {
 		case ^resolver.Constant:
 			if resolved.state == .Done {
 				return resolved.value
@@ -265,6 +265,8 @@ evaluate :: proc(
 		case ^resolver.Global_Variable:
 			return var_expr(ts, node, resolved)
 		case ^resolver.Formal_Parameter:
+			return var_expr(ts, node, resolved)
+		case ^resolver.Named_Return:
 			return var_expr(ts, node, resolved)
 
 		case ^resolver.Base_Unit:
@@ -287,20 +289,32 @@ evaluate :: proc(
 
 		case nil:
 			return hir.Expression(poison(ts, node.span))
+		case ^resolver.Function:
+		case ^resolver.Type_Alias:
+			return hir.Expression(hir.Type(resolved.hir))
+		case ^resolver.Distinct_Type:
+			return hir.Expression(hir.Type(resolved.hir))
+		case ^resolver.Struct_Type:
+			return hir.Expression(hir.Type(resolved.hir))
+		case ^resolver.Enum_Type:
+			return hir.Expression(hir.Type(resolved.hir))
+		case ^resolver.Import:
+		case ^resolver.Builtin:
 
-		case:
+		case ^resolver.Annotation, ^resolver.Capability:
 			diag := diagnostics.emit(
 				.Wrong_Symbol_Kind,
 				node.name.span,
-				"'%s' references a %T",
+				"'%s' references a %T, which is not valid anywhere in an expression context",
 				node.name.id,
 				reflect.get_union_variant(resolved),
 			)
 			if name_span, ok := resolver.span_of_name(resolved); ok {
 				diagnostics.reference(diag, name_span, "defined here")
 			}
-			return hir.Expression(poison(ts, node.span))
 		}
+
+		return _not_implemented(ts, node)
 
 	case ^ast.Unit_Reinterpret_Expr:
 		new_unit: hir.Realized_Unit
@@ -370,6 +384,7 @@ evaluate :: proc(
 	case ^ast.Index_Expr:
 		return _not_implemented(ts, node)
 	case ^ast.Callish_Expr:
+		callee := evaluate(ts, node.callee, scope)
 		return _not_implemented(ts, node)
 	case ^ast.Type_Expr_Expr:
 		return _not_implemented(ts, node)
@@ -707,10 +722,10 @@ _eval_boolean_multiply :: proc(
 	panic("unreachable")
 }
 
-_primitive_zero :: proc(typ: Comptime_Type) -> common.Primitive_Value {
-	switch comptime_type in typ {
+_primitive_zero :: proc(type: Comptime_Type) -> common.Primitive_Value {
+	switch type in type {
 	case Flexible_Type:
-		switch comptime_type.affinity {
+		switch type.affinity {
 		case .Integer, .Unsigned_Integer, .Decimal, .Binary_Float, .Rational:
 			return exact.RAT_ZERO
 		case .Boolean:
@@ -727,7 +742,7 @@ _primitive_zero :: proc(typ: Comptime_Type) -> common.Primitive_Value {
 			return Untyped_Zero{}
 		}
 	case hir.Type:
-		#partial switch concrete in comptime_type {
+		#partial switch concrete in type {
 		case hir.Fixed_Decimal:
 			return exact.RAT_ZERO
 		case hir.Primitive_Type:
@@ -756,6 +771,8 @@ _primitive_zero :: proc(typ: Comptime_Type) -> common.Primitive_Value {
 				return ""
 
 			case .Any, .Opaque, .Opaque8, .Opaque16, .Opaque32, .Opaque64:
+				return Untyped_Nil{}
+			case .Type:
 				panic("_primitive_zero(...) should only be called with zeroable types")
 			}
 		case ^hir.Pointer_Type, ^hir.Optional_Type:

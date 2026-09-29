@@ -53,6 +53,7 @@ Expression :: union {
 	^Unit_Reinterpret_Expr,
 	^Index_Expr,
 	^Func_Call_Expr,
+	Type,
 	^Poison,
 }
 
@@ -90,6 +91,8 @@ singular_type_and_unit :: proc "contextless" (expr: Expression) -> (Type, Realiz
 		if len(node.types) == 1 && len(node.units) == 1 {
 			return node.types[0], node.units[0], true
 		}
+	case Type:
+		return Primitive_Type.Type, Indeterminate_Unit.No_Unit, true
 	case ^Poison, nil:
 	}
 	return nil, nil, false
@@ -137,6 +140,8 @@ expression_types_and_units :: proc(expr: Expression) -> ([]Type, []Realized_Unit
 		return _wrap(node.type, node.unit)
 	case ^Func_Call_Expr:
 		return node.types, node.units
+	case Type:
+		return _wrap(Primitive_Type.Type, Indeterminate_Unit.No_Unit)
 	case ^Poison:
 	}
 
@@ -175,6 +180,8 @@ value_count :: proc "contextless" (expr: Expression) -> int {
 		return 1
 	case ^Func_Call_Expr:
 		return len(node.types)
+	case Type:
+		return 1
 	case ^Poison, nil:
 		return 0
 	}

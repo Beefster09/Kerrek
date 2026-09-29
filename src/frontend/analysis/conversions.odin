@@ -209,6 +209,15 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 		signedness = .Unsigned,
 		numeric_class = .Not_A_Number,
 	},
+	.Type = {
+		implicitly_to = {.Any},
+		explicit_group = .Unconvertible,
+		size_bytes = -1,
+		significant_bits = -1,
+		decimal_digits = -1,
+		signedness = .Not_Applicable,
+		numeric_class = .Not_A_Number,
+	},
 	.Any = {
 		implicitly_to = {.Any},
 		explicit_group = .Unconvertible,
@@ -378,10 +387,8 @@ _flex_converts_to :: proc(flex: Flexible_Type, to: Comptime_Type) -> bool {
 		#partial switch concrete in dest {
 		case hir.Fixed_Decimal:
 			switch flex.affinity {
-			case .Unsigned_Integer, .Integer, .Any_Zero:
+			case .Unsigned_Integer, .Integer, .Decimal, .Rational, .Any_Zero:
 				return true
-			case .Decimal, .Rational:
-				return concrete.scale != 0
 			case .Nil, .Binary_Float, .Boolean, .String, .Rune, .Byte:
 				return false
 			}
@@ -409,11 +416,20 @@ _flex_converts_to :: proc(flex: Flexible_Type, to: Comptime_Type) -> bool {
 				     .Any:
 					return true
 
-				case .Boolean, .String, .Rune, .Opaque, .Opaque8, .Opaque16, .Opaque32, .Opaque64:
+				case .Boolean,
+				     .String,
+				     .Rune,
+				     .Opaque,
+				     .Opaque8,
+				     .Opaque16,
+				     .Opaque32,
+				     .Opaque64,
+				     .Type:
 					return false
 				}
 			case .Decimal:
-				return concrete == .Any
+				// maybe: warning about precision loss
+				fallthrough
 			case .Binary_Float:
 				return(
 					concrete == .Bin64 ||
