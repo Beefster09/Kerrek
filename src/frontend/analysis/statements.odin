@@ -220,26 +220,25 @@ _build_var :: proc(
 			return nil
 		}
 
-		types, units := hir.expression_types_and_units(built)
-		assert(len(types) == len(units))
-		if len(types) != 1 {
+		types_and_units := hir.expression_types_and_units(built)
+		if len(types_and_units) != 1 {
 			diagnostics.emit(
 				.Arity_Mismatch,
 				ast.span(expr),
 				"this expression results in %d values and therefore cannot be assigned to '%s'",
-				len(types),
+				len(types_and_units),
 				src.name,
 			)
 			return nil
 		}
 
 		inferred: bool
-		var_type, inferred = infer_type(types[0], src.span)
+		var_type, inferred = infer_type(types_and_units[0].type, src.span)
 		if !inferred {
 			return nil
 		}
 		if unit_is_inferred {
-			unit = units[0]
+			unit = types_and_units[0].unit
 		}
 		value = built
 	} else {
@@ -301,8 +300,7 @@ _build_return :: proc(
 ) -> ^hir.Return_Statement {
 	exprs := make([dynamic]hir.Expression, 0, len(stmt.values), ts.output.allocator)
 	expr_idxs := make([dynamic]int, context.temp_allocator)
-	types := make([dynamic]hir.Type, context.temp_allocator)
-	units := make([dynamic]hir.Realized_Unit, context.temp_allocator)
+	types_and_units := make([dynamic]hir.Type_And_Unit, context.temp_allocator)
 
 	poisoned := false
 	for value, i in stmt.values {
@@ -313,17 +311,16 @@ _build_return :: proc(
 		}
 		append(&exprs, built)
 
-		ts, us := hir.expression_types_and_units(built)
-		if len(ts) == 0 {
+		tus := hir.expression_types_and_units(built)
+		if len(tus) == 0 {
 			diagnostics.emit(
 				.Dubious_Nullary_Expression,
 				ast.span(value),
 				"this expression was used in a return statement but it returns no values",
 			)
 		}
-		append(&types, ..ts)
-		append(&units, ..us)
-		for _ in ts {
+		append(&types_and_units, ..tus)
+		for _ in tus {
 			append(&expr_idxs, i)
 		}
 	}
@@ -331,8 +328,7 @@ _build_return :: proc(
 	if poisoned {
 		return nil
 	}
-	assert(len(types) == len(units))
-	assert(len(types) == len(expr_idxs))
+	assert(len(types_and_units) == len(expr_idxs))
 
 	value_count := len(expr_idxs)
 	expected_count := len(func.hir.returns)
@@ -352,16 +348,15 @@ _build_return :: proc(
 
 	for expr_idx, i in expr_idxs {
 		expected := func.hir.returns[i]
-		type := types[i]
-		unit := units[i]
+		type_and_unit := types_and_units[i]
 
-		if !_type_implicitly_converts(expected.type, type) {
+		if !_type_implicitly_converts(expected.type, type_and_unit.type) {
 			diagnostics.emit(
 				.Invalid_Type,
 				ast.span(stmt.values[expr_idx]),
 				"the func signature requires this value to be a %s, but it was a %s",
 				expected.type,
-				type,
+				type_and_unit.type,
 			)
 		}
 	}

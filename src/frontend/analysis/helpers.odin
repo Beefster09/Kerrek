@@ -50,4 +50,5 @@ poison :: proc(ts: ^Translation_State, span: common.Span) -> ^hir.Poison {
 init_formatters :: proc() {
 	fmt.register_user_formatter(ast.Qualified_Name, ast.fmt_qualname)
 	fmt.register_user_formatter(Comptime_Type, fmt_comptime_type)
+	fmt.register_user_formatter(hir.Type, fmt_realized_type)
 }

@@ -585,12 +585,22 @@ is_zeroable :: proc(typ: Comptime_Type) -> bool {
 	return false
 }
 
-
 fmt_comptime_type :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	assert(arg.id == Comptime_Type)
 	switch verb {
 	case 's':
 		write_comptime_type(fi.writer, (cast(^Comptime_Type)arg.data)^)
+		return true
+	}
+
+	return false
+}
+
+fmt_realized_type :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
+	assert(arg.id == hir.Type)
+	switch verb {
+	case 's':
+		write_type(fi.writer, (cast(^hir.Type)arg.data)^)
 		return true
 	}
 

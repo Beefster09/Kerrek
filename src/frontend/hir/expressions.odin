@@ -2,19 +2,16 @@ package hir
 
 import "../../common"
 import "../../common/exact"
-import "base:intrinsics"
 
 
 _Single_Value_Expression_Header :: struct {
-	span: Span,
-	type: Type,
-	unit: Realized_Unit,
+	span:      Span,
+	using _tu: Type_And_Unit,
 }
 
 _Multi_Value_Expression_Header :: struct {
-	span:  Span,
-	types: []Type,
-	units: []Realized_Unit,
+	span:            Span,
+	types_and_units: []Type_And_Unit,
 }
 
 Expression :: union {
@@ -69,8 +66,8 @@ singular_type_and_unit :: proc(expr: Expression) -> (Type, Realized_Unit, bool) 
 	case ^Index_Expr:
 		return node.type, node.unit, true
 	case ^Func_Call_Expr:
-		if len(node.types) == 1 && len(node.units) == 1 {
-			return node.types[0], node.units[0], true
+		if len(node.types_and_units) == 1 {
+			return node.types_and_units[0].type, node.types_and_units[0].unit, true
 		}
 	case ^Static_Func_Expr:
 		return node.func.type, Indeterminate_Unit.No_Unit, true
@@ -81,56 +78,52 @@ singular_type_and_unit :: proc(expr: Expression) -> (Type, Realized_Unit, bool) 
 	return nil, nil, false
 }
 
-expression_types_and_units :: proc(expr: Expression) -> ([]Type, []Realized_Unit) {
-	_wrap :: proc(t: Type, u: Realized_Unit) -> ([]Type, []Realized_Unit) {
-		t_arr := make([]Type, 1, context.temp_allocator)
-		t_arr[0] = t
-
-		u_arr := make([]Realized_Unit, 1, context.temp_allocator)
-		u_arr[0] = u
-
-		return t_arr, u_arr
+expression_types_and_units :: proc(expr: Expression) -> []Type_And_Unit {
+	_wrap :: proc(tu: Type_And_Unit) -> []Type_And_Unit {
+		result := make([]Type_And_Unit, 1, context.temp_allocator)
+		result[0] = tu
+		return result
 	}
 
 	switch node in expr {
 	case ^Var_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Const_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Field_Access_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Enum_Value:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Move_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Condition_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Binop_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Unary_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Address_Of_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Dereference_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Cast_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Unit_Conversion_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Unit_Reinterpret_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Index_Expr:
-		return _wrap(node.type, node.unit)
+		return _wrap(node._tu)
 	case ^Func_Call_Expr:
-		return node.types, node.units
+		return node.types_and_units
 	case ^Static_Func_Expr:
-		return _wrap(node.func.type, Indeterminate_Unit.No_Unit)
+		return _wrap({node.func.type, Indeterminate_Unit.No_Unit})
 	case Type:
-		return _wrap(Primitive_Type.Type, Indeterminate_Unit.No_Unit)
+		return _wrap({Primitive_Type.Type, Indeterminate_Unit.No_Unit})
 	case ^Poison:
 	}
 
-	return nil, nil
+	return nil
 }
 
 value_count :: proc "contextless" (expr: Expression) -> int {
@@ -164,7 +157,7 @@ value_count :: proc "contextless" (expr: Expression) -> int {
 	case ^Index_Expr:
 		return 1
 	case ^Func_Call_Expr:
-		return len(node.types)
+		return len(node.types_and_units)
 	case ^Static_Func_Expr:
 		return 1
 	case Type:
