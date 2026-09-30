@@ -71,6 +71,8 @@ Code :: enum {
 	Wrong_Symbol_Kind,
 	// The number of expected values does not match the actual number of values
 	Arity_Mismatch,
+	// An unnamed argument was passed after a named one
+	Unnamed_Arg_After_Named_Arg,
 	// An expression that returns no values was used in a context where values are normally expected
 	Dubious_Nullary_Expression,
 	// An expression produces a value that isn't used
@@ -137,6 +139,7 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Invalid_Annotation = {origin = .Semantic, default_level = .Error},
 	.Dubious_Nullary_Expression = {origin = .Semantic, default_level = .Warning},
 	.Arity_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Unnamed_Arg_After_Named_Arg = {origin = .Semantic, default_level = .Error},
 	.Unused_Value = {origin = .Semantic, default_level = .Warning},
 	.Not_Compile_Time_Known = {origin = .Semantic, default_level = .Error},
 	.Inference_Failed = {origin = .Semantic, default_level = .Error},

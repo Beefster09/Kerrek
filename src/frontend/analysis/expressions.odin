@@ -474,12 +474,14 @@ _eval_callish_expr :: proc(
 		return poison(ts, callish.span)
 	}
 
+	args, arg_idxs, types_and_units := _arg_list(ts, callish.args, scope)
+
 	#partial switch type in type {
 	case ^hir.Func_Type:
-	// TODO: check arity
+	// TODO: check the signature
 	case hir.Primitive_Type:
-		if type == .Type {
-			if len(callish.args) != 1 { 	// this is wrong because some exprs can return multiple values
+		if comptime_known_type, ok := callee.(hir.Type); ok && type == .Type {
+			if len(args) != 1 {
 				diagnostics.emit(
 					.Arity_Mismatch,
 					callish.span,
@@ -488,7 +490,15 @@ _eval_callish_expr :: proc(
 				)
 				return poison(ts, callish.span)
 			}
-			cast_expr := new(hir.Cast_Expr)
+			cast_expr := new(hir.Cast_Expr, ts.output.allocator)
+			cast_expr^ = {
+				span = callish.span,
+				expr = args[0].expr,
+				to   = comptime_known_type,
+				type = comptime_known_type,
+				unit = types_and_units[0].unit,
+			}
+			return cast_expr
 		}
 	}
 

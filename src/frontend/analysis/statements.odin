@@ -298,37 +298,7 @@ _build_return :: proc(
 	func: ^resolver.Function,
 	scope: resolver.Scope,
 ) -> ^hir.Return_Statement {
-	exprs := make([dynamic]hir.Expression, 0, len(stmt.values), ts.output.allocator)
-	expr_idxs := make([dynamic]int, context.temp_allocator)
-	types_and_units := make([dynamic]hir.Type_And_Unit, context.temp_allocator)
-
-	poisoned := false
-	for value, i in stmt.values {
-		built, ok := build_expr(ts, value, scope)
-		if _, is_poison := built.(^hir.Poison); !ok || is_poison {
-			poisoned = true
-			continue
-		}
-		append(&exprs, built)
-
-		tus := hir.expression_types_and_units(built)
-		if len(tus) == 0 {
-			diagnostics.emit(
-				.Dubious_Nullary_Expression,
-				ast.span(value),
-				"this expression was used in a return statement but it returns no values",
-			)
-		}
-		append(&types_and_units, ..tus)
-		for _ in tus {
-			append(&expr_idxs, i)
-		}
-	}
-
-	if poisoned {
-		return nil
-	}
-	assert(len(types_and_units) == len(expr_idxs))
+	exprs, expr_idxs, types_and_units := _value_list(ts, stmt.values, scope)
 
 	value_count := len(expr_idxs)
 	expected_count := len(func.hir.returns)
@@ -368,4 +338,49 @@ _build_return :: proc(
 	}
 
 	return ret
+}
+
+_value_list :: proc(
+	ts: ^Translation_State,
+	in_values: []ast.Expression,
+	scope: resolver.Scope,
+) -> (
+	[]hir.Expression,
+	[]int,
+	[]hir.Type_And_Unit,
+) {
+	exprs := make([dynamic]hir.Expression, 0, len(in_values), ts.output.allocator)
+	indices := make([dynamic]int, context.temp_allocator)
+	types_and_units := make([dynamic]hir.Type_And_Unit, context.temp_allocator)
+
+	poisoned := false
+	for value, i in in_values {
+		built, ok := build_expr(ts, value, scope)
+		if _, is_poison := built.(^hir.Poison); !ok || is_poison {
+			poisoned = true
+			continue
+		}
+		append(&exprs, built)
+
+		tus := hir.expression_types_and_units(built)
+		if len(tus) == 0 {
+			diagnostics.emit(
+				.Dubious_Nullary_Expression,
+				ast.span(value),
+				"this expression was used in a value list context but it returns no values",
+			)
+		}
+		append(&types_and_units, ..tus)
+		for _ in tus {
+			append(&indices, i)
+		}
+	}
+
+	if poisoned {
+		return nil, nil, nil
+	}
+	assert(len(types_and_units) == len(indices))
+
+	shrink(&exprs)
+	return exprs[:], indices[:], types_and_units[:]
 }

@@ -266,3 +266,79 @@ _process_func_annotations :: proc(
 	shrink(&annotations)
 	return flags, annotations[:]
 }
+
+
+_arg_list :: proc(
+	ts: ^Translation_State,
+	in_args: []ast.Argument,
+	scope: resolver.Scope,
+) -> (
+	[]hir.Argument,
+	[]int,
+	[]hir.Type_And_Unit,
+) {
+	args := make([dynamic]hir.Argument, 0, len(in_args), ts.output.allocator)
+	indices := make([dynamic]int, context.temp_allocator)
+	types_and_units := make([dynamic]hir.Type_And_Unit, context.temp_allocator)
+
+	ok := true
+	passing_names := false
+	for arg, i in in_args {
+		built, ok := build_expr(ts, arg.expr, scope)
+		if _, is_poison := built.(^hir.Poison); !ok || is_poison {
+			ok = false
+			continue
+		}
+		append(
+			&args,
+			hir.Argument {
+				span = arg.span,
+				name = arg.name.?.id if arg.name != nil else nil,
+				expr = built,
+			},
+		)
+
+		tus := hir.expression_types_and_units(built)
+
+		if passing_names && arg.name == nil {
+			diagnostics.emit(
+				.Unnamed_Arg_After_Named_Arg,
+				arg.span,
+				"cannot pass unnamed argument after named argument",
+			)
+			ok = false
+		}
+
+		if arg.name != nil {
+			if len(tus) != 1 {
+				diagnostics.emit(
+					.Arity_Mismatch,
+					ast.span(arg.expr),
+					"this expression was used for a named argument, but it returns %d values",
+					len(tus),
+				)
+				ok = false
+			}
+			passing_names = true
+		} else if len(tus) == 0 {
+			diagnostics.emit(
+				.Dubious_Nullary_Expression,
+				ast.span(arg.expr),
+				"this expression was used in a argument list but it returns no values",
+			)
+		}
+
+		append(&types_and_units, ..tus)
+		for _ in tus {
+			append(&indices, i)
+		}
+	}
+
+	if !ok {
+		return nil, nil, nil
+	}
+	assert(len(types_and_units) == len(indices))
+
+	shrink(&args)
+	return args[:], indices[:], types_and_units[:]
+}
