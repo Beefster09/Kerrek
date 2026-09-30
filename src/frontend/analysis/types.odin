@@ -11,6 +11,7 @@ import "../ast"
 import "../diagnostics"
 import "../hir"
 import "../resolver"
+import "../units"
 
 
 build_type :: proc(
@@ -344,6 +345,10 @@ types_equal :: proc(a, b: Comptime_Type) -> bool {
 			// TODO: Implement generic type equality.
 			return false
 
+		case ^hir.Func_Type:
+			// TODO: Implement function type equality.
+			return false
+
 		case ^hir.Fixed_Array_Type:
 			b, ok := b.(^hir.Fixed_Array_Type)
 			if !ok || !types_equal(a.elem, b.elem) || len(a.shape) != len(b.shape) {
@@ -562,9 +567,13 @@ is_zeroable :: proc(typ: Comptime_Type) -> bool {
 			return concrete != .Type
 		case hir.Fixed_Decimal:
 			return true
+		case ^hir.Func_Type:
+			return false
 		case ^hir.Generic_Type:
 		case ^hir.Dynamic_Array_Type:
+			return true
 		case ^hir.View_Type:
+			return true
 		case ^hir.Map_Type:
 			return true
 		case ^hir.Optional_Type:
@@ -646,6 +655,47 @@ write_type :: proc(w: io.Writer, type: hir.Type) {
 		io.write_string(w, string(type.name.id))
 	case ^hir.Interface:
 		io.write_string(w, string(type.name.id))
+	case ^hir.Func_Type:
+		io.write_string(w, "func(")
+		for param, i in type.params {
+			if i > 0 {
+				io.write_string(w, ", ")
+			}
+			write_type(w, param.type)
+			switch unit in param.unit {
+			case hir.Indeterminate_Unit:
+				if unit == .Flexible {
+					io.write_string(w, " | _")
+				}
+			case units.Compound_Unit:
+				io.write_string(w, " | ")
+				units.write_compound_unit(w, unit)
+			}
+		}
+		io.write_string(w, ")")
+		if len(type.returns) > 0 || type.error != nil {
+			io.write_string(w, " -> ")
+			for ret, i in type.returns {
+				if i > 0 {
+					io.write_string(w, ", ")
+				}
+				write_type(w, ret.type)
+				switch unit in ret.unit {
+				case hir.Indeterminate_Unit:
+					if unit == .Flexible {
+						io.write_string(w, " | _")
+					}
+				case units.Compound_Unit:
+					io.write_string(w, " | ")
+					units.write_compound_unit(w, unit)
+				}
+			}
+		}
+		if type.error != nil {
+			io.write_string(w, " ! ")
+			write_type(w, type.error)
+		}
+	// TODO: require expr
 
 	case ^hir.Fixed_Array_Type:
 		io.write_rune(w, '[')

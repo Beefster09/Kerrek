@@ -334,6 +334,7 @@ _type_implicitly_converts :: proc(dest: Comptime_Type, src: Comptime_Type) -> bo
 		case ^hir.Tagged_Type:
 			return _type_implicitly_converts(src.base, dest)
 		case ^hir.Generic_Type,
+		     ^hir.Func_Type,
 		     ^hir.Pointer_Type,
 		     ^hir.Struct_Type,
 		     ^hir.Enum_Type,

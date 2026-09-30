@@ -1,49 +1,6 @@
 package hir
 
 
-Formal_Parameter :: struct {
-	using _: _Symbol_Header,
-	type:    Type,
-	unit:    Realized_Unit,
-	default: ^Const_Expr,
-}
-
-Func_Return :: struct {
-	span: Span,
-	type: Type,
-	unit: Realized_Unit,
-}
-
-Func_Definition :: struct {
-	using _:     _Symbol_Header,
-	params:      []^Formal_Parameter,
-	returns:     []^Func_Return,
-	error_type:  Type,
-	requires:    ^Capability_Expression,
-	flags:       Func_Flags,
-	call_conv:   Calling_Convention,
-	body:        ^Block,
-	annotations: []^Annotation,
-}
-
-Func_Overload_Group :: struct {
-	using _:   _Symbol_Header,
-	overloads: []^Func_Definition,
-}
-
-Func_Flags :: bit_set[Func_Flag;u32]
-Func_Flag :: enum {
-	Fallible,
-	Pure,
-	Diverges,
-}
-
-Calling_Convention :: enum u32 {
-	Kerrek,
-	CDecl,
-	StdCall,
-}
-
 Struct_Field :: struct {
 	span:        Span,
 	name:        Name,

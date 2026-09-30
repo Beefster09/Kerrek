@@ -139,6 +139,8 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 		switch concrete in comptime_type {
 		case ^hir.Distinct_Type:
 			return _op_category_of(concrete.underlying)
+		case ^hir.Tagged_Type:
+			return _op_category_of(concrete.base)
 		case ^hir.Enum_Type:
 			return .Enum
 		case ^hir.Struct_Type:
@@ -178,7 +180,7 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 		     ^hir.Map_Type,
 		     ^hir.Optional_Type,
 		     ^hir.Pointer_Type,
-		     ^hir.Tagged_Type:
+		     ^hir.Func_Type:
 			return .Opaque
 		}
 	}

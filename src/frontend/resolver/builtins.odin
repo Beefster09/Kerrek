@@ -63,7 +63,6 @@ BUILTINS := [?]Builtin {
 	{name = "deprecated", kind = .Annotation},
 	{name = "pure", kind = .Annotation},
 	{name = "layout", kind = .Annotation},
-	{name = "calling_convention", kind = .Annotation},
 	// Functions.
 	{name = "len", kind = .Function},
 	{name = "cap", kind = .Function},

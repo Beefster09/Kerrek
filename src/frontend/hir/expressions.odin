@@ -2,6 +2,7 @@ package hir
 
 import "../../common"
 import "../../common/exact"
+import "base:intrinsics"
 
 
 _Single_Value_Expression_Header :: struct {
@@ -14,27 +15,6 @@ _Multi_Value_Expression_Header :: struct {
 	span:  Span,
 	types: []Type,
 	units: []Realized_Unit,
-}
-
-Single_Value_Expression :: union {
-	^Var_Expr,
-	^Const_Expr,
-	^Field_Access_Expr,
-	^Enum_Value,
-	^Move_Expr,
-	^Condition_Expr,
-	^Binop_Expr,
-	^Unary_Expr,
-	^Address_Of_Expr,
-	^Dereference_Expr,
-	^Cast_Expr,
-	^Unit_Conversion_Expr,
-	^Unit_Reinterpret_Expr,
-	^Index_Expr,
-}
-
-Multi_Value_Expression :: union {
-	^Func_Call_Expr,
 }
 
 Expression :: union {
@@ -53,11 +33,12 @@ Expression :: union {
 	^Unit_Reinterpret_Expr,
 	^Index_Expr,
 	^Func_Call_Expr,
+	^Static_Func_Expr,
 	Type,
 	^Poison,
 }
 
-singular_type_and_unit :: proc "contextless" (expr: Expression) -> (Type, Realized_Unit, bool) {
+singular_type_and_unit :: proc(expr: Expression) -> (Type, Realized_Unit, bool) {
 	switch node in expr {
 	case ^Var_Expr:
 		return node.type, node.unit, true
@@ -91,6 +72,8 @@ singular_type_and_unit :: proc "contextless" (expr: Expression) -> (Type, Realiz
 		if len(node.types) == 1 && len(node.units) == 1 {
 			return node.types[0], node.units[0], true
 		}
+	case ^Static_Func_Expr:
+		return node.func.type, Indeterminate_Unit.No_Unit, true
 	case Type:
 		return Primitive_Type.Type, Indeterminate_Unit.No_Unit, true
 	case ^Poison, nil:
@@ -140,6 +123,8 @@ expression_types_and_units :: proc(expr: Expression) -> ([]Type, []Realized_Unit
 		return _wrap(node.type, node.unit)
 	case ^Func_Call_Expr:
 		return node.types, node.units
+	case ^Static_Func_Expr:
+		return _wrap(node.func.type, Indeterminate_Unit.No_Unit)
 	case Type:
 		return _wrap(Primitive_Type.Type, Indeterminate_Unit.No_Unit)
 	case ^Poison:
@@ -180,6 +165,8 @@ value_count :: proc "contextless" (expr: Expression) -> int {
 		return 1
 	case ^Func_Call_Expr:
 		return len(node.types)
+	case ^Static_Func_Expr:
+		return 1
 	case Type:
 		return 1
 	case ^Poison, nil:
@@ -285,6 +272,11 @@ Index_Expr :: struct {
 	using _:    _Single_Value_Expression_Header,
 	collection: Expression,
 	args:       []Expression,
+}
+
+Static_Func_Expr :: struct {
+	span: Span,
+	func: ^Func_Definition,
 }
 
 Func_Call_Expr :: struct {

@@ -83,7 +83,7 @@ translate_function_signature :: proc(
 		)
 		param.ast = ast_param
 		param.state = .Done
-		param.hir = new(hir.Formal_Parameter)
+		param.hir = new(hir.Formal_Parameter, ts.output.allocator)
 		param.hir^ = {
 			span    = ast_param.span,
 			id      = param.id,
@@ -140,7 +140,7 @@ translate_function_signature :: proc(
 		flags |= {.Fallible}
 	}
 
-	requires: ^hir.Capability_Expression = nil
+	requires: hir.Capability_Expression = nil
 	if func.requires != nil {
 	}
 
@@ -165,6 +165,7 @@ translate_function_signature :: proc(
 	append(&ts.pending_bodies, Pending_Function_Body{func = symbol, root_scope = params_scope})
 	append(&ts.hir_items.funcs, symbol.hir)
 
+	hir.func_derive_type(symbol.hir, ts.output.allocator)
 	return .OK
 }
 

@@ -224,28 +224,42 @@ compound_units_equal :: proc(a, b: Compound_Unit) -> bool {
 SUPERSCRIPT_DIGITS := [10]rune{'⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'}
 SUPERSCRIPT_NEGATIVE :: '⁻'
 
-Name_Getter :: struct {
+_Name_Getter :: struct {
 	get:  proc(data: rawptr, id: common.Symbol_ID) -> (string, bool),
 	data: rawptr,
 }
 
-_default_unit_namer := Name_Getter {
+_default_unit_name_getter := _Name_Getter {
 	get = proc(data: rawptr, id: common.Symbol_ID) -> (string, bool) {
 		return "", false
 	},
 }
 
-name_getter :: proc(
+@(thread_local)
+_name_getter: _Name_Getter
+
+push_name_getter :: proc(
 	data: ^$T,
 	get: proc(data: ^T, id: common.Symbol_ID) -> (string, bool),
-) -> Name_Getter {
-	return {
-		get = cast(proc(data: rawptr, id: common.Symbol_ID) -> (string, bool))get,
+) -> _Name_Getter {
+	prev := _name_getter
+	_name_getter = {
+		get  = cast(proc(data: rawptr, id: common.Symbol_ID) -> (string, bool))get,
 		data = cast(rawptr)data,
 	}
+	return prev
 }
 
-write_compound_unit :: proc(w: io.Writer, unit: Compound_Unit, get_unit_name: Name_Getter) {
+pop_name_getter :: proc(getter: _Name_Getter) {
+	_name_getter = getter
+}
+
+write_compound_unit :: proc(w: io.Writer, unit: Compound_Unit) {
+	get_unit_name: _Name_Getter = _name_getter
+	if _name_getter.get == nil {
+		get_unit_name = _default_unit_name_getter
+	}
+
 	for i in 0 ..< num_components(unit) {
 		if i > 0 {
 			io.write_rune(w, ' ')
@@ -291,11 +305,7 @@ fmt_compound_unit :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	switch verb {
 	case 's', 'v':
 		unit := cast(^Compound_Unit)arg.data
-		getter := util.find_ctx_var_of(Name_Getter)
-		if getter == nil {
-			getter = &_default_unit_namer
-		}
-		write_compound_unit(fi.writer, unit^, getter^)
+		write_compound_unit(fi.writer, unit^)
 		return true
 	}
 

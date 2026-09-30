@@ -313,8 +313,7 @@ evaluate :: proc(
 	case ^ast.Index_Expr:
 		return _not_implemented(ts, node)
 	case ^ast.Callish_Expr:
-		callee := evaluate(ts, node.callee, scope)
-		return _not_implemented(ts, node)
+		return _eval_callish_expr(ts, node, scope)
 	case ^ast.Type_Expr_Expr:
 		return _not_implemented(ts, node)
 	case ^ast.Unit_Expr:
@@ -383,6 +382,13 @@ _eval_name_expr :: proc(
 		}
 
 	case ^resolver.Function:
+		func_expr := new(hir.Static_Func_Expr, ts.output.allocator)
+		func_expr^ = {
+			span = node.span,
+			func = resolved.hir,
+		}
+
+		return hir.Expression(func_expr)
 	case ^resolver.Type_Alias:
 		return hir.Expression(hir.Type(resolved.hir))
 	case ^resolver.Distinct_Type:
@@ -427,6 +433,67 @@ _eval_name_expr :: proc(
 	// no diagnostic message required for nil; was already emitted by resolve proc
 
 	return hir.Expression(poison(ts, node.span))
+}
+
+_eval_callish_expr :: proc(
+	ts: ^Translation_State,
+	callish: ^ast.Callish_Expr,
+	scope: resolver.Scope,
+) -> hir.Expression {
+	evaluated_callee := evaluate(ts, callish.callee, scope)
+
+	switch callee in evaluated_callee {
+	case Comptime_Value:
+		diagnostics.emit(
+			.Wrong_Symbol_Kind,
+			ast.span(callish.callee),
+			"cannot call a %s",
+			callee.type,
+		)
+		return poison(ts, callish.span)
+	case hir.Expression:
+		if c, is_poison := callee.(^hir.Poison); is_poison {
+			c.span = callish.span
+			return c
+		}
+	case ^resolver.Import:
+		diagnostics.emit(.Wrong_Symbol_Kind, ast.span(callish.callee), "imports are not callable")
+		return poison(ts, callish.span)
+	}
+
+	callee := evaluated_callee.(hir.Expression)
+	type, _, ok := hir.singular_type_and_unit(callee)
+
+	if !ok {
+		diagnostics.emit(
+			.Arity_Mismatch,
+			ast.span(callish.callee),
+			"cannot call an expression that evaluates to %d values",
+			hir.value_count(callee),
+		)
+		return poison(ts, callish.span)
+	}
+
+	#partial switch type in type {
+	case ^hir.Func_Type:
+	// TODO: check arity
+	case hir.Primitive_Type:
+		if type == .Type {
+			if len(callish.args) != 1 { 	// this is wrong because some exprs can return multiple values
+				diagnostics.emit(
+					.Arity_Mismatch,
+					callish.span,
+					"call-style casts can only take one argument (this one got %d)",
+					hir.value_count(callee),
+				)
+				return poison(ts, callish.span)
+			}
+			cast_expr := new(hir.Cast_Expr)
+		}
+	}
+
+	diagnostics.emit(.Wrong_Symbol_Kind, ast.span(callish.callee), "cannot call a %s", type)
+	return poison(ts, callish.span)
 }
 
 _singular_type_and_unit :: proc(er: Eval_Result) -> (Comptime_Type, hir.Realized_Unit, bool) {

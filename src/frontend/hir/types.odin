@@ -24,6 +24,7 @@ Type :: union {
 	^Optional_Type,
 	^Pointer_Type,
 	^Tagged_Type,
+	^Func_Type,
 }
 
 Primitive_Type :: enum {
@@ -100,4 +101,17 @@ Pointer_Type :: struct {
 Tagged_Type :: struct {
 	base: Type,
 	tags: []Symbol_ID,
+}
+
+Func_Type :: struct {
+	params:   []Type_And_Unit,
+	returns:  []Type_And_Unit,
+	error:    Type,
+	flags:    Func_Flags,
+	requires: Capability_Expression,
+}
+
+Type_And_Unit :: struct {
+	type: Type,
+	unit: Realized_Unit,
 }
