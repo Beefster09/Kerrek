@@ -66,7 +66,7 @@ translate_function_signature :: proc(
 				pdefault = const_default
 			} else {
 				diagnostics.emit(
-					.Invalid_Type,
+					.Not_Compile_Time_Known,
 					resolver.expression_span(ast_param.default),
 					"default value for '%s' is not known at compile-time",
 					ast_param.name.id,
@@ -203,7 +203,7 @@ _process_func_annotations :: proc(
 		case ^resolver.Builtin:
 			if anno.kind != .Annotation {
 				diagnostics.emit(
-					.Invalid_Annotation,
+					.Invalid_Annotation_Name,
 					annotation.base.span,
 					"builtin '%s' is not an annotation",
 					anno.name,
@@ -214,7 +214,7 @@ _process_func_annotations :: proc(
 			case "pure":
 				if len(annotation.args) > 0 {
 					diagnostics.emit(
-						.Invalid_Annotation,
+						.Annotation_Arity_Mismatch,
 						annotation.base.span,
 						"builtin annotation @pure does not take arguments",
 					)
@@ -238,7 +238,7 @@ _process_func_annotations :: proc(
 			case "doc":
 			case:
 				diagnostics.emit(
-					.Invalid_Annotation,
+					.Invalid_Annotation_Target,
 					annotation.base.span,
 					"builtin annotation '%s' cannot be applied to functions",
 					anno.name,
@@ -256,7 +256,7 @@ _process_func_annotations :: proc(
 
 		case:
 			diagnostics.emit(
-				.Invalid_Annotation,
+				.Invalid_Annotation_Name,
 				annotation.base.span,
 				"'%s' is not an annotation",
 				annotation.base,
@@ -303,7 +303,7 @@ _arg_list :: proc(
 		case Comptime_Value:
 			value_count = 1
 		case ^resolver.Import:
-			diagnostics.emit(.Wrong_Symbol_Kind, arg.span, "imports are not valid as arguments")
+			diagnostics.emit(.Symbol_Not_Argument, arg.span, "imports are not valid as arguments")
 			ok = false
 			continue
 		}
@@ -319,7 +319,7 @@ _arg_list :: proc(
 		if arg.name != nil {
 			if value_count != 1 {
 				diagnostics.emit(
-					.Arity_Mismatch,
+					.Named_Argument_Arity_Mismatch,
 					ast.span(arg.expr),
 					"this expression was used for a named argument, but it returns %d values",
 					value_count,
@@ -377,7 +377,7 @@ _build_func_call :: proc(
 		if arg.name != nil {
 			if !is_static {
 				diagnostics.emit(
-					.Invalid_Type,
+					.Named_Argument_Requires_Static_Callee,
 					arg.span,
 					"named arguments require a statically known function",
 				)
@@ -392,7 +392,7 @@ _build_func_call :: proc(
 			}
 			if param_idx < 0 {
 				diagnostics.emit(
-					.Arity_Mismatch,
+					.Unknown_Named_Argument,
 					arg.span,
 					"function has no parameter named '%s'",
 					arg.name.?,
@@ -405,7 +405,7 @@ _build_func_call :: proc(
 
 		if param_idx >= len(signature.params) {
 			diagnostics.emit(
-				.Arity_Mismatch,
+				.Call_Arity_Mismatch,
 				span,
 				"function expects %d values, but the call passes %d",
 				len(signature.params),
@@ -415,7 +415,7 @@ _build_func_call :: proc(
 		}
 		if param_value_idxs[param_idx] >= 0 {
 			diagnostics.emit(
-				.Arity_Mismatch,
+				.Duplicate_Argument,
 				arg.span,
 				"parameter '%s' is passed more than once",
 				static_func.func.params[param_idx].name.id,
@@ -428,7 +428,7 @@ _build_func_call :: proc(
 	for value_idx, param_idx in param_value_idxs {
 		if value_idx < 0 && (!is_static || static_func.func.params[param_idx].default == nil) {
 			diagnostics.emit(
-				.Arity_Mismatch,
+				.Call_Arity_Mismatch,
 				span,
 				"function expects %d values, but the call passes %d",
 				len(signature.params),
@@ -470,7 +470,7 @@ _build_func_call :: proc(
 		}
 		if !_type_implicitly_converts(expected.type, actual_type) {
 			diagnostics.emit(
-				.Invalid_Type,
+				.Argument_Type_Mismatch,
 				arg.span,
 				"parameter requires a %s, but the argument is a %s",
 				expected.type,
@@ -482,7 +482,7 @@ _build_func_call :: proc(
 		_, factor, unit_ok := _coerce_units(expected.unit, actual_unit)
 		if !unit_ok {
 			diagnostics.emit(
-				.Invalid_Unit,
+				.Argument_Unit_Mismatch,
 				arg.span,
 				"parameter unit (%v) does not match argument unit (%v)",
 				expected.unit,

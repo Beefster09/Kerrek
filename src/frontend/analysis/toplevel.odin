@@ -181,7 +181,7 @@ ensure_toplevel_symbol_processed :: proc(
 			case:
 				conversions_ok = false
 				diagnostics.emit(
-					.Invalid_Unit,
+					.Invalid_Unit_Conversion_Target,
 					conv.other.span,
 					"unit '%s' defines a conversion %s '%s', which is not a unit",
 					symbol.name,
@@ -260,7 +260,7 @@ _validate_entry_point :: proc(entry: ^hir.Func_Definition) -> bool {
 	ok := true
 	if len(entry.params) != 0 {
 		diagnostics.emit(
-			.Invalid_Entry_Point,
+			.Entry_Point_Has_Parameters,
 			common.merge_spans(entry.params[0].span, entry.params[len(entry.params) - 1].span),
 			"func 'main' must not accept parameters",
 		)
@@ -268,14 +268,14 @@ _validate_entry_point :: proc(entry: ^hir.Func_Definition) -> bool {
 	}
 	if len(entry.returns) != 0 {
 		diagnostics.emit(
-			.Invalid_Entry_Point,
+			.Entry_Point_Returns_Values,
 			common.merge_spans(entry.returns[0].span, entry.returns[len(entry.returns) - 1].span),
 			"func 'main' must not return values",
 		)
 		ok = false
 	}
 	if .Fallible in entry.flags {
-		diagnostics.emit(.Invalid_Entry_Point, entry.name.span, "func 'main' must not be fallible")
+		diagnostics.emit(.Fallible_Entry_Point, entry.name.span, "func 'main' must not be fallible")
 		ok = false
 	}
 	return ok

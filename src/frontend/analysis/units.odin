@@ -61,22 +61,28 @@ get_canonical_unit :: proc(
 			}
 
 			if exp_span, exp, ok := _canonical_exponent(component.exponent); ok {
-				units.builder_add(&b, unit.canonical, exp)
+				if units.builder_add(&b, unit.canonical, exp) != .OK {
+					all_ok = false
+					diagnostics.emit(.Unit_Exponent_Not_Representable, exp_span, "this exponent is not representable")
+				}
 			} else {
 				all_ok = false
-				diagnostics.emit(.TBD, exp_span, "this exponent is not representable")
+				diagnostics.emit(.Unit_Exponent_Not_Representable, exp_span, "this exponent is not representable")
 			}
 		case ^resolver.Base_Unit:
 			if exp_span, exp, ok := _canonical_exponent(component.exponent); ok {
-				units.builder_add(&b, unit.id, exp)
+				if units.builder_add(&b, unit.id, exp) != .OK {
+					all_ok = false
+					diagnostics.emit(.Unit_Exponent_Not_Representable, exp_span, "this exponent is not representable")
+				}
 			} else {
 				all_ok = false
-				diagnostics.emit(.TBD, exp_span, "this exponent is not representable")
+				diagnostics.emit(.Unit_Exponent_Not_Representable, exp_span, "this exponent is not representable")
 			}
 		case:
 			all_ok = false
 			diagnostics.emit(
-				.TBD,
+				.Invalid_Unit_Name,
 				component.base.span,
 				"'%s' does not name a unit",
 				component.base,
@@ -84,7 +90,7 @@ get_canonical_unit :: proc(
 		}
 	}
 
-	return units.to_compound_unit(&b, ts.output.allocator), true
+	return units.to_compound_unit(&b, ts.output.allocator), all_ok
 }
 
 _canonical_exponent :: proc(exponent: ast.Unit_Exponent) -> (common.Span, units.Small_Rat, bool) {
@@ -117,7 +123,7 @@ _get_conversion_operand :: proc(
 			return resolved.value.value.(exact.Rat)
 		} else {
 			diagnostics.emit(
-				.Invalid_Type,
+				.Invalid_Unit_Conversion_Factor,
 				op.span,
 				"this needs to be a number or untyped numeric constant",
 			)

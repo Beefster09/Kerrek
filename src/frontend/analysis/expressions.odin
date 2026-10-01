@@ -119,7 +119,7 @@ infer_type :: proc(
 			return hir.Primitive_Type.Byte, true
 		case .Rational, .Nil, .Any_Zero:
 			diagnostics.emit(
-				.Inference_Failed,
+				.Cannot_Infer_Type,
 				diagnostic_span,
 				"no singular type can be inferred from this expression",
 			)
@@ -145,7 +145,7 @@ build_expr :: proc(
 	case hir.Expression:
 		return result, true
 	case ^resolver.Import:
-		diagnostics.emit(.Wrong_Symbol_Kind, ast.span(expr), "imports are not valid as values")
+		diagnostics.emit(.Symbol_Not_Value, ast.span(expr), "imports are not valid as values")
 	}
 
 	return nil, false
@@ -250,11 +250,11 @@ evaluate :: proc(
 		case ^ast.No_Unit:
 			new_unit = hir.Indeterminate_Unit.No_Unit
 		case ^ast.Flexible_Unit:
-			diagnostics.emit(.TBD, unit.span, "cannot reinterpret units as flexible")
+			diagnostics.emit(.Invalid_Unit_Reinterpretation, unit.span, "cannot reinterpret units as flexible")
 		case ^ast.Inferred_Unit:
 			// might be a panic("unreachable")
 			diagnostics.emit(
-				.TBD,
+				.Invalid_Unit_Reinterpretation,
 				node.span,
 				"inferred units are not valid for unit reinterpret expressions",
 			)
@@ -281,7 +281,7 @@ evaluate :: proc(
 				return hir.Expression(expr)
 			} else {
 				diagnostics.emit(
-					.Arity_Mismatch,
+					.Expected_Single_Value,
 					ast.expression_span(node.expr),
 					"this expression evaluates to %d values, but exactly 1 is expected in this context",
 					hir.value_count(result),
@@ -289,7 +289,7 @@ evaluate :: proc(
 			}
 		case ^resolver.Import:
 			diagnostics.emit(
-				.Wrong_Symbol_Kind,
+				.Symbol_Not_Value,
 				node.span,
 				"this is an import, which is not a valid value",
 			)
@@ -415,7 +415,7 @@ _eval_name_expr :: proc(
 		case .Function:
 		case .Annotation:
 			diag := diagnostics.emit(
-				.Wrong_Symbol_Kind,
+				.Symbol_Not_Value,
 				node.name.span,
 				"'%s' references a builtin annotation, which is not valid anywhere in an expression context",
 				node.name.id,
@@ -424,7 +424,7 @@ _eval_name_expr :: proc(
 
 	case ^resolver.Annotation, ^resolver.Capability:
 		diag := diagnostics.emit(
-			.Wrong_Symbol_Kind,
+			.Symbol_Not_Value,
 			node.name.span,
 			"'%s' references a %T, which is not valid anywhere in an expression context",
 			node.name.id,
@@ -450,7 +450,7 @@ _eval_callish_expr :: proc(
 	switch callee in evaluated_callee {
 	case Comptime_Value:
 		diagnostics.emit(
-			.Wrong_Symbol_Kind,
+			.Not_Callable,
 			ast.span(callish.callee),
 			"cannot call a %s",
 			callee.type,
@@ -462,7 +462,7 @@ _eval_callish_expr :: proc(
 			return c
 		}
 	case ^resolver.Import:
-		diagnostics.emit(.Wrong_Symbol_Kind, ast.span(callish.callee), "imports are not callable")
+		diagnostics.emit(.Not_Callable, ast.span(callish.callee), "imports are not callable")
 		return poison(ts, callish.span)
 	}
 
@@ -471,7 +471,7 @@ _eval_callish_expr :: proc(
 
 	if !ok {
 		diagnostics.emit(
-			.Arity_Mismatch,
+			.Expected_Single_Value,
 			ast.span(callish.callee),
 			"cannot call an expression that evaluates to %d values",
 			hir.value_count(callee),
@@ -491,7 +491,7 @@ _eval_callish_expr :: proc(
 		if comptime_known_type, ok := callee.(hir.Type); ok && type == .Type {
 			if len(arg_exprs) != 1 || len(arg_indices) != 1 {
 				diagnostics.emit(
-					.Arity_Mismatch,
+					.Call_Arity_Mismatch,
 					callish.span,
 					"call-style casts can only take one argument (this one got %d)",
 					max(len(arg_exprs), len(arg_indices)),
@@ -500,7 +500,7 @@ _eval_callish_expr :: proc(
 			}
 			if arg_exprs[0].name != nil {
 				diagnostics.emit(
-					.Invalid_Type,
+					.Named_Cast_Argument,
 					arg_exprs[0].span,
 					"call-style cast argument cannot be passed by name",
 				)
@@ -531,7 +531,7 @@ _eval_callish_expr :: proc(
 		}
 	}
 
-	diagnostics.emit(.Wrong_Symbol_Kind, ast.span(callish.callee), "cannot call a %s", type)
+	diagnostics.emit(.Not_Callable, ast.span(callish.callee), "cannot call a %s", type)
 	return poison(ts, callish.span)
 }
 
@@ -563,7 +563,7 @@ _eval_unary :: proc(
 
 	if !is_single {
 		diagnostics.emit(
-			.Arity_Mismatch,
+			.Expected_Single_Value,
 			ast.span(unary.expr),
 			"this expression does not return exactly one value",
 		)
@@ -608,7 +608,7 @@ _eval_unary :: proc(
 		return hir.Expression(result)
 	case ^resolver.Import:
 		diagnostics.emit(
-			.Wrong_Symbol_Kind,
+			.Symbol_Not_Operand,
 			unary.span,
 			"this is an import, which is not a valid operand of unary %s",
 			common.UNARY_OP_STRINGS[unary.op],
@@ -641,7 +641,7 @@ _eval_binop :: proc(
 
 	if !lok {
 		diagnostics.emit(
-			.Arity_Mismatch,
+			.Expected_Single_Value,
 			ast.expression_span(binop.lhs),
 			"this expression does not return exactly one value",
 		)
@@ -650,7 +650,7 @@ _eval_binop :: proc(
 
 	if !rok {
 		diagnostics.emit(
-			.Arity_Mismatch,
+			.Expected_Single_Value,
 			ast.expression_span(binop.rhs),
 			"this expression does not return exactly one value",
 		)
@@ -728,7 +728,7 @@ _eval_binop :: proc(
 		l = value
 	case ^resolver.Import:
 		diagnostics.emit(
-			.Wrong_Symbol_Kind,
+			.Symbol_Not_Operand,
 			binop.span,
 			"this is an import, which is not a valid operand of %s",
 			common.BINARY_OP_STRINGS[binop.op],
@@ -744,7 +744,7 @@ _eval_binop :: proc(
 		r = value
 	case ^resolver.Import:
 		diagnostics.emit(
-			.Wrong_Symbol_Kind,
+			.Symbol_Not_Operand,
 			binop.span,
 			"this is an import, which is not a valid operand of %s",
 			common.BINARY_OP_STRINGS[binop.op],
@@ -810,7 +810,7 @@ _eval_boolean_multiply :: proc(
 ) -> Eval_Result {
 	if !is_zeroable(nonbool_type) {
 		diagnostics.emit(
-			.TBD,
+			.Nonzeroable_Operand,
 			binop.span,
 			"cannot multiply Boolean and %v because %v does not have a well-defined zero value",
 			nonbool_type,
@@ -884,7 +884,7 @@ _eval_boolean_multiply :: proc(
 		}
 	case ^resolver.Import:
 		diagnostics.emit(
-			.Wrong_Symbol_Kind,
+			.Symbol_Not_Operand,
 			ast.expression_span(nonbool_ast),
 			"imports cannot participate in boolean multiplication",
 			common.BINARY_OP_STRINGS[binop.op],
@@ -1028,7 +1028,7 @@ _eval_binop_unit :: proc(
 		_, rmult, coerced := _coerce_units(lunit, runit)
 		if !coerced {
 			diagnostics.emit(
-				.Invalid_Unit,
+				.Unit_Mismatch,
 				binop.span,
 				"units (%v) and (%v) do not match and do not have any known conversions",
 				lunit,
@@ -1042,7 +1042,7 @@ _eval_binop_unit :: proc(
 		coerced_unit, rmult, coerced := _coerce_units(lunit, runit)
 		if !coerced {
 			diagnostics.emit(
-				.Invalid_Unit,
+				.Unit_Mismatch,
 				binop.span,
 				"units (%v) and (%v) do not match and do not have any known conversions",
 				lunit,
@@ -1074,7 +1074,7 @@ _eval_binop_unit :: proc(
 			return hir.Indeterminate_Unit.No_Unit, lhs, rhs, true
 		}
 		diagnostics.emit(
-			.Invalid_Unit,
+			.Invalid_Unit_Operation,
 			binop.span,
 			"you cannot multiply a unitless value with a value with units (|%v| %s |%v|)",
 			lunit,
@@ -1119,7 +1119,7 @@ _eval_binop_unit :: proc(
 			return hir.Indeterminate_Unit.No_Unit, lhs, rhs, true
 		}
 		diagnostics.emit(
-			.Invalid_Unit,
+			.Invalid_Unit_Operation,
 			binop.span,
 			"you cannot divide a unitless value by a value with units or vice-versa (|%v| %s |%v|)",
 			lunit,
@@ -1152,7 +1152,7 @@ _eval_binop_unit :: proc(
 							}
 						} else {
 							diagnostics.emit(
-								.Invalid_Unit,
+								.Invalid_Unit_Exponent,
 								ast.expression_span(binop.rhs),
 								"fractional exponents are not currently supported for values with units",
 							)
@@ -1162,7 +1162,7 @@ _eval_binop_unit :: proc(
 				}
 			}
 			diagnostics.emit(
-				.Invalid_Unit,
+				.Invalid_Unit_Exponent,
 				ast.expression_span(binop.rhs),
 				"exponents of unit expressions must be statically known unitless integers",
 			)
@@ -1172,7 +1172,7 @@ _eval_binop_unit :: proc(
 		if rhs_unit, rhs_canonical := runit.(units.Compound_Unit);
 		   rhs_canonical && units.num_components(rhs_unit) > 0 {
 			diagnostics.emit(
-				.Invalid_Unit,
+				.Invalid_Unit_Exponent,
 				ast.expression_span(binop.rhs),
 				"exponents must be unitless or ratios",
 			)

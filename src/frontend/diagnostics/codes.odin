@@ -55,39 +55,114 @@ Code :: enum {
 
 	// Declarations form a recursive dependency cycle.
 	Cyclical_Dependency,
-	// A name or type expression is not valid in a type position.
-	Invalid_Type,
-	// A unit reference, expression, or exponent is invalid.
-	Invalid_Unit,
+	// A type name does not resolve to a type.
+	Invalid_Type_Name,
+	// A parametric type is used without its required arguments.
+	Missing_Type_Arguments,
+	// Type arguments are applied to a type that is not parametric.
+	Not_Parametric_Type,
+	// A parametric type receives the wrong number of arguments.
+	Type_Argument_Count_Mismatch,
+	// A type argument is passed by name where only positional arguments are allowed.
+	Named_Type_Argument,
+	// A type argument has an invalid value or cannot be evaluated at compile time.
+	Invalid_Type_Argument,
+	// A Decimal type specifies an invalid number of digits.
+	Invalid_Decimal_Digits,
+	// A Decimal type specifies a scale outside the supported range.
+	Invalid_Decimal_Scale,
+	// A symbol cannot be used as a type tag.
+	Invalid_Type_Tag,
+	// A value's type does not match a function parameter.
+	Argument_Type_Mismatch,
+	// A returned value's type does not match the function signature.
+	Return_Type_Mismatch,
+	// A variable's type has no zero value where one is required.
+	Nonzeroable_Variable,
+	// An operand's type has no zero value required by the operation.
+	Nonzeroable_Operand,
+	// A variable declaration omits a required type.
+	Missing_Variable_Type,
+	// A global variable is declared unbound.
+	Unbound_Global_Variable,
+	// A flexible value cannot be assigned a concrete type in this context.
+	Cannot_Infer_Type,
+	// A name does not denote a unit.
+	Invalid_Unit_Name,
+	// A unit exponent cannot be represented by the compiler.
+	Unit_Exponent_Not_Representable,
+	// A unit reinterpretation specifies an invalid target unit.
+	Invalid_Unit_Reinterpretation,
+	// Two values have incompatible units.
+	Unit_Mismatch,
+	// A function argument has units incompatible with its parameter.
+	Argument_Unit_Mismatch,
+	// An operator cannot combine the supplied units.
+	Invalid_Unit_Operation,
+	// A unit exponent is not valid for exponentiation.
+	Invalid_Unit_Exponent,
+	// A unit conversion references a target that is not a unit.
+	Invalid_Unit_Conversion_Target,
+	// A unit conversion factor is not a valid compile-time numeric value.
+	Invalid_Unit_Conversion_Factor,
 	// A capability expression refers to something that is not a capability.
 	Invalid_Capability,
 	// An applied annotation name does not denote an annotation.
-	Invalid_Annotation,
+	Invalid_Annotation_Name,
+	// An annotation cannot be applied to the declaration it annotates.
+	Invalid_Annotation_Target,
+	// An annotation receives the wrong number of arguments.
+	Annotation_Arity_Mismatch,
 	// The entry package does not define a main function.
 	Missing_Entry_Point,
-	// The entry point is duplicated or has an unsupported signature.
-	Invalid_Entry_Point,
-	// A name resolved to a kind of symbol that cannot be used in this context.
-	Wrong_Symbol_Kind,
-	// The number of expected values does not match the actual number of values
-	Arity_Mismatch,
+	// The entry point accepts parameters.
+	Entry_Point_Has_Parameters,
+	// The entry point returns values.
+	Entry_Point_Returns_Values,
+	// The entry point is fallible.
+	Fallible_Entry_Point,
+	// A symbol cannot be used as a runtime or compile-time value.
+	Symbol_Not_Value,
+	// A symbol cannot be used as a constant definition's value.
+	Symbol_Not_Constant,
+	// A symbol cannot be passed as a function argument.
+	Symbol_Not_Argument,
+	// A symbol cannot be used as an operator operand.
+	Symbol_Not_Operand,
+	// An expression or symbol is not callable.
+	Not_Callable,
+	// A context requires exactly one value.
+	Expected_Single_Value,
+	// An assignment receives the wrong number of values.
+	Assignment_Arity_Mismatch,
+	// A return statement produces the wrong number of values.
+	Return_Arity_Mismatch,
+	// A function call passes the wrong number of values.
+	Call_Arity_Mismatch,
+	// A named argument expression produces the wrong number of values.
+	Named_Argument_Arity_Mismatch,
+	// A named argument does not match a parameter.
+	Unknown_Named_Argument,
+	// A parameter is passed more than once.
+	Duplicate_Argument,
 	// An unnamed argument was passed after a named one
 	Unnamed_Arg_After_Named_Arg,
+	// Named arguments are used with a callee whose parameters are not statically known.
+	Named_Argument_Requires_Static_Callee,
+	// A call-style cast receives a named argument.
+	Named_Cast_Argument,
 	// An expression that returns no values was used in a context where values are normally expected
 	Dubious_Nullary_Expression,
 	// An expression produces a value that isn't used
 	Unused_Value,
 	// The value needed to be known at compile time, but wasn't
 	Not_Compile_Time_Known,
-	// Type or unit inference is not possible in this context
-	Inference_Failed,
 	// A decimal type was defined or inferred to require more than 64 bits
 	Large_Decimal,
 	// A binary operator is not defined for the type(s)
 	Binop_Not_Defined,
 	// A unary operator is not defined for the type
 	Unop_Not_Defined,
-
 	// == MISC ==
 
 	// this part of the compiler is not yet implemented
@@ -135,22 +210,60 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Import_Not_Found = {origin = .Resolution, default_level = .Error},
 	// Semantic analysis diagnostics
 	.Cyclical_Dependency = {origin = .Semantic, default_level = .Error},
-	.Wrong_Symbol_Kind = {origin = .Semantic, default_level = .Error},
-	.Invalid_Annotation = {origin = .Semantic, default_level = .Error},
+	.Invalid_Type_Name = {origin = .Semantic, default_level = .Error},
+	.Missing_Type_Arguments = {origin = .Semantic, default_level = .Error},
+	.Not_Parametric_Type = {origin = .Semantic, default_level = .Error},
+	.Type_Argument_Count_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Named_Type_Argument = {origin = .Semantic, default_level = .Error},
+	.Invalid_Type_Argument = {origin = .Semantic, default_level = .Error},
+	.Invalid_Decimal_Digits = {origin = .Semantic, default_level = .Error},
+	.Invalid_Decimal_Scale = {origin = .Semantic, default_level = .Error},
+	.Invalid_Type_Tag = {origin = .Semantic, default_level = .Error},
+	.Argument_Type_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Return_Type_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Nonzeroable_Variable = {origin = .Semantic, default_level = .Error},
+	.Nonzeroable_Operand = {origin = .Semantic, default_level = .Error},
+	.Missing_Variable_Type = {origin = .Semantic, default_level = .Error},
+	.Unbound_Global_Variable = {origin = .Semantic, default_level = .Error},
+	.Cannot_Infer_Type = {origin = .Semantic, default_level = .Error},
+	.Invalid_Unit_Name = {origin = .Semantic, default_level = .Error},
+	.Unit_Exponent_Not_Representable = {origin = .Semantic, default_level = .Error},
+	.Invalid_Unit_Reinterpretation = {origin = .Semantic, default_level = .Error},
+	.Unit_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Argument_Unit_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Invalid_Unit_Operation = {origin = .Semantic, default_level = .Error},
+	.Invalid_Unit_Exponent = {origin = .Semantic, default_level = .Error},
+	.Invalid_Unit_Conversion_Target = {origin = .Semantic, default_level = .Error},
+	.Invalid_Unit_Conversion_Factor = {origin = .Semantic, default_level = .Error},
+	.Invalid_Annotation_Name = {origin = .Semantic, default_level = .Error},
+	.Invalid_Annotation_Target = {origin = .Semantic, default_level = .Error},
+	.Annotation_Arity_Mismatch = {origin = .Semantic, default_level = .Error},
 	.Dubious_Nullary_Expression = {origin = .Semantic, default_level = .Warning},
-	.Arity_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Symbol_Not_Value = {origin = .Semantic, default_level = .Error},
+	.Symbol_Not_Constant = {origin = .Semantic, default_level = .Error},
+	.Symbol_Not_Argument = {origin = .Semantic, default_level = .Error},
+	.Symbol_Not_Operand = {origin = .Semantic, default_level = .Error},
+	.Not_Callable = {origin = .Semantic, default_level = .Error},
+	.Expected_Single_Value = {origin = .Semantic, default_level = .Error},
+	.Assignment_Arity_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Return_Arity_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Call_Arity_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Named_Argument_Arity_Mismatch = {origin = .Semantic, default_level = .Error},
+	.Unknown_Named_Argument = {origin = .Semantic, default_level = .Error},
+	.Duplicate_Argument = {origin = .Semantic, default_level = .Error},
 	.Unnamed_Arg_After_Named_Arg = {origin = .Semantic, default_level = .Error},
+	.Named_Argument_Requires_Static_Callee = {origin = .Semantic, default_level = .Error},
+	.Named_Cast_Argument = {origin = .Semantic, default_level = .Error},
 	.Unused_Value = {origin = .Semantic, default_level = .Warning},
 	.Not_Compile_Time_Known = {origin = .Semantic, default_level = .Error},
-	.Inference_Failed = {origin = .Semantic, default_level = .Error},
 	.Binop_Not_Defined = {origin = .Semantic, default_level = .Error},
 	.Unop_Not_Defined = {origin = .Semantic, default_level = .Error},
-	.Invalid_Type = {origin = .Semantic, default_level = .Error},
-	.Invalid_Unit = {origin = .Semantic, default_level = .Error},
 	.Invalid_Capability = {origin = .Semantic, default_level = .Error},
 	.Large_Decimal = {origin = .Semantic, default_level = .Warning},
 	.Missing_Entry_Point = {origin = .Semantic, default_level = .Error},
-	.Invalid_Entry_Point = {origin = .Semantic, default_level = .Error},
+	.Entry_Point_Has_Parameters = {origin = .Semantic, default_level = .Error},
+	.Entry_Point_Returns_Values = {origin = .Semantic, default_level = .Error},
+	.Fallible_Entry_Point = {origin = .Semantic, default_level = .Error},
 	// MISC
 	.Not_Implemented = {origin = .Unknown, default_level = .Error},
 	// TEST

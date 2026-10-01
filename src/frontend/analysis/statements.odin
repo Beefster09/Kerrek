@@ -123,7 +123,7 @@ build_block :: proc(
 				all_ok = false
 			case ^resolver.Import:
 				diagnostics.emit(
-					.Wrong_Symbol_Kind,
+					.Symbol_Not_Constant,
 					ast.expression_span(stmt.expr),
 					"imports cannot be aliased as constants",
 				)
@@ -205,7 +205,7 @@ _build_var :: proc(
 	value: hir.Expression
 	if unbound {
 		if var_type == nil {
-			diagnostics.emit(.Inference_Failed, src.span, "unbound variables must have a type")
+			diagnostics.emit(.Missing_Variable_Type, src.span, "unbound variables must have a type")
 			return nil
 		}
 		if unit_is_inferred {
@@ -223,7 +223,7 @@ _build_var :: proc(
 		types_and_units := hir.expression_types_and_units(built)
 		if len(types_and_units) != 1 {
 			diagnostics.emit(
-				.Arity_Mismatch,
+				.Assignment_Arity_Mismatch,
 				ast.span(expr),
 				"this expression results in %d values and therefore cannot be assigned to '%s'",
 				len(types_and_units),
@@ -244,7 +244,7 @@ _build_var :: proc(
 	} else {
 		if var_type == nil {
 			diagnostics.emit(
-				.Inference_Failed,
+				.Missing_Variable_Type,
 				src.span,
 				"variables must specify a type or an initial value that implies a type",
 			)
@@ -252,7 +252,7 @@ _build_var :: proc(
 		}
 		if !is_zeroable(var_type) {
 			diagnostics.emit(
-				.Invalid_Type,
+				.Nonzeroable_Variable,
 				src.span,
 				"variable '%s' has a non-zeroable type and therefore must be given an initial value or be explicitly unbound",
 				src.name,
@@ -275,7 +275,7 @@ _build_var :: proc(
 
 	when !IS_LOCAL {
 		if value == nil {
-			diagnostics.emit(.Invalid_Type, src.span, "global variables may not be unbound")
+			diagnostics.emit(.Unbound_Global_Variable, src.span, "global variables may not be unbound")
 			return nil
 		}
 	}
@@ -304,7 +304,7 @@ _build_return :: proc(
 	expected_count := len(func.hir.returns)
 	if value_count != expected_count {
 		diagnostics.emit(
-			.Arity_Mismatch,
+			.Return_Arity_Mismatch,
 			stmt.span,
 			"return statement produces %d value%s, but the func '%s' returns %d value%s",
 			value_count,
@@ -322,7 +322,7 @@ _build_return :: proc(
 
 		if !_type_implicitly_converts(expected.type, type_and_unit.type) {
 			diagnostics.emit(
-				.Invalid_Type,
+				.Return_Type_Mismatch,
 				ast.span(stmt.values[expr_idx]),
 				"the func signature requires this value to be a %s, but it was a %s",
 				expected.type,

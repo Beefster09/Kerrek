@@ -60,7 +60,7 @@ build_hir :: proc(
 	bodies_ok := true
 	for pending_func in ts.pending_bodies {
 		err := build_function_body(&ts, pending_func.func, pending_func.root_scope)
-		bodies_ok &&= err != .OK
+		bodies_ok &&= err == .OK
 		free_all(context.temp_allocator)
 	}
 	if !(top_ok && bodies_ok) {

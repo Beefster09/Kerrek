@@ -30,7 +30,7 @@ build_type :: proc(
 				return primitive, true
 			} else if symbol.kind == .Parametric_Type {
 				diagnostics.emit(
-					.Invalid_Type,
+					.Missing_Type_Arguments,
 					node.span,
 					"builtin type '%s' requires arguments",
 					node.type,
@@ -58,7 +58,7 @@ build_type :: proc(
 		case:
 		}
 
-		diagnostics.emit(.Invalid_Type, node.span, "'%s' does not name a type", node.type)
+		diagnostics.emit(.Invalid_Type_Name, node.span, "'%s' does not name a type", node.type)
 
 	case ^ast.Type_With_Args:
 		symbol := resolve(ts, scope, node.base)
@@ -66,7 +66,7 @@ build_type :: proc(
 		if !is_builtin || builtin.kind != .Parametric_Type {
 			if symbol != nil {
 				diagnostics.emit(
-					.Invalid_Type,
+					.Not_Parametric_Type,
 					node.base.span,
 					"'%s' is not a parametric type",
 					node.base,
@@ -79,7 +79,7 @@ build_type :: proc(
 
 		if len(node.args) != 2 {
 			diagnostics.emit(
-				.Invalid_Type,
+				.Type_Argument_Count_Mismatch,
 				node.span,
 				"'%s' expects 2 type arguments, got %d",
 				builtin.name,
@@ -93,7 +93,7 @@ build_type :: proc(
 		args_ok := true
 		for arg, index in node.args {
 			if arg.name != nil {
-				diagnostics.emit(.Invalid_Type, arg.span, "type arguments must be positional")
+				diagnostics.emit(.Named_Type_Argument, arg.span, "type arguments must be positional")
 				args_ok = false
 				continue
 			}
@@ -126,7 +126,7 @@ build_type :: proc(
 
 			if !argument_ok {
 				diagnostics.emit(
-					.Invalid_Type,
+					.Invalid_Type_Argument,
 					arg.span,
 					"type argument must be a compile-time integer in the representable range",
 				)
@@ -145,12 +145,12 @@ build_type :: proc(
 			return nil, false
 		}
 		if digits <= 0 {
-			diagnostics.emit(.Invalid_Type, node.args[0].span, "digits must be positive")
+			diagnostics.emit(.Invalid_Decimal_Digits, node.args[0].span, "digits must be positive")
 			return nil, false
 		}
 		if digits > hir.MAX_DECIMAL_DIGITS {
 			diagnostics.emit(
-				.Invalid_Type,
+				.Invalid_Decimal_Digits,
 				node.args[0].span,
 				"exceeds maximum digits (%d > %d)",
 				digits,
@@ -160,7 +160,7 @@ build_type :: proc(
 		}
 		if scale < hir.MIN_DECIMAL_SCALE || scale > hir.MAX_DECIMAL_SCALE {
 			diagnostics.emit(
-				.Invalid_Type,
+				.Invalid_Decimal_Scale,
 				node.args[0].span,
 				"decimal scale is outside valid range (%d not_in %d ..= %d",
 				scale,
@@ -231,7 +231,7 @@ build_type :: proc(
 			} else if builtin, is_builtin := symbol.(^resolver.Builtin); is_builtin {
 				tags[index] = builtin.id
 			} else {
-				diagnostics.emit(.Invalid_Type, tag.span, "'%s' cannot be used as a type tag", tag)
+				diagnostics.emit(.Invalid_Type_Tag, tag.span, "'%s' cannot be used as a type tag", tag)
 				return nil, false
 			}
 		}
