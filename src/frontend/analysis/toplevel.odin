@@ -221,7 +221,7 @@ ensure_toplevel_symbol_processed :: proc(
 	case ^resolver.Capability:
 		return .Not_Implemented
 
-	case ^resolver.Local_Variable, ^resolver.Formal_Parameter, ^resolver.Named_Return:
+	case ^resolver.Local_Variable, ^resolver.Formal_Parameter:
 		// getting here is a logic error; locals should ALWAYS be pre-resolved and have their state set to .Done
 		fmt.panicf(
 			"%s(...) got a %T that wasn't already fully resolved",
@@ -273,10 +273,10 @@ _validate_entry_point :: proc(entry: ^hir.Func_Definition) -> bool {
 		)
 		ok = false
 	}
-	if len(entry.returns) != 0 {
+	if entry.returns != nil {
 		diagnostics.emit(
 			.Entry_Point_Returns_Values,
-			common.merge_spans(entry.returns[0].span, entry.returns[len(entry.returns) - 1].span),
+			entry.returns.span,
 			"func 'main' must not return values",
 		)
 		ok = false

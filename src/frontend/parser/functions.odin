@@ -21,58 +21,46 @@ _func_def :: proc(ps: ^Parser_State) -> ^ast.Func_Definition {
 		return nil
 	}
 
-	returns := make([dynamic]^ast.Func_Return)
+	return_value: ^ast.Func_Return
 	error_type: ast.Type_Expression
 	fallible := false
 	if _just_match(ps, Punctuation.Arrow) {
-		for {
-			name: Maybe(ast.Name)
-			start_span: ast.Span
-			if named, ok := _match(ps, M.Identifier, Punctuation.Colon); ok {
-				name = _name(named[0])
-				start_span = named[0].span
-			} else if next, ok := _peek(ps); ok {
-				start_span = common.collapse_span(next.span)
-			} else {
-				_error_here(ps, "expected a return type here")
+		start_span: ast.Span
+		if next, ok := _peek(ps); ok {
+			start_span = common.collapse_span(next.span)
+		} else {
+			_error_here(ps, "expected a return type here")
+			return nil
+		}
+
+		return_type := _type_expr(ps)
+		if return_type == nil {
+			_error_here(ps, "expected a return type here")
+			return nil
+		}
+
+		unit: ast.Declared_Unit
+		end_span := _type_span(return_type)
+		if _just_match(ps, Punctuation.Bar) {
+			parsed_unit := _compound_unit(ps)
+			if parsed_unit == nil {
+				_error_here(ps, "expected a unit here")
 				return nil
 			}
+			unit = parsed_unit
+			end_span = parsed_unit.span
+		} else {
+			no_unit := new(ast.No_Unit)
+			no_unit.span = _span_between(ps)
+			unit = no_unit
+		}
+		assert(unit != nil)
 
-			return_type := _type_expr(ps)
-			if return_type == nil {
-				_error_here(ps, "expected a return type here")
-				return nil
-			}
-
-			unit: ast.Declared_Unit
-			end_span := _type_span(return_type)
-			if _just_match(ps, Punctuation.Bar) {
-				parsed_unit := _compound_unit(ps)
-				if parsed_unit == nil {
-					_error_here(ps, "expected a unit here")
-					return nil
-				}
-				unit = parsed_unit
-				end_span = parsed_unit.span
-			} else {
-				no_unit := new(ast.No_Unit)
-				no_unit.span = _span_between(ps)
-				unit = no_unit
-			}
-			assert(unit != nil)
-
-			result := new(ast.Func_Return)
-			result^ = {
-				span = common.merge_spans(start_span, end_span),
-				name = name,
-				type = return_type,
-				unit = unit,
-			}
-			append(&returns, result)
-
-			if !_just_match(ps, Punctuation.Comma) {
-				break
-			}
+		return_value = new(ast.Func_Return)
+		return_value^ = {
+			span = common.merge_spans(start_span, end_span),
+			type = return_type,
+			unit = unit,
 		}
 
 		if _just_match(ps, Punctuation.Bang) {
@@ -95,7 +83,7 @@ _func_def :: proc(ps: ^Parser_State) -> ^ast.Func_Definition {
 		span       = common.merge_spans(func_keyword[0].span, body.span),
 		name       = _name(func_name),
 		params     = params,
-		returns    = returns[:],
+		returns    = return_value,
 		error_type = error_type,
 		fallible   = fallible,
 		body       = body,

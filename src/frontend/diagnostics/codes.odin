@@ -151,8 +151,8 @@ Code :: enum {
 	Named_Argument_Requires_Static_Callee,
 	// A call-style cast receives a named argument.
 	Named_Cast_Argument,
-	// An expression that returns no values was used in a context where values are normally expected
-	Dubious_Nullary_Expression,
+	// An expression that returns no values was used in a context where values are expected
+	Invalid_Nullary_Expression,
 	// An expression produces a value that isn't used
 	Unused_Value,
 	// The value needed to be known at compile time, but wasn't
@@ -238,7 +238,7 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Invalid_Annotation_Name = {origin = .Semantic, default_level = .Error},
 	.Invalid_Annotation_Target = {origin = .Semantic, default_level = .Error},
 	.Annotation_Arity_Mismatch = {origin = .Semantic, default_level = .Error},
-	.Dubious_Nullary_Expression = {origin = .Semantic, default_level = .Warning},
+	.Invalid_Nullary_Expression = {origin = .Semantic, default_level = .Error},
 	.Symbol_Not_Value = {origin = .Semantic, default_level = .Error},
 	.Symbol_Not_Constant = {origin = .Semantic, default_level = .Error},
 	.Symbol_Not_Argument = {origin = .Semantic, default_level = .Error},

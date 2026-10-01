@@ -4,7 +4,7 @@ Func_Definition :: struct {
 	span:        Span,
 	name:        Name,
 	params:      []^Formal_Parameter,
-	returns:     []^Func_Return,
+	returns:     ^Func_Return,
 	error_type:  Type_Expression,
 	fallible:    bool,
 	requires:    Capability_Expression,
@@ -22,7 +22,6 @@ Formal_Parameter :: struct {
 
 Func_Return :: struct {
 	span: Span,
-	name: Maybe(Name),
 	type: Type_Expression,
 	unit: Declared_Unit,
 }

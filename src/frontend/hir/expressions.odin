@@ -4,14 +4,9 @@ import "../../common"
 import "../../common/exact"
 
 
-_Single_Value_Expression_Header :: struct {
+_Expr_Header :: struct {
 	span:      Span,
 	using _tu: Type_And_Unit,
-}
-
-_Multi_Value_Expression_Header :: struct {
-	span:            Span,
-	types_and_units: []Type_And_Unit,
 }
 
 Expression :: union {
@@ -35,7 +30,7 @@ Expression :: union {
 	^Poison,
 }
 
-singular_type_and_unit :: proc(expr: Expression) -> (Type, Realized_Unit, bool) {
+type_and_unit :: proc "contextless" (expr: Expression) -> (Type, Realized_Unit, bool) {
 	switch node in expr {
 	case ^Var_Expr:
 		return node.type, node.unit, true
@@ -66,9 +61,7 @@ singular_type_and_unit :: proc(expr: Expression) -> (Type, Realized_Unit, bool) 
 	case ^Index_Expr:
 		return node.type, node.unit, true
 	case ^Func_Call_Expr:
-		if len(node.types_and_units) == 1 {
-			return node.types_and_units[0].type, node.types_and_units[0].unit, true
-		}
+		return node.type, node.unit, node.type != nil && node.unit != nil
 	case ^Static_Func_Expr:
 		return node.func.type, Indeterminate_Unit.No_Unit, true
 	case Type:
@@ -78,94 +71,15 @@ singular_type_and_unit :: proc(expr: Expression) -> (Type, Realized_Unit, bool) 
 	return nil, nil, false
 }
 
-expression_types_and_units :: proc(expr: Expression) -> []Type_And_Unit {
-	_wrap :: proc(tu: Type_And_Unit) -> []Type_And_Unit {
-		result := make([]Type_And_Unit, 1, context.temp_allocator)
-		result[0] = tu
-		return result
-	}
-
-	switch node in expr {
-	case ^Var_Expr:
-		return _wrap(node._tu)
-	case ^Const_Expr:
-		return _wrap(node._tu)
-	case ^Field_Access_Expr:
-		return _wrap(node._tu)
-	case ^Enum_Value:
-		return _wrap(node._tu)
-	case ^Move_Expr:
-		return _wrap(node._tu)
-	case ^Condition_Expr:
-		return _wrap(node._tu)
-	case ^Binop_Expr:
-		return _wrap(node._tu)
-	case ^Unary_Expr:
-		return _wrap(node._tu)
-	case ^Address_Of_Expr:
-		return _wrap(node._tu)
-	case ^Dereference_Expr:
-		return _wrap(node._tu)
-	case ^Cast_Expr:
-		return _wrap(node._tu)
-	case ^Unit_Conversion_Expr:
-		return _wrap(node._tu)
-	case ^Unit_Reinterpret_Expr:
-		return _wrap(node._tu)
-	case ^Index_Expr:
-		return _wrap(node._tu)
+has_value :: proc "contextless" (expr: Expression) -> bool {
+	#partial switch node in expr {
 	case ^Func_Call_Expr:
-		return node.types_and_units
-	case ^Static_Func_Expr:
-		return _wrap({node.func.type, Indeterminate_Unit.No_Unit})
-	case Type:
-		return _wrap({Primitive_Type.Type, Indeterminate_Unit.No_Unit})
-	case ^Poison:
-	}
-
-	return nil
-}
-
-value_count :: proc "contextless" (expr: Expression) -> int {
-	switch node in expr {
-	case ^Var_Expr:
-		return 1
-	case ^Const_Expr:
-		return 1
-	case ^Field_Access_Expr:
-		return 1
-	case ^Enum_Value:
-		return 1
-	case ^Move_Expr:
-		return 1
-	case ^Condition_Expr:
-		return 1
-	case ^Binop_Expr:
-		return 1
-	case ^Unary_Expr:
-		return 1
-	case ^Address_Of_Expr:
-		return 1
-	case ^Dereference_Expr:
-		return 1
-	case ^Cast_Expr:
-		return 1
-	case ^Unit_Conversion_Expr:
-		return 1
-	case ^Unit_Reinterpret_Expr:
-		return 1
-	case ^Index_Expr:
-		return 1
-	case ^Func_Call_Expr:
-		return len(node.types_and_units)
-	case ^Static_Func_Expr:
-		return 1
-	case Type:
-		return 1
+		return node.type != nil && node.unit != nil
 	case ^Poison, nil:
-		return 0
+		return false
+	case:
+		return true
 	}
-	return 0
 }
 
 Nil_Of :: struct {
@@ -187,82 +101,82 @@ Value :: union {
 }
 
 Var_Expr :: struct {
-	using _:    _Single_Value_Expression_Header,
+	using _:    _Expr_Header,
 	references: Symbol,
 }
 
 Const_Expr :: struct {
-	using _: _Single_Value_Expression_Header,
+	using _: _Expr_Header,
 	value:   Value,
 }
 
 Field_Access_Expr :: struct {
-	using _: _Single_Value_Expression_Header,
+	using _: _Expr_Header,
 	base:    Expression,
 	field:   Identifier,
 }
 
 Enum_Value :: struct {
-	using _:   _Single_Value_Expression_Header,
+	using _:   _Expr_Header,
 	enum_type: ^Enum_Type,
 	variant:   int,
 	payload:   Expression,
 }
 
 Move_Expr :: struct {
-	using _: _Single_Value_Expression_Header,
+	using _: _Expr_Header,
 	expr:    Expression,
 }
 
 Condition_Expr :: struct {
-	using _:   _Single_Value_Expression_Header,
+	using _:   _Expr_Header,
 	condition: Expression,
 	if_true:   Expression,
 	if_false:  Expression,
 }
 
 Binop_Expr :: struct {
-	using _: _Single_Value_Expression_Header,
+	using _: _Expr_Header,
 	op:      common.Binary_Op,
 	lhs:     Expression,
 	rhs:     Expression,
 }
 
 Unary_Expr :: struct {
-	using _: _Single_Value_Expression_Header,
+	using _: _Expr_Header,
 	op:      common.Unary_Op,
 	expr:    Expression,
 }
 
 Address_Of_Expr :: struct {
-	using _: _Single_Value_Expression_Header,
+	using _: _Expr_Header,
 	expr:    Expression,
 }
 
 Dereference_Expr :: struct {
-	using _: _Single_Value_Expression_Header,
+	using _: _Expr_Header,
 	expr:    Expression,
 }
 
 Cast_Expr :: struct {
-	using _: _Single_Value_Expression_Header,
+	using _: _Expr_Header,
 	expr:    Expression,
 	to:      Type,
 }
 
 Unit_Conversion_Expr :: struct {
-	using _: _Single_Value_Expression_Header,
+	using _: _Expr_Header,
 	expr:    Expression,
 	factor:  exact.Rat,
 }
 
 Unit_Reinterpret_Expr :: struct {
-	using _: _Single_Value_Expression_Header,
+	using _: _Expr_Header,
 	expr:    Expression,
 }
 
 Index_Expr :: struct {
-	using _:    _Single_Value_Expression_Header,
+	using _:    _Expr_Header,
 	collection: Expression,
 	args:       []Expression,
 }
@@ -273,7 +187,7 @@ Static_Func_Expr :: struct {
 }
 
 Func_Call_Expr :: struct {
-	using _: _Multi_Value_Expression_Header,
+	using _: _Expr_Header,
 	callee:  Expression,
 	args:    []Expression,
 }

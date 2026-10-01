@@ -51,25 +51,15 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 
 	case Keyword.Return:
 		ps.cur_token += 1
-		values := make([dynamic]ast.Expression)
-		if first := _expr(ps); first != nil {
-			append(&values, first)
-			for _just_match(ps, Punctuation.Comma) {
-				value := _expr(ps)
-				if value == nil {
-					break
-				}
-				append(&values, value)
-			}
-		}
+		value := _expr(ps)
 		end_span := tok.span
-		if len(values) > 0 {
-			end_span = ast.expression_span(values[len(values) - 1])
+		if value != nil {
+			end_span = ast.expression_span(value)
 		}
 		ret := new(ast.Return_Statement)
 		ret^ = {
-			span   = common.merge_spans(tok.span, end_span),
-			values = values[:],
+			span  = common.merge_spans(tok.span, end_span),
+			value = value,
 		}
 		stmt = ret
 

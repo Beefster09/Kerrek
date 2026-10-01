@@ -13,7 +13,7 @@ import "../lexer"
 
 
 @(test)
-test_function_default_units_are_preserved :: proc(t: ^testing.T) {
+test_function_units_are_preserved :: proc(t: ^testing.T) {
 	sync.lock(&common.Test_Global_State_Lock)
 	defer sync.unlock(&common.Test_Global_State_Lock)
 	diagnostics.initialize()
@@ -32,7 +32,7 @@ test_function_default_units_are_preserved :: proc(t: ^testing.T) {
 	defer mem.dynamic_arena_destroy(&parse_arena)
 	context.allocator = mem.dynamic_arena_allocator(&parse_arena)
 
-	source := "func convert(value: Int64, distance: Int64 | meter) -> Int64, Int64 | meter {}"
+	source := "func convert(value: Int64, distance: Int64 | meter) -> Int64 | meter {}"
 	sf := common.Source_File {
 		id       = 1,
 		file     = source,
@@ -49,17 +49,15 @@ test_function_default_units_are_preserved :: proc(t: ^testing.T) {
 	testing.expect(t, ps.error_count == 0)
 	testing.expect(t, ps.cur_token == len(tokens))
 	testing.expect(t, len(function.params) == 2)
-	testing.expect(t, len(function.returns) == 2)
-	if len(function.params) != 2 || len(function.returns) != 2 {
+	testing.expect(t, function.returns != nil)
+	if len(function.params) != 2 || function.returns == nil {
 		return
 	}
 
 	_, param_inferred := function.params[0].unit.(^ast.Inferred_Unit)
 	_, param_explicit := function.params[1].unit.(^ast.Compound_Unit)
-	_, return_no_unit := function.returns[0].unit.(^ast.No_Unit)
-	_, return_explicit := function.returns[1].unit.(^ast.Compound_Unit)
+	_, return_explicit := function.returns.unit.(^ast.Compound_Unit)
 	testing.expect(t, param_inferred)
 	testing.expect(t, param_explicit)
-	testing.expect(t, return_no_unit)
 	testing.expect(t, return_explicit)
 }

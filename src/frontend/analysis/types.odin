@@ -683,12 +683,9 @@ write_type :: proc(w: io.Writer, type: hir.Type) {
 			}
 		}
 		io.write_string(w, ")")
-		if len(type.returns) > 0 || type.error != nil {
+		if type.returns != nil || type.error != nil {
 			io.write_string(w, " -> ")
-			for ret, i in type.returns {
-				if i > 0 {
-					io.write_string(w, ", ")
-				}
+			if ret := type.returns; ret != nil {
 				write_type(w, ret.type)
 				switch unit in ret.unit {
 				case hir.Indeterminate_Unit:

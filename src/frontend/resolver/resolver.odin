@@ -400,8 +400,6 @@ symbol_name :: proc(named: Symbol) -> Identifier {
 		return symbol.name
 	case ^Enum_Type:
 		return symbol.name
-	case ^Named_Return:
-		return symbol.name
 	}
 	return ""
 }
@@ -446,10 +444,6 @@ symbol_span :: proc(named: Symbol) -> (common.Span, bool) {
 	case ^Enum_Type:
 		return {}, false // TODO
 	// return symbol.ast.name.span, true
-	case ^Named_Return:
-		if symbol.ast.name != nil {
-			return symbol.ast.name.?.span, true
-		}
 	}
 	return {}, false
 }

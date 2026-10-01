@@ -270,7 +270,7 @@ evaluate :: proc(
 		case Comptime_Value:
 			return Comptime_Value{value = result.value, type = result.type, unit = new_unit}
 		case hir.Expression:
-			if type, _, ok := hir.singular_type_and_unit(result); ok {
+			if type, _, ok := hir.type_and_unit(result); ok {
 				expr := new(hir.Unit_Reinterpret_Expr, ts.output.allocator)
 				expr^ = {
 					span = node.span,
@@ -283,8 +283,7 @@ evaluate :: proc(
 				diagnostics.emit(
 					.Expected_Single_Value,
 					ast.expression_span(node.expr),
-					"this expression evaluates to %d values, but exactly 1 is expected in this context",
-					hir.value_count(result),
+					"this expression does not return a value",
 				)
 			}
 		case ^resolver.Import:
@@ -365,9 +364,6 @@ _eval_name_expr :: proc(
 		return var_expr(ts, node, resolved)
 	case ^resolver.Formal_Parameter:
 		return var_expr(ts, node, resolved)
-	case ^resolver.Named_Return:
-		return var_expr(ts, node, resolved)
-
 	case ^resolver.Base_Unit:
 		return Comptime_Value {
 			value = exact.RAT_ONE,
@@ -467,34 +463,33 @@ _eval_callish_expr :: proc(
 	}
 
 	callee := evaluated_callee.(hir.Expression)
-	type, _, ok := hir.singular_type_and_unit(callee)
+	type, _, ok := hir.type_and_unit(callee)
 
 	if !ok {
 		diagnostics.emit(
 			.Expected_Single_Value,
 			ast.span(callish.callee),
-			"cannot call an expression that evaluates to %d values",
-			hir.value_count(callee),
+			"cannot call an expression that does not return a value",
 		)
 		return poison(ts, callish.span)
 	}
 
-	arg_exprs, arg_indices, args_ok := _arg_list(ts, callish.args, scope)
+	arg_exprs, args_ok := _arg_list(ts, callish.args, scope)
 	if !args_ok {
 		return poison(ts, callish.span)
 	}
 
 	#partial switch type in type {
 	case ^hir.Func_Type:
-		return _build_func_call(ts, callish.span, callee, type, arg_exprs, arg_indices)
+		return _build_func_call(ts, callish.span, callee, type, arg_exprs)
 	case hir.Primitive_Type:
 		if comptime_known_type, ok := callee.(hir.Type); ok && type == .Type {
-			if len(arg_exprs) != 1 || len(arg_indices) != 1 {
+			if len(arg_exprs) != 1 {
 				diagnostics.emit(
 					.Call_Arity_Mismatch,
 					callish.span,
 					"call-style casts can only take one argument (this one got %d)",
-					max(len(arg_exprs), len(arg_indices)),
+					len(arg_exprs),
 				)
 				return poison(ts, callish.span)
 			}
@@ -518,7 +513,7 @@ _eval_callish_expr :: proc(
 			case ^resolver.Import:
 				panic("unreachable")
 			}
-			_, unit, _ := hir.singular_type_and_unit(arg)
+			_, unit, _ := hir.type_and_unit(arg)
 			cast_expr := new(hir.Cast_Expr, ts.output.allocator)
 			cast_expr^ = {
 				span = callish.span,
@@ -535,12 +530,12 @@ _eval_callish_expr :: proc(
 	return poison(ts, callish.span)
 }
 
-_singular_type_and_unit :: proc(er: Eval_Result) -> (Comptime_Type, hir.Realized_Unit, bool) {
+_type_and_unit :: proc(er: Eval_Result) -> (Comptime_Type, hir.Realized_Unit, bool) {
 	switch er in er {
 	case Comptime_Value:
 		return er.type, er.unit, true
 	case hir.Expression:
-		return hir.singular_type_and_unit(er)
+		return hir.type_and_unit(er)
 	case ^resolver.Import:
 	}
 
@@ -559,13 +554,13 @@ _eval_unary :: proc(
 		return hir.Expression(poison)
 	}
 
-	type, unit, is_single := _singular_type_and_unit(expr)
+	type, unit, has_value := _type_and_unit(expr)
 
-	if !is_single {
+	if !has_value {
 		diagnostics.emit(
 			.Expected_Single_Value,
 			ast.span(unary.expr),
-			"this expression does not return exactly one value",
+			"this expression does not return a value",
 		)
 		return hir.Expression(poison(ts, unary.span))
 	}
@@ -636,14 +631,14 @@ _eval_binop :: proc(
 		return hir.Expression(poison)
 	}
 
-	ltype, lunit, lok := _singular_type_and_unit(lhs)
-	rtype, runit, rok := _singular_type_and_unit(rhs)
+	ltype, lunit, lok := _type_and_unit(lhs)
+	rtype, runit, rok := _type_and_unit(rhs)
 
 	if !lok {
 		diagnostics.emit(
 			.Expected_Single_Value,
 			ast.expression_span(binop.lhs),
-			"this expression does not return exactly one value",
+			"this expression does not return a value",
 		)
 		return hir.Expression(poison(ts, binop.span))
 	}
@@ -652,7 +647,7 @@ _eval_binop :: proc(
 		diagnostics.emit(
 			.Expected_Single_Value,
 			ast.expression_span(binop.rhs),
-			"this expression does not return exactly one value",
+			"this expression does not return a value",
 		)
 		return hir.Expression(poison(ts, binop.span))
 	}
@@ -761,8 +756,8 @@ _eval_binop :: proc(
 	}
 
 	if _, flexible := ltype.(Flexible_Type); !flexible && ltype != coerced_type {
-		_, unit, singular := hir.singular_type_and_unit(l)
-		assert(singular)
+		_, unit, has_value := hir.type_and_unit(l)
+		assert(has_value)
 		cast_expr := new(hir.Cast_Expr, ts.output.allocator)
 		cast_expr^ = {
 			span = ast.expression_span(binop.lhs),
@@ -775,8 +770,8 @@ _eval_binop :: proc(
 	}
 
 	if _, flexible := rtype.(Flexible_Type); !flexible && rtype != coerced_type {
-		_, unit, singular := hir.singular_type_and_unit(r)
-		assert(singular)
+		_, unit, has_value := hir.type_and_unit(r)
+		assert(has_value)
 		cast_expr := new(hir.Cast_Expr, ts.output.allocator)
 		cast_expr^ = {
 			span = ast.expression_span(binop.rhs),
@@ -825,8 +820,8 @@ _eval_boolean_multiply :: proc(
 		if value {
 			return nonbool
 		} else {
-			_, unit, singular := _singular_type_and_unit(nonbool)
-			assert(singular)
+			_, unit, has_value := _type_and_unit(nonbool)
+			assert(has_value)
 			return Comptime_Value {
 				value = _primitive_zero(nonbool_type),
 				type = nonbool_type,
@@ -840,8 +835,8 @@ _eval_boolean_multiply :: proc(
 			if !mat_ok {
 				return nil
 			}
-			typ, unit, singular := hir.singular_type_and_unit(if_true)
-			assert(singular)
+			typ, unit, has_value := hir.type_and_unit(if_true)
+			assert(has_value)
 			if_false := new(hir.Const_Expr, ts.output.allocator)
 			if_false^ = {
 				span = ast.expression_span(nonbool_ast),
@@ -862,8 +857,8 @@ _eval_boolean_multiply :: proc(
 
 		} else {
 			nonbool_expr := nonbool.(hir.Expression)
-			typ, unit, singular := hir.singular_type_and_unit(nonbool_expr)
-			assert(singular)
+			typ, unit, has_value := hir.type_and_unit(nonbool_expr)
+			assert(has_value)
 			if_false := new(hir.Const_Expr, ts.output.allocator)
 			if_false^ = {
 				span = ast.expression_span(nonbool_ast),
@@ -992,8 +987,8 @@ _eval_binop_unit :: proc(
 			value = materialized
 		}
 
-		type, unit, is_single := _singular_type_and_unit(value)
-		if !is_single {
+		type, unit, has_value := _type_and_unit(value)
+		if !has_value {
 			return nil, false
 		}
 		realized_type, rt_ok := type.(hir.Type)

@@ -38,7 +38,6 @@ Symbol :: union {
 	^Capability,
 	^Annotation,
 	^Formal_Parameter,
-	^Named_Return,
 	^Import,
 	^Builtin,
 }
@@ -70,8 +69,6 @@ symbol_header :: proc(symbol: Symbol) -> ^_Symbol_Header {
 	case ^Annotation:
 		return &value.header
 	case ^Formal_Parameter:
-		return &value.header
-	case ^Named_Return:
 		return &value.header
 	case ^Import, ^Builtin:
 		return nil
@@ -168,12 +165,6 @@ Formal_Parameter :: struct {
 	using header: _Symbol_Header,
 	ast:          ^ast.Formal_Parameter,
 	hir:          ^hir.Formal_Parameter,
-}
-
-Named_Return :: struct {
-	using header: _Symbol_Header,
-	ast:          ^ast.Func_Return,
-	hir:          ^hir.Func_Return,
 }
 
 Package :: struct {

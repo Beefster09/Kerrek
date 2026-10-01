@@ -10,8 +10,8 @@ Statement :: union {
 }
 
 Return_Statement :: struct {
-	span:   Span,
-	values: []Expression,
+	span:  Span,
+	value: Expression,
 }
 
 Expr_Statement :: struct {

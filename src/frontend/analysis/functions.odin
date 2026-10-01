@@ -27,7 +27,12 @@ translate_function_signature :: proc(
 
 	flags, annotations := _process_func_annotations(ts, symbol)
 
-	params := make([dynamic]^resolver.Formal_Parameter, 0, len(symbol.ast.params), context.temp_allocator)
+	params := make(
+		[dynamic]^resolver.Formal_Parameter,
+		0,
+		len(symbol.ast.params),
+		context.temp_allocator,
+	)
 	params_scope := resolver.new_scope(symbol.defined_in, ts.allocator)
 
 	process_params: for ast_param in func.params {
@@ -98,11 +103,8 @@ translate_function_signature :: proc(
 		resolver.define_local(params_scope, ast_param.name, param, warn_shadowing = {.Builtins})
 	}
 
-	returns := make([dynamic]^hir.Func_Return, 0, len(func.returns), ts.output.allocator)
-	named_returns := resolver.temp_scope(params_scope)
-	// named returns are only visible in the function header, namely `defer with` clauses
-
-	for ret, i in func.returns {
+	return_value: ^hir.Func_Return
+	if ret := func.returns; ret != nil {
 		rtype, rt_ok := build_type(ts, ret.type, scope)
 		runit, ru_ok := build_unit(ts, ret.unit, scope)
 
@@ -110,25 +112,12 @@ translate_function_signature :: proc(
 			return .Invalid_Types
 		}
 
-		hir_ret := new(hir.Func_Return, ts.output.allocator)
-		hir_ret^ = {
+		return_value = new(hir.Func_Return, ts.output.allocator)
+		return_value^ = {
 			span = ret.span,
 			type = rtype,
 			unit = runit,
 		}
-
-		if ret.name != nil {
-			named_return := resolver.new_symbol(
-				ts.symbol_resolver,
-				resolver.Named_Return,
-				ret.name.?.id,
-			)
-			named_return.ast = ret
-			named_return.hir = hir_ret
-			resolver.define_local(&named_returns, ret.name.?, named_return)
-		}
-
-		append(&returns, hir_ret)
 	}
 
 	err_type: hir.Type
@@ -157,7 +146,7 @@ translate_function_signature :: proc(
 			},
 			ts.output.allocator,
 		),
-		returns     = returns[:],
+		returns     = return_value,
 		error_type  = err_type,
 		flags       = flags,
 		requires    = requires,
@@ -280,11 +269,9 @@ _arg_list :: proc(
 	scope: resolver.Scope,
 ) -> (
 	[]_Argument,
-	[]int,
 	bool,
 ) {
 	args := make([dynamic]_Argument, 0, len(in_args), context.temp_allocator)
-	indices := make([dynamic]int, context.temp_allocator)
 
 	ok := true
 	passing_names := false
@@ -296,12 +283,12 @@ _arg_list :: proc(
 			continue
 		}
 
-		value_count := 0
+		has_value := false
 		#partial switch value in value {
 		case hir.Expression:
-			value_count = hir.value_count(value)
+			has_value = hir.has_value(value)
 		case Comptime_Value:
-			value_count = 1
+			has_value = true
 		case ^resolver.Import:
 			diagnostics.emit(.Symbol_Not_Argument, arg.span, "imports are not valid as arguments")
 			ok = false
@@ -317,22 +304,17 @@ _arg_list :: proc(
 			ok = false
 		}
 		if arg.name != nil {
-			if value_count != 1 {
-				diagnostics.emit(
-					.Named_Argument_Arity_Mismatch,
-					ast.span(arg.expr),
-					"this expression was used for a named argument, but it returns %d values",
-					value_count,
-				)
-				ok = false
-			}
 			passing_names = true
-		} else if value_count == 0 {
+		}
+
+		if !has_value {
 			diagnostics.emit(
-				.Dubious_Nullary_Expression,
+				.Invalid_Nullary_Expression,
 				ast.span(arg.expr),
-				"this expression was used in a argument list but it returns no values",
+				"this expression returns no values",
 			)
+			ok = false
+			continue
 		}
 
 		append(
@@ -343,17 +325,14 @@ _arg_list :: proc(
 				value = value,
 			},
 		)
-		for _ in 0 ..< value_count {
-			append(&indices, i)
-		}
 	}
 
 	if !ok {
-		return nil, nil, false
+		return nil, false
 	}
 
 	shrink(&args)
-	return args[:], indices[:], true
+	return args[:], true
 }
 
 _build_func_call :: proc(
@@ -362,17 +341,15 @@ _build_func_call :: proc(
 	callee: hir.Expression,
 	signature: ^hir.Func_Type,
 	arg_exprs: []_Argument,
-	arg_indices: []int,
 ) -> hir.Expression {
-	param_value_idxs := make([]int, len(signature.params), context.temp_allocator)
-	for &idx in param_value_idxs {
+	param_arg_idxs := make([]int, len(signature.params), context.temp_allocator)
+	for &idx in param_arg_idxs {
 		idx = -1
 	}
 
 	static_func, is_static := callee.(^hir.Static_Func_Expr)
 	next_param := 0
-	for arg_idx, value_idx in arg_indices {
-		arg := arg_exprs[arg_idx]
+	for arg, arg_idx in arg_exprs {
 		param_idx := next_param
 		if arg.name != nil {
 			if !is_static {
@@ -409,11 +386,11 @@ _build_func_call :: proc(
 				span,
 				"function expects %d values, but the call passes %d",
 				len(signature.params),
-				len(arg_indices),
+				len(arg_exprs),
 			)
 			return poison(ts, span)
 		}
-		if param_value_idxs[param_idx] >= 0 {
+		if param_arg_idxs[param_idx] >= 0 {
 			diagnostics.emit(
 				.Duplicate_Argument,
 				arg.span,
@@ -422,17 +399,17 @@ _build_func_call :: proc(
 			)
 			return poison(ts, span)
 		}
-		param_value_idxs[param_idx] = value_idx
+		param_arg_idxs[param_idx] = arg_idx
 	}
 
-	for value_idx, param_idx in param_value_idxs {
-		if value_idx < 0 && (!is_static || static_func.func.params[param_idx].default == nil) {
+	for arg_idx, param_idx in param_arg_idxs {
+		if arg_idx < 0 && (!is_static || static_func.func.params[param_idx].default == nil) {
 			diagnostics.emit(
 				.Call_Arity_Mismatch,
 				span,
 				"function expects %d values, but the call passes %d",
 				len(signature.params),
-				len(arg_indices),
+				len(arg_exprs),
 			)
 			return poison(ts, span)
 		}
@@ -444,12 +421,11 @@ _build_func_call :: proc(
 			converted[i] = value
 		}
 	}
-	for value_idx, param_idx in param_value_idxs {
-		if value_idx < 0 {
+	for arg_idx, param_idx in param_arg_idxs {
+		if arg_idx < 0 {
 			continue
 		}
 		expected := signature.params[param_idx]
-		arg_idx := arg_indices[value_idx]
 		arg := arg_exprs[arg_idx]
 		actual_type: Comptime_Type
 		actual_unit: hir.Realized_Unit
@@ -458,13 +434,9 @@ _build_func_call :: proc(
 			actual_type = value.type
 			actual_unit = value.unit
 		case hir.Expression:
-			tus := hir.expression_types_and_units(value)
-			first_value_idx := value_idx
-			for first_value_idx > 0 && arg_indices[first_value_idx - 1] == arg_idx {
-				first_value_idx -= 1
-			}
-			actual_type = tus[value_idx - first_value_idx].type
-			actual_unit = tus[value_idx - first_value_idx].unit
+			value_ok: bool
+			actual_type, actual_unit, value_ok = hir.type_and_unit(value)
+			assert(value_ok)
 		case ^resolver.Import:
 			panic("unreachable")
 		}
@@ -491,16 +463,13 @@ _build_func_call :: proc(
 			return poison(ts, span)
 		}
 
-		singular :=
-			(value_idx == 0 || arg_indices[value_idx - 1] != arg_idx) &&
-			(value_idx + 1 == len(arg_indices) || arg_indices[value_idx + 1] != arg_idx)
 		if value, comptime := arg.value.(Comptime_Value); comptime {
 			ok: bool
 			converted[arg_idx], ok = materialize(ts, value, arg.span, expected.type)
 			if !ok {
 				return poison(ts, span)
 			}
-		} else if singular && !types_equal(expected.type, actual_type) {
+		} else if !types_equal(expected.type, actual_type) {
 			cast_expr := new(hir.Cast_Expr, ts.output.allocator)
 			cast_expr^ = {
 				span = arg.span,
@@ -511,7 +480,7 @@ _build_func_call :: proc(
 			}
 			converted[arg_idx] = cast_expr
 		}
-		if singular && !_units_equal(expected.unit, actual_unit) {
+		if !_units_equal(expected.unit, actual_unit) {
 			conversion := new(hir.Unit_Conversion_Expr, ts.output.allocator)
 			conversion^ = {
 				span   = arg.span,
@@ -526,12 +495,11 @@ _build_func_call :: proc(
 
 	args := make([dynamic]hir.Expression, 0, len(signature.params), ts.output.allocator)
 	appended := make([]bool, len(arg_exprs), context.temp_allocator)
-	for value_idx, param_idx in param_value_idxs {
-		if value_idx < 0 {
+	for arg_idx, param_idx in param_arg_idxs {
+		if arg_idx < 0 {
 			append(&args, static_func.func.params[param_idx].default)
 			continue
 		}
-		arg_idx := arg_indices[value_idx]
 		if !appended[arg_idx] {
 			append(&args, converted[arg_idx])
 			appended[arg_idx] = true
@@ -540,11 +508,18 @@ _build_func_call :: proc(
 	shrink(&args)
 
 	call := new(hir.Func_Call_Expr, ts.output.allocator)
+	return_type: hir.Type
+	return_unit: hir.Realized_Unit
+	if signature.returns != nil {
+		return_type = signature.returns.type
+		return_unit = signature.returns.unit
+	}
 	call^ = {
-		span            = span,
-		types_and_units = signature.returns,
-		callee          = callee,
-		args            = args[:],
+		span   = span,
+		type   = return_type,
+		unit   = return_unit,
+		callee = callee,
+		args   = args[:],
 	}
 	return call
 }

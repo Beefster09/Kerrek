@@ -31,20 +31,11 @@ build_block :: proc(
 			if !ok {
 				continue process_stmts
 			}
-			switch num_values := hir.value_count(expr); num_values {
-			case 0:
-			case 1:
+			if hir.has_value(expr) {
 				diagnostics.emit(
 					.Unused_Value,
 					ast.expression_span(stmt.expr),
 					"this expression returns a value, but it was not used",
-				)
-			case:
-				diagnostics.emit(
-					.Unused_Value,
-					ast.expression_span(stmt.expr),
-					"this expression returns %d values, but none were used",
-					num_values,
 				)
 			}
 			out := new(hir.Expr_Statement, ts.output.allocator)
@@ -205,7 +196,11 @@ _build_var :: proc(
 	value: hir.Expression
 	if unbound {
 		if var_type == nil {
-			diagnostics.emit(.Missing_Variable_Type, src.span, "unbound variables must have a type")
+			diagnostics.emit(
+				.Missing_Variable_Type,
+				src.span,
+				"unbound variables must have a type",
+			)
 			return nil
 		}
 		if unit_is_inferred {
@@ -220,25 +215,24 @@ _build_var :: proc(
 			return nil
 		}
 
-		types_and_units := hir.expression_types_and_units(built)
-		if len(types_and_units) != 1 {
+		value_type, value_unit, has_value := hir.type_and_unit(built)
+		if !has_value {
 			diagnostics.emit(
 				.Assignment_Arity_Mismatch,
 				ast.span(expr),
-				"this expression results in %d values and therefore cannot be assigned to '%s'",
-				len(types_and_units),
+				"this expression does not return a value and therefore cannot be assigned to '%s'",
 				src.name,
 			)
 			return nil
 		}
 
 		inferred: bool
-		var_type, inferred = infer_type(types_and_units[0].type, src.span)
+		var_type, inferred = infer_type(value_type, src.span)
 		if !inferred {
 			return nil
 		}
 		if unit_is_inferred {
-			unit = types_and_units[0].unit
+			unit = value_unit
 		}
 		value = built
 	} else {
@@ -275,7 +269,11 @@ _build_var :: proc(
 
 	when !IS_LOCAL {
 		if value == nil {
-			diagnostics.emit(.Unbound_Global_Variable, src.span, "global variables may not be unbound")
+			diagnostics.emit(
+				.Unbound_Global_Variable,
+				src.span,
+				"global variables may not be unbound",
+			)
 			return nil
 		}
 	}
@@ -298,89 +296,54 @@ _build_return :: proc(
 	func: ^resolver.Function,
 	scope: resolver.Scope,
 ) -> ^hir.Return_Statement {
-	exprs, expr_idxs, types_and_units := _value_list(ts, stmt.values, scope)
+	expected := func.hir.returns
+	value: hir.Expression
+	value_type: hir.Type
+	has_value := false
+	if stmt.value != nil {
+		built, ok := build_expr(ts, stmt.value, scope)
+		if _, is_poison := built.(^hir.Poison); !ok || is_poison {
+			return nil
+		}
+		value = built
+		value_type, _, has_value = hir.type_and_unit(built)
+		if !has_value {
+			diagnostics.emit(
+				.Invalid_Nullary_Expression,
+				ast.span(stmt.value),
+				"this expression returns no value",
+			)
+			return nil
+		}
+	}
 
-	value_count := len(expr_idxs)
-	expected_count := len(func.hir.returns)
-	if value_count != expected_count {
+	if has_value != (expected != nil) {
 		diagnostics.emit(
 			.Return_Arity_Mismatch,
 			stmt.span,
-			"return statement produces %d value%s, but the func '%s' returns %d value%s",
-			value_count,
-			"s" if value_count != 1 else "",
+			"return statement %s a value, but the func '%s' %s a value",
+			"produces" if has_value else "does not produce",
 			func.name,
-			expected_count,
-			"s" if expected_count != 1 else "",
+			"returns" if expected != nil else "does not return",
 		)
 		return nil
 	}
 
-	for expr_idx, i in expr_idxs {
-		expected := func.hir.returns[i]
-		type_and_unit := types_and_units[i]
-
-		if !_type_implicitly_converts(expected.type, type_and_unit.type) {
-			diagnostics.emit(
-				.Return_Type_Mismatch,
-				ast.span(stmt.values[expr_idx]),
-				"the func signature requires this value to be a %s, but it was a %s",
-				expected.type,
-				type_and_unit.type,
-			)
-		}
+	if has_value && !_type_implicitly_converts(expected.type, value_type) {
+		diagnostics.emit(
+			.Return_Type_Mismatch,
+			ast.span(stmt.value),
+			"the func signature requires this value to be a %s, but it was a %s",
+			expected.type,
+			value_type,
+		)
 	}
 
 	ret := new(hir.Return_Statement, ts.output.allocator)
 	ret^ = {
-		span   = stmt.span,
-		values = exprs[:],
+		span  = stmt.span,
+		value = value,
 	}
 
 	return ret
-}
-
-_value_list :: proc(
-	ts: ^Translation_State,
-	in_values: []ast.Expression,
-	scope: resolver.Scope,
-) -> (
-	[]hir.Expression,
-	[]int,
-	[]hir.Type_And_Unit,
-) {
-	exprs := make([dynamic]hir.Expression, 0, len(in_values), ts.output.allocator)
-	indices := make([dynamic]int, context.temp_allocator)
-	types_and_units := make([dynamic]hir.Type_And_Unit, context.temp_allocator)
-
-	poisoned := false
-	for value, i in in_values {
-		built, ok := build_expr(ts, value, scope)
-		if _, is_poison := built.(^hir.Poison); !ok || is_poison {
-			poisoned = true
-			continue
-		}
-		append(&exprs, built)
-
-		tus := hir.expression_types_and_units(built)
-		if len(tus) == 0 {
-			diagnostics.emit(
-				.Dubious_Nullary_Expression,
-				ast.span(value),
-				"this expression was used in a value list context but it returns no values",
-			)
-		}
-		append(&types_and_units, ..tus)
-		for _ in tus {
-			append(&indices, i)
-		}
-	}
-
-	if poisoned {
-		return nil, nil, nil
-	}
-	assert(len(types_and_units) == len(indices))
-
-	shrink(&exprs)
-	return exprs[:], indices[:], types_and_units[:]
 }

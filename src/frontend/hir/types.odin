@@ -105,7 +105,7 @@ Tagged_Type :: struct {
 
 Func_Type :: struct {
 	params:   []Type_And_Unit,
-	returns:  []Type_And_Unit,
+	returns:  ^Type_And_Unit,
 	error:    Type,
 	flags:    Func_Flags,
 	requires: Capability_Expression,
