@@ -23,7 +23,7 @@ new_scope :: proc(parent: Scope, allocator: runtime.Allocator) -> ^Lexical_Scope
 	scope := new(Lexical_Scope, allocator)
 	scope^ = {
 		parent = parent,
-		locals = make(map[common.Identifier]Symbol),
+		locals = make(map[common.Identifier]Symbol, allocator),
 	}
 	return scope
 }

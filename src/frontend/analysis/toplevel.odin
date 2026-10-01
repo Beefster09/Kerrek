@@ -83,6 +83,13 @@ ensure_toplevel_symbol_processed :: proc(
 	case .Failed:
 		return .Malformed
 	}
+	owns_processing_stack := ts.processing_stack == nil
+	if owns_processing_stack {
+		ts.processing_stack = make([dynamic]resolver.Symbol, context.temp_allocator)
+	}
+	defer if owns_processing_stack {
+		ts.processing_stack = nil
+	}
 
 	append(&ts.processing_stack, symbol)
 	defer pop(&ts.processing_stack)
@@ -193,7 +200,7 @@ ensure_toplevel_symbol_processed :: proc(
 		return .OK if conversions_ok else .Malformed
 
 	case ^resolver.Unit_Alias:
-		if unit, ok := get_canonical_unit(ts, symbol.ast.orig, symbol.defined_in); ok {
+		if unit, ok := get_canonical_unit(ts, symbol.ast.orig, symbol.defined_in, ts.allocator); ok {
 			symbol.canonical = unit
 			// TODO: register in conversions (once I figure out how compound units are encoded there)
 			return .OK

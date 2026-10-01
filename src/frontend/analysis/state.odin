@@ -50,24 +50,19 @@ init_state :: proc(
 	state.symbol_resolver = res
 	state.entry_package = entry_package
 	state.output = output
-	{
-		context.allocator = output.allocator
-		state.hir_items.types = make([dynamic]hir.Type_Definition)
-		state.hir_items.funcs = make([dynamic]^hir.Func_Definition)
-		state.hir_items.variables = make([dynamic]^hir.Global_Variable)
-		state.hir_items.units = make([dynamic]^hir.Base_Unit)
-		state.hir_items.capabilities = make([dynamic]^hir.Capability)
-		state.hir_items.annotations = make([dynamic]^hir.Annotation_Def)
-	}
-
-	units.init_conversions(&state.unit_conversions)
+	state.hir_items.types = make([dynamic]hir.Type_Definition, output.allocator)
+	state.hir_items.funcs = make([dynamic]^hir.Func_Definition, output.allocator)
+	state.hir_items.variables = make([dynamic]^hir.Global_Variable, output.allocator)
+	state.hir_items.units = make([dynamic]^hir.Base_Unit, output.allocator)
+	state.hir_items.capabilities = make([dynamic]^hir.Capability, output.allocator)
+	state.hir_items.annotations = make([dynamic]^hir.Annotation_Def, output.allocator)
 
 	mem.dynamic_arena_init(&state.scratch_arena)
 	state.allocator = mem.dynamic_arena_allocator(&state.scratch_arena)
 	{
 		context.allocator = state.allocator
-		state.pending_bodies = make([dynamic]Pending_Function_Body)
-		state.processing_stack = make([dynamic]resolver.Symbol)
+		units.init_conversions(&state.unit_conversions)
+		state.pending_bodies = make([dynamic]Pending_Function_Body, state.allocator)
 	}
 }
 

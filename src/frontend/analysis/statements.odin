@@ -47,7 +47,7 @@ build_block :: proc(
 					num_values,
 				)
 			}
-			out := new(hir.Expr_Statement)
+			out := new(hir.Expr_Statement, ts.output.allocator)
 			out.span = stmt.span
 			out.expr = expr
 			append(&body, out)

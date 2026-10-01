@@ -27,7 +27,7 @@ translate_function_signature :: proc(
 
 	flags, annotations := _process_func_annotations(ts, symbol)
 
-	params := make([dynamic]^resolver.Formal_Parameter, 0, len(symbol.ast.params))
+	params := make([dynamic]^resolver.Formal_Parameter, 0, len(symbol.ast.params), context.temp_allocator)
 	params_scope := resolver.new_scope(symbol.defined_in, ts.allocator)
 
 	process_params: for ast_param in func.params {
@@ -98,7 +98,7 @@ translate_function_signature :: proc(
 		resolver.define_local(params_scope, ast_param.name, param, warn_shadowing = {.Builtins})
 	}
 
-	returns := [dynamic]^hir.Func_Return{}
+	returns := make([dynamic]^hir.Func_Return, 0, len(func.returns), ts.output.allocator)
 	named_returns := resolver.temp_scope(params_scope)
 	// named returns are only visible in the function header, namely `defer with` clauses
 
@@ -110,7 +110,7 @@ translate_function_signature :: proc(
 			return .Invalid_Types
 		}
 
-		hir_ret := new(hir.Func_Return)
+		hir_ret := new(hir.Func_Return, ts.output.allocator)
 		hir_ret^ = {
 			span = ret.span,
 			type = rtype,
@@ -145,7 +145,7 @@ translate_function_signature :: proc(
 	if func.requires != nil {
 	}
 
-	symbol.hir = new(hir.Func_Definition)
+	symbol.hir = new(hir.Func_Definition, ts.output.allocator)
 	symbol.hir^ = {
 		span        = func.span,
 		id          = symbol.id,
@@ -191,7 +191,7 @@ _process_func_annotations :: proc(
 	hir.Func_Flags,
 	[]^hir.Annotation,
 ) {
-	annotations := make([dynamic]^hir.Annotation)
+	annotations := make([dynamic]^hir.Annotation, ts.output.allocator)
 	flags: hir.Func_Flags
 
 	process_annotations: for annotation in symbol.ast.annotations {
@@ -246,7 +246,7 @@ _process_func_annotations :: proc(
 			}
 
 		case ^resolver.Annotation:
-			anno_hir := new(hir.Annotation)
+			anno_hir := new(hir.Annotation, ts.output.allocator)
 			anno_hir^ = {
 				span       = annotation.span,
 				definition = anno.hir,
@@ -283,7 +283,7 @@ _arg_list :: proc(
 	[]int,
 	bool,
 ) {
-	args := make([dynamic]_Argument, 0, len(in_args), ts.output.allocator)
+	args := make([dynamic]_Argument, 0, len(in_args), context.temp_allocator)
 	indices := make([dynamic]int, context.temp_allocator)
 
 	ok := true
@@ -438,7 +438,7 @@ _build_func_call :: proc(
 		}
 	}
 
-	converted := make([]hir.Expression, len(arg_exprs), ts.output.allocator)
+	converted := make([]hir.Expression, len(arg_exprs), context.temp_allocator)
 	for arg, i in arg_exprs {
 		if value, ok := arg.value.(hir.Expression); ok {
 			converted[i] = value

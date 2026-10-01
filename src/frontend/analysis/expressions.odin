@@ -57,7 +57,7 @@ materialize :: proc(
 	case exact.Rat:
 		real_value = v
 	case string:
-		real_value = v
+		real_value = strings.clone(v, ts.output.allocator)
 	case rune:
 		real_value = v
 	case byte:
@@ -71,7 +71,7 @@ materialize :: proc(
 		span  = span,
 		value = real_value,
 		type  = real_type,
-		unit  = value.unit,
+		unit  = _clone_unit(value.unit, ts.output.allocator),
 	}
 	return hir.Expression(expr), true
 }
@@ -223,7 +223,7 @@ evaluate :: proc(
 		}
 
 		out_unit: hir.Realized_Unit
-		if unit, ok := get_canonical_unit(ts, node.unit, scope); ok {
+		if unit, ok := get_canonical_unit(ts, node.unit, scope, ts.allocator); ok {
 			out_unit = unit
 		} else {
 			out_unit = .Flexible
@@ -259,7 +259,7 @@ evaluate :: proc(
 				"inferred units are not valid for unit reinterpret expressions",
 			)
 		case ^ast.Compound_Unit:
-			new_unit = get_canonical_unit(ts, unit, scope) or_else nil
+			new_unit = get_canonical_unit(ts, unit, scope, ts.allocator) or_else nil
 		}
 
 		if new_unit == nil {
@@ -275,7 +275,7 @@ evaluate :: proc(
 				expr^ = {
 					span = node.span,
 					type = type,
-					unit = new_unit,
+					unit = _clone_unit(new_unit, ts.output.allocator),
 					expr = result,
 				}
 				return hir.Expression(expr)
@@ -683,7 +683,7 @@ _eval_binop :: proc(
 		if l, r, ok := util.extract_pair(lhs, rhs, Comptime_Value); ok {
 			if lstr, rstr, str_ok := util.extract_pair(l.value, r.value, string); str_ok {
 				return Comptime_Value {
-					value = strings.concatenate({lstr, rstr}, ts.output.allocator),
+					value = strings.concatenate({lstr, rstr}, ts.allocator),
 					type = coerced_type,
 					unit = hir.Indeterminate_Unit.No_Unit,
 				}
@@ -795,7 +795,7 @@ _eval_binop :: proc(
 		lhs  = l,
 		rhs  = r,
 		type = inferred_type,
-		unit = res_unit,
+		unit = _clone_unit(res_unit, ts.output.allocator),
 	}
 	return hir.Expression(result)
 }
@@ -1057,8 +1057,13 @@ _eval_binop_unit :: proc(
 		lcanonical, l_has_unit := lunit.(units.Compound_Unit)
 		rcanonical, r_has_unit := runit.(units.Compound_Unit)
 		if l_has_unit && r_has_unit {
-			context.allocator = ts.allocator
-			unit, err := units.combine_units(lcanonical, units.RAT_ONE, rcanonical, units.RAT_ONE)
+			unit, err := units.combine_units(
+				lcanonical,
+				units.RAT_ONE,
+				rcanonical,
+				units.RAT_ONE,
+				ts.allocator,
+			)
 			if err != .OK {
 				return
 			}
@@ -1087,12 +1092,12 @@ _eval_binop_unit :: proc(
 		lcanonical, l_has_unit := lunit.(units.Compound_Unit)
 		rcanonical, r_has_unit := runit.(units.Compound_Unit)
 		if l_has_unit && r_has_unit {
-			context.allocator = ts.allocator
 			unit, err := units.combine_units(
 				lcanonical,
 				units.RAT_ONE,
 				rcanonical,
 				units.Small_Rat{n = -1},
+				ts.allocator,
 			)
 			if err != .OK {
 				return
@@ -1101,12 +1106,12 @@ _eval_binop_unit :: proc(
 		} else if l_has_unit && _unit_is_flexible(runit) {
 			return lunit, lhs, rhs, true
 		} else if r_has_unit && _unit_is_flexible(lunit) {
-			context.allocator = ts.allocator
 			unit, err := units.combine_units(
 				rcanonical,
 				units.Small_Rat{n = -1},
 				units.Inline_Compound_Unit{},
 				units.RAT_ONE,
+				ts.allocator,
 			)
 			if err != .OK {
 				return
@@ -1140,12 +1145,12 @@ _eval_binop_unit :: proc(
 					if rhs_is_unitless {
 						if exponent_units, representable := units.rat_from_exact(exponent_value);
 						   representable && exponent_units.d == 0 {
-							context.allocator = ts.allocator
 							unit, err := units.combine_units(
 								canonical,
 								exponent_units,
 								units.Inline_Compound_Unit{},
 								units.RAT_ONE,
+								ts.allocator,
 							)
 							if err == .OK {
 								return unit, lhs, rhs, true

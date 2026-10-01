@@ -1,5 +1,8 @@
 package analysis
 
+import "base:runtime"
+import "core:slice"
+
 import "../../common"
 import "../../common/exact"
 import "../ast"
@@ -26,7 +29,7 @@ build_unit :: proc(
 	case ^ast.Inferred_Unit:
 		return infer_as, true
 	case ^ast.Compound_Unit:
-		return get_canonical_unit(ts, unit, scope)
+		return get_canonical_unit(ts, unit, scope, ts.output.allocator)
 	}
 
 	return nil, false
@@ -36,6 +39,7 @@ get_canonical_unit :: proc(
 	ts: ^Translation_State,
 	unit: ^ast.Compound_Unit,
 	scope: resolver.Scope,
+	allocator: runtime.Allocator,
 ) -> (
 	result: units.Compound_Unit,
 	all_ok: bool,
@@ -45,7 +49,7 @@ get_canonical_unit :: proc(
 	}
 
 	b: units.Builder
-	units.builder_init(&b, ts.allocator)
+	units.builder_init(&b, context.temp_allocator)
 	defer units.builder_destroy(&b)
 
 	all_ok = true
@@ -90,7 +94,25 @@ get_canonical_unit :: proc(
 		}
 	}
 
-	return units.to_compound_unit(&b, ts.output.allocator), all_ok
+	return units.to_compound_unit(&b, allocator), all_ok
+}
+
+_clone_unit :: proc(unit: hir.Realized_Unit, allocator: runtime.Allocator) -> hir.Realized_Unit {
+	switch value in unit {
+	case units.Compound_Unit:
+		switch concrete in value {
+		case units.Inline_Compound_Unit:
+			return hir.Realized_Unit(units.Compound_Unit(concrete))
+		case units.Heap_Compound_Unit:
+			cloned := units.Heap_Compound_Unit {
+				components = slice.clone(concrete.components, allocator),
+			}
+			return hir.Realized_Unit(units.Compound_Unit(cloned))
+		}
+	case hir.Indeterminate_Unit:
+		return value
+	}
+	return nil
 }
 
 _canonical_exponent :: proc(exponent: ast.Unit_Exponent) -> (common.Span, units.Small_Rat, bool) {

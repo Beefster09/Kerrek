@@ -67,7 +67,7 @@ test_invalid_compound_units_fail :: proc(t: ^testing.T) {
 	}
 
 	for tc, i in cases {
-		_, ok := get_canonical_unit(&ts, &cases[i].unit, &scope)
+		_, ok := get_canonical_unit(&ts, &cases[i].unit, &scope, ts.allocator)
 		testing.expectf(t, !ok, "%s: expected invalid unit to fail", tc.name)
 	}
 }
