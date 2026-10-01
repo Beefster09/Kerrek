@@ -3,6 +3,7 @@ package analysis
 import "core:slice"
 
 import "../../common"
+import "../../util"
 import "../ast"
 import "../diagnostics"
 import "../hir"
@@ -267,37 +268,45 @@ _process_func_annotations :: proc(
 	return flags, annotations[:]
 }
 
+_Argument :: struct {
+	span:  common.Span,
+	value: Eval_Result,
+	name:  Maybe(common.Identifier),
+}
+
 _arg_list :: proc(
 	ts: ^Translation_State,
 	in_args: []ast.Argument,
 	scope: resolver.Scope,
 ) -> (
-	[]hir.Argument,
+	[]_Argument,
 	[]int,
-	[]hir.Type_And_Unit,
+	bool,
 ) {
-	args := make([dynamic]hir.Argument, 0, len(in_args), ts.output.allocator)
+	args := make([dynamic]_Argument, 0, len(in_args), ts.output.allocator)
 	indices := make([dynamic]int, context.temp_allocator)
-	types_and_units := make([dynamic]hir.Type_And_Unit, context.temp_allocator)
 
 	ok := true
 	passing_names := false
 	for arg, i in in_args {
-		built, ok := build_expr(ts, arg.expr, scope)
-		if _, is_poison := built.(^hir.Poison); !ok || is_poison {
+		value := evaluate(ts, arg.expr, scope)
+		if _, is_poison := util.chain_extract(value, hir.Expression, ^hir.Poison);
+		   is_poison || value == nil {
 			ok = false
 			continue
 		}
-		append(
-			&args,
-			hir.Argument {
-				span = arg.span,
-				name = arg.name.?.id if arg.name != nil else nil,
-				expr = built,
-			},
-		)
 
-		tus := hir.expression_types_and_units(built)
+		value_count := 0
+		#partial switch value in value {
+		case hir.Expression:
+			value_count = hir.value_count(value)
+		case Comptime_Value:
+			value_count = 1
+		case ^resolver.Import:
+			diagnostics.emit(.Wrong_Symbol_Kind, arg.span, "imports are not valid as arguments")
+			ok = false
+			continue
+		}
 
 		if passing_names && arg.name == nil {
 			diagnostics.emit(
@@ -307,19 +316,18 @@ _arg_list :: proc(
 			)
 			ok = false
 		}
-
 		if arg.name != nil {
-			if len(tus) != 1 {
+			if value_count != 1 {
 				diagnostics.emit(
 					.Arity_Mismatch,
 					ast.span(arg.expr),
 					"this expression was used for a named argument, but it returns %d values",
-					len(tus),
+					value_count,
 				)
 				ok = false
 			}
 			passing_names = true
-		} else if len(tus) == 0 {
+		} else if value_count == 0 {
 			diagnostics.emit(
 				.Dubious_Nullary_Expression,
 				ast.span(arg.expr),
@@ -327,19 +335,25 @@ _arg_list :: proc(
 			)
 		}
 
-		append(&types_and_units, ..tus)
-		for _ in tus {
+		append(
+			&args,
+			_Argument {
+				span = arg.span,
+				name = arg.name.?.id if arg.name != nil else nil,
+				value = value,
+			},
+		)
+		for _ in 0 ..< value_count {
 			append(&indices, i)
 		}
 	}
 
 	if !ok {
-		return nil, nil, nil
+		return nil, nil, false
 	}
-	assert(len(types_and_units) == len(indices))
 
 	shrink(&args)
-	return args[:], indices[:], types_and_units[:]
+	return args[:], indices[:], true
 }
 
 _build_func_call :: proc(
@@ -347,9 +361,8 @@ _build_func_call :: proc(
 	span: common.Span,
 	callee: hir.Expression,
 	signature: ^hir.Func_Type,
-	arg_exprs: []hir.Argument,
-	arg_idxs: []int,
-	types_and_units: []hir.Type_And_Unit,
+	arg_exprs: []_Argument,
+	arg_indices: []int,
 ) -> hir.Expression {
 	param_value_idxs := make([]int, len(signature.params), context.temp_allocator)
 	for &idx in param_value_idxs {
@@ -358,7 +371,7 @@ _build_func_call :: proc(
 
 	static_func, is_static := callee.(^hir.Static_Func_Expr)
 	next_param := 0
-	for arg_idx, value_idx in arg_idxs {
+	for arg_idx, value_idx in arg_indices {
 		arg := arg_exprs[arg_idx]
 		param_idx := next_param
 		if arg.name != nil {
@@ -396,7 +409,7 @@ _build_func_call :: proc(
 				span,
 				"function expects %d values, but the call passes %d",
 				len(signature.params),
-				len(types_and_units),
+				len(arg_indices),
 			)
 			return poison(ts, span)
 		}
@@ -412,14 +425,14 @@ _build_func_call :: proc(
 		param_value_idxs[param_idx] = value_idx
 	}
 
-	for param_idx, value_idx in param_value_idxs {
+	for value_idx, param_idx in param_value_idxs {
 		if value_idx < 0 && (!is_static || static_func.func.params[param_idx].default == nil) {
 			diagnostics.emit(
 				.Arity_Mismatch,
 				span,
 				"function expects %d values, but the call passes %d",
 				len(signature.params),
-				len(types_and_units),
+				len(arg_indices),
 			)
 			return poison(ts, span)
 		}
@@ -427,54 +440,78 @@ _build_func_call :: proc(
 
 	converted := make([]hir.Expression, len(arg_exprs), ts.output.allocator)
 	for arg, i in arg_exprs {
-		converted[i] = arg.expr
+		if value, ok := arg.value.(hir.Expression); ok {
+			converted[i] = value
+		}
 	}
-	for param_idx, value_idx in param_value_idxs {
+	for value_idx, param_idx in param_value_idxs {
 		if value_idx < 0 {
 			continue
 		}
 		expected := signature.params[param_idx]
-		actual := types_and_units[value_idx]
-		arg_idx := arg_idxs[value_idx]
+		arg_idx := arg_indices[value_idx]
 		arg := arg_exprs[arg_idx]
-		if !_type_implicitly_converts(expected.type, actual.type) {
+		actual_type: Comptime_Type
+		actual_unit: hir.Realized_Unit
+		switch value in arg.value {
+		case Comptime_Value:
+			actual_type = value.type
+			actual_unit = value.unit
+		case hir.Expression:
+			tus := hir.expression_types_and_units(value)
+			first_value_idx := value_idx
+			for first_value_idx > 0 && arg_indices[first_value_idx - 1] == arg_idx {
+				first_value_idx -= 1
+			}
+			actual_type = tus[value_idx - first_value_idx].type
+			actual_unit = tus[value_idx - first_value_idx].unit
+		case ^resolver.Import:
+			panic("unreachable")
+		}
+		if !_type_implicitly_converts(expected.type, actual_type) {
 			diagnostics.emit(
 				.Invalid_Type,
 				arg.span,
 				"parameter requires a %s, but the argument is a %s",
 				expected.type,
-				actual.type,
+				actual_type,
 			)
 			return poison(ts, span)
 		}
 
-		_, factor, unit_ok := _coerce_units(expected.unit, actual.unit)
+		_, factor, unit_ok := _coerce_units(expected.unit, actual_unit)
 		if !unit_ok {
 			diagnostics.emit(
 				.Invalid_Unit,
 				arg.span,
 				"parameter unit (%v) does not match argument unit (%v)",
 				expected.unit,
-				actual.unit,
+				actual_unit,
 			)
 			return poison(ts, span)
 		}
 
 		singular :=
-			(value_idx == 0 || arg_idxs[value_idx - 1] != arg_idx) &&
-			(value_idx + 1 == len(arg_idxs) || arg_idxs[value_idx + 1] != arg_idx)
-		if singular && !types_equal(expected.type, actual.type) {
+			(value_idx == 0 || arg_indices[value_idx - 1] != arg_idx) &&
+			(value_idx + 1 == len(arg_indices) || arg_indices[value_idx + 1] != arg_idx)
+		if value, comptime := arg.value.(Comptime_Value); comptime {
+			ok: bool
+			converted[arg_idx], ok = materialize(ts, value, arg.span, expected.type)
+			if !ok {
+				return poison(ts, span)
+			}
+		} else if singular && !types_equal(expected.type, actual_type) {
 			cast_expr := new(hir.Cast_Expr, ts.output.allocator)
 			cast_expr^ = {
 				span = arg.span,
 				expr = converted[arg_idx],
 				to   = expected.type,
 				type = expected.type,
-				unit = actual.unit,
+				unit = actual_unit,
 			}
 			converted[arg_idx] = cast_expr
 		}
-		if singular && !_units_equal(expected.unit, actual.unit) {
+		if singular && !_units_equal(expected.unit, actual_unit) {
 			conversion := new(hir.Unit_Conversion_Expr, ts.output.allocator)
 			conversion^ = {
 				span   = arg.span,
@@ -489,12 +526,12 @@ _build_func_call :: proc(
 
 	args := make([dynamic]hir.Expression, 0, len(signature.params), ts.output.allocator)
 	appended := make([]bool, len(arg_exprs), context.temp_allocator)
-	for param_idx, value_idx in param_value_idxs {
+	for value_idx, param_idx in param_value_idxs {
 		if value_idx < 0 {
 			append(&args, static_func.func.params[param_idx].default)
 			continue
 		}
-		arg_idx := arg_idxs[value_idx]
+		arg_idx := arg_indices[value_idx]
 		if !appended[arg_idx] {
 			append(&args, converted[arg_idx])
 			appended[arg_idx] = true

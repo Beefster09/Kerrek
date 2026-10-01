@@ -30,13 +30,18 @@ materialize :: proc(
 	ts: ^Translation_State,
 	value: Comptime_Value,
 	span: common.Span,
+	target: hir.Type = nil,
 ) -> (
 	hir.Expression,
 	bool,
 ) {
-	real_type, ok := infer_type(value.type, span)
-	if !ok {
-		return nil, false
+	real_type := target
+	if real_type == nil {
+		ok: bool
+		real_type, ok = infer_type(value.type, span)
+		if !ok {
+			return nil, false
+		}
 	}
 
 	real_value: hir.Value
@@ -474,38 +479,53 @@ _eval_callish_expr :: proc(
 		return poison(ts, callish.span)
 	}
 
-	arg_exprs, arg_idxs, types_and_units := _arg_list(ts, callish.args, scope)
+	arg_exprs, arg_indices, args_ok := _arg_list(ts, callish.args, scope)
+	if !args_ok {
+		return poison(ts, callish.span)
+	}
 
 	#partial switch type in type {
 	case ^hir.Func_Type:
-		return _build_func_call(
-			ts,
-			callish.span,
-			callee,
-			type,
-			arg_exprs,
-			arg_idxs,
-			types_and_units,
-		)
-	// TODO: check the signature
+		return _build_func_call(ts, callish.span, callee, type, arg_exprs, arg_indices)
 	case hir.Primitive_Type:
 		if comptime_known_type, ok := callee.(hir.Type); ok && type == .Type {
-			if len(arg_exprs) != 1 {
+			if len(arg_exprs) != 1 || len(arg_indices) != 1 {
 				diagnostics.emit(
 					.Arity_Mismatch,
 					callish.span,
 					"call-style casts can only take one argument (this one got %d)",
-					hir.value_count(callee),
+					max(len(arg_exprs), len(arg_indices)),
 				)
 				return poison(ts, callish.span)
 			}
+			if arg_exprs[0].name != nil {
+				diagnostics.emit(
+					.Invalid_Type,
+					arg_exprs[0].span,
+					"call-style cast argument cannot be passed by name",
+				)
+				return poison(ts, callish.span)
+			}
+			arg: hir.Expression
+			switch value in arg_exprs[0].value {
+			case Comptime_Value:
+				arg, ok = materialize(ts, value, arg_exprs[0].span)
+				if !ok {
+					return poison(ts, callish.span)
+				}
+			case hir.Expression:
+				arg = value
+			case ^resolver.Import:
+				panic("unreachable")
+			}
+			_, unit, _ := hir.singular_type_and_unit(arg)
 			cast_expr := new(hir.Cast_Expr, ts.output.allocator)
 			cast_expr^ = {
 				span = callish.span,
-				expr = arg_exprs[0].expr,
+				expr = arg,
 				to   = comptime_known_type,
 				type = comptime_known_type,
-				unit = types_and_units[0].unit,
+				unit = unit,
 			}
 			return cast_expr
 		}
