@@ -21,7 +21,6 @@ unit foot {
 	to yard: / 3;
 	to mile: / 5280;
 	from football_field: * 120;
-	to fhqwgads: * 1.234;
 }
 unit ft = foot;
 unit inch;
@@ -29,16 +28,12 @@ unit yard;
 unit mile;
 unit football_field;
 
-unit woman = woman;
-unit wolf = canine;
-unit dog = canine;
-unit canine = dog;
-
 unit kilogram;
 unit kg = kilogram;
 
 unit gram {
-	to kg: / 1000;
+	to kilogram: / 1000;
+	to milligram: * 1000;
 }
 
 unit milligram;
@@ -144,7 +139,7 @@ func flapjacks_required(num_workers: Int64 | man) -> Bin64 | count
 	let e = a + b * 123 mod c;
 	let f = celsius_to_fahrenheit(21.4532);
 
-	fhqwgads();
+	\\ fhqwhgads();
 
 	return count * hunger / 0x200;
 }
