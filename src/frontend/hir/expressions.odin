@@ -275,7 +275,7 @@ Static_Func_Expr :: struct {
 Func_Call_Expr :: struct {
 	using _: _Multi_Value_Expression_Header,
 	callee:  Expression,
-	args:    []Argument,
+	args:    []Expression,
 }
 
 Argument :: struct {

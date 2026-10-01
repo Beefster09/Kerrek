@@ -74,7 +74,7 @@ Annotation_Def :: struct {
 Annotation :: struct {
 	span:       Span,
 	definition: ^Annotation_Def,
-	args:       []Argument,
+	args:       []Argument, // possibly should be limited to literals that can be encoded into a readonly segment of the executable
 }
 
 Global_Variable :: struct {

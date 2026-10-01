@@ -267,7 +267,6 @@ _process_func_annotations :: proc(
 	return flags, annotations[:]
 }
 
-
 _arg_list :: proc(
 	ts: ^Translation_State,
 	in_args: []ast.Argument,
@@ -304,7 +303,7 @@ _arg_list :: proc(
 			diagnostics.emit(
 				.Unnamed_Arg_After_Named_Arg,
 				arg.span,
-				"cannot pass unnamed argument after named argument",
+				"cannot pass an unnamed argument after a named argument",
 			)
 			ok = false
 		}
@@ -341,4 +340,174 @@ _arg_list :: proc(
 
 	shrink(&args)
 	return args[:], indices[:], types_and_units[:]
+}
+
+_build_func_call :: proc(
+	ts: ^Translation_State,
+	span: common.Span,
+	callee: hir.Expression,
+	signature: ^hir.Func_Type,
+	arg_exprs: []hir.Argument,
+	arg_idxs: []int,
+	types_and_units: []hir.Type_And_Unit,
+) -> hir.Expression {
+	param_value_idxs := make([]int, len(signature.params), context.temp_allocator)
+	for &idx in param_value_idxs {
+		idx = -1
+	}
+
+	static_func, is_static := callee.(^hir.Static_Func_Expr)
+	next_param := 0
+	for arg_idx, value_idx in arg_idxs {
+		arg := arg_exprs[arg_idx]
+		param_idx := next_param
+		if arg.name != nil {
+			if !is_static {
+				diagnostics.emit(
+					.Invalid_Type,
+					arg.span,
+					"named arguments require a statically known function",
+				)
+				return poison(ts, span)
+			}
+			param_idx = -1
+			for param, i in static_func.func.params {
+				if param.name.id == arg.name.? {
+					param_idx = i
+					break
+				}
+			}
+			if param_idx < 0 {
+				diagnostics.emit(
+					.Arity_Mismatch,
+					arg.span,
+					"function has no parameter named '%s'",
+					arg.name.?,
+				)
+				return poison(ts, span)
+			}
+		} else {
+			next_param += 1
+		}
+
+		if param_idx >= len(signature.params) {
+			diagnostics.emit(
+				.Arity_Mismatch,
+				span,
+				"function expects %d values, but the call passes %d",
+				len(signature.params),
+				len(types_and_units),
+			)
+			return poison(ts, span)
+		}
+		if param_value_idxs[param_idx] >= 0 {
+			diagnostics.emit(
+				.Arity_Mismatch,
+				arg.span,
+				"parameter '%s' is passed more than once",
+				static_func.func.params[param_idx].name.id,
+			)
+			return poison(ts, span)
+		}
+		param_value_idxs[param_idx] = value_idx
+	}
+
+	for param_idx, value_idx in param_value_idxs {
+		if value_idx < 0 && (!is_static || static_func.func.params[param_idx].default == nil) {
+			diagnostics.emit(
+				.Arity_Mismatch,
+				span,
+				"function expects %d values, but the call passes %d",
+				len(signature.params),
+				len(types_and_units),
+			)
+			return poison(ts, span)
+		}
+	}
+
+	converted := make([]hir.Expression, len(arg_exprs), ts.output.allocator)
+	for arg, i in arg_exprs {
+		converted[i] = arg.expr
+	}
+	for param_idx, value_idx in param_value_idxs {
+		if value_idx < 0 {
+			continue
+		}
+		expected := signature.params[param_idx]
+		actual := types_and_units[value_idx]
+		arg_idx := arg_idxs[value_idx]
+		arg := arg_exprs[arg_idx]
+		if !_type_implicitly_converts(expected.type, actual.type) {
+			diagnostics.emit(
+				.Invalid_Type,
+				arg.span,
+				"parameter requires a %s, but the argument is a %s",
+				expected.type,
+				actual.type,
+			)
+			return poison(ts, span)
+		}
+
+		_, factor, unit_ok := _coerce_units(expected.unit, actual.unit)
+		if !unit_ok {
+			diagnostics.emit(
+				.Invalid_Unit,
+				arg.span,
+				"parameter unit (%v) does not match argument unit (%v)",
+				expected.unit,
+				actual.unit,
+			)
+			return poison(ts, span)
+		}
+
+		singular :=
+			(value_idx == 0 || arg_idxs[value_idx - 1] != arg_idx) &&
+			(value_idx + 1 == len(arg_idxs) || arg_idxs[value_idx + 1] != arg_idx)
+		if singular && !types_equal(expected.type, actual.type) {
+			cast_expr := new(hir.Cast_Expr, ts.output.allocator)
+			cast_expr^ = {
+				span = arg.span,
+				expr = converted[arg_idx],
+				to   = expected.type,
+				type = expected.type,
+				unit = actual.unit,
+			}
+			converted[arg_idx] = cast_expr
+		}
+		if singular && !_units_equal(expected.unit, actual.unit) {
+			conversion := new(hir.Unit_Conversion_Expr, ts.output.allocator)
+			conversion^ = {
+				span   = arg.span,
+				expr   = converted[arg_idx],
+				type   = expected.type,
+				unit   = expected.unit,
+				factor = factor,
+			}
+			converted[arg_idx] = conversion
+		}
+	}
+
+	args := make([dynamic]hir.Expression, 0, len(signature.params), ts.output.allocator)
+	appended := make([]bool, len(arg_exprs), context.temp_allocator)
+	for param_idx, value_idx in param_value_idxs {
+		if value_idx < 0 {
+			append(&args, static_func.func.params[param_idx].default)
+			continue
+		}
+		arg_idx := arg_idxs[value_idx]
+		if !appended[arg_idx] {
+			append(&args, converted[arg_idx])
+			appended[arg_idx] = true
+		}
+	}
+	shrink(&args)
+
+	call := new(hir.Func_Call_Expr, ts.output.allocator)
+	call^ = {
+		span            = span,
+		types_and_units = signature.returns,
+		callee          = callee,
+		args            = args[:],
+	}
+	return call
 }
