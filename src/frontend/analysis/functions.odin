@@ -146,8 +146,8 @@ translate_function_signature :: proc(
 			},
 			ts.output.allocator,
 		),
-		returns     = return_value,
-		error_type  = err_type,
+		ret         = return_value,
+		err         = err_type,
 		flags       = flags,
 		requires    = requires,
 		annotations = annotations[:],
@@ -510,9 +510,9 @@ _build_func_call :: proc(
 	call := new(hir.Func_Call_Expr, ts.output.allocator)
 	return_type: hir.Type
 	return_unit: hir.Realized_Unit
-	if signature.returns != nil {
-		return_type = signature.returns.type
-		return_unit = signature.returns.unit
+	if signature.ret != nil {
+		return_type = signature.ret.type
+		return_unit = signature.ret.unit
 	}
 	call^ = {
 		span   = span,

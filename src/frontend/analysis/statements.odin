@@ -296,9 +296,10 @@ _build_return :: proc(
 	func: ^resolver.Function,
 	scope: resolver.Scope,
 ) -> ^hir.Return_Statement {
-	expected := func.hir.returns
+	expected := func.hir.ret
 	value: hir.Expression
-	value_type: hir.Type
+	type: hir.Type
+	unit: hir.Realized_Unit
 	has_value := false
 	if stmt.value != nil {
 		built, ok := build_expr(ts, stmt.value, scope)
@@ -306,12 +307,12 @@ _build_return :: proc(
 			return nil
 		}
 		value = built
-		value_type, _, has_value = hir.type_and_unit(built)
+		type, _, has_value = hir.type_and_unit(built)
 		if !has_value {
 			diagnostics.emit(
 				.Invalid_Nullary_Expression,
 				ast.span(stmt.value),
-				"this expression returns no value",
+				"this expression does not return a value",
 			)
 			return nil
 		}
@@ -329,13 +330,13 @@ _build_return :: proc(
 		return nil
 	}
 
-	if has_value && !_type_implicitly_converts(expected.type, value_type) {
+	if has_value && !_type_implicitly_converts(expected.type, type) {
 		diagnostics.emit(
 			.Return_Type_Mismatch,
 			ast.span(stmt.value),
 			"the func signature requires this value to be a %s, but it was a %s",
 			expected.type,
-			value_type,
+			type,
 		)
 	}
 

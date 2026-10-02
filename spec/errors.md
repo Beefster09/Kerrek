@@ -19,10 +19,10 @@ From my discussion with ChatGPT in refining some ideas I've had about error hand
 
 # Semantics
 
-Each function can return multiple errors and it may be fallible. Fallible functions may specify one type that is passed to the subsequent error handler.
+Each function can return one or zeros and it may be fallible. Fallible functions may specify one type that is passed to the subsequent error handler.
 
 ```kerrek
-func never_fails() -> Integer(5), Decimal(10, 2), String {
+func never_fails() -> Decimal(10, 2) {
 	\\ implementation omitted
 }
 
@@ -34,7 +34,7 @@ func might_fail_with_no_values() -> ! {
 	\\ implementation omitted
 }
 
-func fails_with_a_value() -> String, String ! FailureType {
+func fails_with_a_value() -> String ! FailureType {
 	\\ implementation omitted
 }
 ```

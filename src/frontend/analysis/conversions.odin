@@ -330,7 +330,17 @@ _type_implicitly_converts :: proc(dest: Comptime_Type, src: Comptime_Type) -> bo
 		case hir.Fixed_Decimal:
 			return _fixed_decimal_implicitly_converts(src, dest)
 		case ^hir.Fixed_Array_Type:
+			if d_arr, ok := dest.(^hir.Fixed_Array_Type); ok {
+				return(
+					slice.equal(src.shape, d_arr.shape) &&
+					_type_implicitly_converts(src.elem, d_arr.elem) \
+				)
+			}
+			return slice.all_of(src.shape, 1) && _type_implicitly_converts(src.elem, dest)
 		case ^hir.Optional_Type:
+			if d_opt, ok := dest.(^hir.Optional_Type); ok {
+				return _type_implicitly_converts(src.base, d_opt.base)
+			}
 		case ^hir.Tagged_Type:
 			return _type_implicitly_converts(src.base, dest)
 		case ^hir.Generic_Type,

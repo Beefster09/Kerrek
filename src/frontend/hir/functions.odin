@@ -5,8 +5,8 @@ import "base:runtime"
 Func_Definition :: struct {
 	using header: _Symbol_Header,
 	params:       []^Formal_Parameter,
-	returns:      ^Func_Return,
-	error_type:   Type,
+	ret:          ^Func_Return,
+	err:          Type,
 	requires:     Capability_Expression,
 	flags:        Func_Flags,
 	body:         ^Block,
@@ -54,18 +54,18 @@ func_derive_type :: proc(func: ^Func_Definition, allocator: runtime.Allocator) {
 	}
 
 	return_value: ^Type_And_Unit
-	if func.returns != nil {
+	if func.ret != nil {
 		return_value = new(Type_And_Unit, allocator)
 		return_value^ = {
-			type = func.returns.type,
-			unit = func.returns.unit,
+			type = func.ret.type,
+			unit = func.ret.unit,
 		}
 	}
 
 	type^ = {
 		params   = params,
-		returns  = return_value,
-		error    = func.error_type,
+		ret      = return_value,
+		err      = func.err,
 		flags    = func.flags,
 		requires = func.requires,
 	}

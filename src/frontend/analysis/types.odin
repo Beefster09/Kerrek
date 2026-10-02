@@ -93,7 +93,11 @@ build_type :: proc(
 		args_ok := true
 		for arg, index in node.args {
 			if arg.name != nil {
-				diagnostics.emit(.Named_Type_Argument, arg.span, "type arguments must be positional")
+				diagnostics.emit(
+					.Named_Type_Argument,
+					arg.span,
+					"type arguments must be positional",
+				)
 				args_ok = false
 				continue
 			}
@@ -209,7 +213,6 @@ build_type :: proc(
 		pointer^ = {
 			to        = to,
 			ownership = node.ownership,
-			nullable  = false,
 		}
 		return pointer, true
 
@@ -231,7 +234,12 @@ build_type :: proc(
 			} else if builtin, is_builtin := symbol.(^resolver.Builtin); is_builtin {
 				tags[index] = builtin.id
 			} else {
-				diagnostics.emit(.Invalid_Type_Tag, tag.span, "'%s' cannot be used as a type tag", tag)
+				diagnostics.emit(
+					.Invalid_Type_Tag,
+					tag.span,
+					"'%s' cannot be used as a type tag",
+					tag,
+				)
 				return nil, false
 			}
 		}
@@ -379,12 +387,7 @@ types_equal :: proc(a, b: Comptime_Type) -> bool {
 
 		case ^hir.Pointer_Type:
 			b, ok := b.(^hir.Pointer_Type)
-			return(
-				ok &&
-				a.ownership == b.ownership &&
-				a.nullable == b.nullable &&
-				types_equal(a.to, b.to) \
-			)
+			return ok && a.ownership == b.ownership && types_equal(a.to, b.to)
 
 		case ^hir.Tagged_Type:
 			b, ok := b.(^hir.Tagged_Type)
@@ -558,7 +561,7 @@ is_zeroable :: proc(typ: Comptime_Type) -> bool {
 		case ^hir.Fixed_Array_Type:
 			return is_zeroable(concrete.elem)
 		case ^hir.Pointer_Type:
-			return concrete.nullable
+			return concrete.ownership == .Unsafe || concrete.ownership == .Weak
 		case ^hir.Distinct_Type:
 			return is_zeroable(concrete.underlying)
 		case ^hir.Tagged_Type:
@@ -683,9 +686,9 @@ write_type :: proc(w: io.Writer, type: hir.Type) {
 			}
 		}
 		io.write_string(w, ")")
-		if type.returns != nil || type.error != nil {
+		if type.ret != nil || type.err != nil {
 			io.write_string(w, " -> ")
-			if ret := type.returns; ret != nil {
+			if ret := type.ret; ret != nil {
 				write_type(w, ret.type)
 				switch unit in ret.unit {
 				case hir.Indeterminate_Unit:
@@ -698,9 +701,9 @@ write_type :: proc(w: io.Writer, type: hir.Type) {
 				}
 			}
 		}
-		if type.error != nil {
+		if type.err != nil {
 			io.write_string(w, " ! ")
-			write_type(w, type.error)
+			write_type(w, type.err)
 		}
 	// TODO: require expr
 

@@ -81,6 +81,7 @@ Dynamic_Array_Type :: struct {
 View_Type :: struct {
 	elem:       Type,
 	dimensions: int,
+	ownership:  common.Pointer_Ownership,
 }
 
 Map_Type :: struct {
@@ -95,7 +96,6 @@ Optional_Type :: struct {
 Pointer_Type :: struct {
 	to:        Type,
 	ownership: common.Pointer_Ownership,
-	nullable:  bool,
 }
 
 Tagged_Type :: struct {
@@ -105,8 +105,8 @@ Tagged_Type :: struct {
 
 Func_Type :: struct {
 	params:   []Type_And_Unit,
-	returns:  ^Type_And_Unit,
-	error:    Type,
+	ret:      ^Type_And_Unit,
+	err:      Type,
 	flags:    Func_Flags,
 	requires: Capability_Expression,
 }

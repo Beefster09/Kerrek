@@ -129,13 +129,7 @@ ensure_toplevel_symbol_processed :: proc(
 		}
 
 	case ^resolver.Global_Variable:
-		variable := _build_var(
-			ts,
-			symbol.ast,
-			symbol.defined_in,
-			symbol.id,
-			hir.Global_Variable,
-		)
+		variable := _build_var(ts, symbol.ast, symbol.defined_in, symbol.id, hir.Global_Variable)
 		if variable == nil {
 			return .Malformed
 		}
@@ -200,7 +194,8 @@ ensure_toplevel_symbol_processed :: proc(
 		return .OK if conversions_ok else .Malformed
 
 	case ^resolver.Unit_Alias:
-		if unit, ok := get_canonical_unit(ts, symbol.ast.orig, symbol.defined_in, ts.allocator); ok {
+		if unit, ok := get_canonical_unit(ts, symbol.ast.orig, symbol.defined_in, ts.allocator);
+		   ok {
 			symbol.canonical = unit
 			// TODO: register in conversions (once I figure out how compound units are encoded there)
 			return .OK
@@ -273,16 +268,20 @@ _validate_entry_point :: proc(entry: ^hir.Func_Definition) -> bool {
 		)
 		ok = false
 	}
-	if entry.returns != nil {
+	if entry.ret != nil {
 		diagnostics.emit(
 			.Entry_Point_Returns_Values,
-			entry.returns.span,
+			entry.ret.span,
 			"func 'main' must not return values",
 		)
 		ok = false
 	}
 	if .Fallible in entry.flags {
-		diagnostics.emit(.Fallible_Entry_Point, entry.name.span, "func 'main' must not be fallible")
+		diagnostics.emit(
+			.Fallible_Entry_Point,
+			entry.name.span,
+			"func 'main' must not be fallible",
+		)
 		ok = false
 	}
 	return ok
