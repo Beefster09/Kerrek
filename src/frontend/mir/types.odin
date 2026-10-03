@@ -1,8 +1,13 @@
 package mir
 
+import "../../common"
+
 Type :: union {
 	Primitive_Type,
-	Struct_Type,
+	^Struct_Type,
+	^Union_Type, // as in raw union i.e. all fields have the same address
+	^Array_Type, // as in fixed array
+	^Pointer_Type,
 }
 
 Primitive_Type :: enum {
@@ -23,4 +28,28 @@ Primitive_Type :: enum {
 	String,
 }
 
-Struct_Type :: struct {}
+Struct_Type :: struct {
+	name:   common.Identifier,
+	fields: []Field,
+}
+
+Union_Type :: struct {
+	name:     common.Identifier,
+	variants: []Field,
+}
+
+Field :: struct {
+	name: common.Identifier,
+	type: Type,
+}
+
+Array_Type :: struct {
+	name: common.Identifier,
+	elem: Type,
+	size: int,
+}
+
+Pointer_Type :: struct {
+	name: common.Identifier,
+	to:   Type,
+}

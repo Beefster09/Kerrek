@@ -1,16 +1,17 @@
 package mir
 
-Operation :: union {
+import "../../common"
+
+Instruction :: union {
 	Set,
 	Clear,
 	Convert,
 	Alloc,
 	Free,
-	NewRC,
-	IncRC,
-	DecRC,
+	New_RC,
+	Inc_RC,
+	Dec_RC,
 	Derive_Weak,
-	Pin_Weak,
 	Get_Addr,
 	Add,
 	Sub,
@@ -19,6 +20,7 @@ Operation :: union {
 	Rem,
 	Truncate,
 	Call,
+	Debug_Marker,
 }
 
 Set :: struct {
@@ -36,25 +38,22 @@ Convert :: struct {
 	type:  Type,
 }
 
-
 Alloc :: struct {
-	ptr:   Writable,
-	count: Operand,
-}
-
-Free :: struct {
-	ptr: Writable,
-}
-NewRC :: struct {
 	ptr:  Writable,
 	size: Operand,
 }
-
-
-IncRC :: struct {
+Free :: struct {
 	ptr: Writable,
 }
-DecRC :: struct {
+
+New_RC :: struct {
+	ptr:  Writable,
+	size: Operand,
+}
+Inc_RC :: struct {
+	ptr: Writable,
+}
+Dec_RC :: struct {
 	ptr: Writable,
 }
 
@@ -65,7 +64,7 @@ Derive_Weak :: struct {
 
 Get_Addr :: struct {
 	dest: Writable,
-	of:   Addressible,
+	of:   Operand,
 }
 
 Add :: struct {
@@ -73,35 +72,26 @@ Add :: struct {
 	lhs:  Operand,
 	rhs:  Operand,
 }
-
-
 Sub :: struct {
 	dest: Writable,
 	lhs:  Operand,
 	rhs:  Operand,
 }
-
-
 Mul :: struct {
 	dest: Writable,
 	lhs:  Operand,
 	rhs:  Operand,
 }
-
-
 Div :: struct {
 	dest: Writable,
 	lhs:  Operand,
 	rhs:  Operand,
 }
-
-
 Rem :: struct {
 	dest: Writable,
 	lhs:  Operand,
 	rhs:  Operand,
 }
-
 
 Truncate :: struct {
 	dest:  Writable,
@@ -112,4 +102,8 @@ Call :: struct {
 	dest: Writable,
 	func: Function,
 	args: []Operand,
+}
+
+Debug_Marker :: struct {
+	span: common.Span,
 }

@@ -12,11 +12,13 @@ An experimental new programming language that tries to make "correct" the path o
 
 The goal of Kerrek is to be a pragmatic balance of features that prioritizes correctness, runtime speed, compilation speed, and encoding programmer intent, all within a data-oriented and procedural paradigm.
 
-## Priorities: Correct, Pleasant, Fast
+## Priorities: Correct, Auditable, Explicit without Ceremony
 
 Kerrek is not on a mission to squash every possible instance of every bug or entire classes of bugs. It's mathematically impossible to guarantee any nontrivial property about a program, be it memory safety or anything else.
 
 Rather, the goal is provide tools that allow you to encode your assumptions and intent in ways that the compiler can reason about quickly and locally, all with the goal of allowing you to write fast code that you can be reasonably confident is correct. Provide tools that are *good enough* with *low overhead* instead of promising big things like zero-cost abstractions (there is no such thing) or absolute memory safety.
+
+Business bugs are more important than memory safety bugs. One of the core goals is to make semantics obvious enough that a technical non-programmer would be able to audit code and logic for correctness. For instance, an accountant could come in and check that tax is calculated and rounded correctly and wouldn't have to know anything about the finer points of language semantics.
 
 Kerrek is not going to prevent every bug, but I hope to make it easier and more pleasant to write code that is both correct and performant. This language and its runtime aren't going to be as fast as the optimally produced C program and it isn't trying to be. It just wants to help you not trip over yourself and your team while making programs safer to evolve.
 
@@ -54,7 +56,7 @@ I thought about this for a while, and as much as I wanted to make semicolons opt
 
 # A new language? Now? In the age of agentic coding?
 
-I know some people have gotten it in their head that we don't need new programming languages anymore because LLMs have "solved programming" or some nonsense like that. They think that English is the hot new programming language and that we can directly output machine code from a spec. I have a whole rant why that doesn't work, but I'll set it aside and acknowlege that this language has to offer something of value to AI-augmented coding to have any chance at success and adoption.
+I know some people have gotten it in their head that we don't need new programming languages anymore because LLMs have "solved programming" or some nonsense like that. They think that English is the hot new programming language and that we can directly output machine code from a spec. I have a whole rant why that doesn't work, but I'll set it aside and acknowlege that this language has to offer something of value to AI-augmented coding to have any chance at success and adoption in \<current year\>.
 
 While it's not one of my primary goals, much of what this language does would be beneficial to agentic coding because it allows you to state and verify your assumptions around when data can be mutated and accessed, when functions can be called, and other little things which help to ensure your code is correct. And it does so with the intent of being *fast* by ensuring algorithmic complexity of static checks is linear. That matters a lot for iteration speed.
 

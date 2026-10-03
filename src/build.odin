@@ -5,23 +5,31 @@ import "core:os"
 
 import "frontend/analysis"
 import "frontend/diagnostics"
-import "frontend/hir"
+import "frontend/lowering"
 import "frontend/resolver"
 
 build :: proc(entry_point: string, backend_id: string = "c99") {
+	resolver_alive := true
 	res: resolver.Resolver
 	resolver.init(&res)
-	defer resolver.destroy(&res)
+	defer if resolver_alive {
+		resolver.destroy(&res)
+	}
 
-	entry_pkg, err := resolver.load_package(&res, entry_point, file_as_package = true)
+	entry_pkg, load_err := resolver.load_package(&res, entry_point, file_as_package = true)
 	diagnostics.report_and_exit()
-	if err != .OK {
+	if load_err != .OK {
 		os.exit(1)
 	}
 
 	tu, sem_err := analysis.build_hir(&res, entry_pkg)
-
 	diagnostics.report_and_exit()
+	if sem_err != .OK {
+		os.exit(1)
+	}
 
+	resolver.destroy(&res)
+	resolver_alive = false
 
+	lowering.lower_func(tu.entry_point)
 }

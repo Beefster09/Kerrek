@@ -2,28 +2,28 @@ package mir
 
 import "../../common"
 
-TranslationUnit :: struct {
+
+// Modules aka translation units
+Module :: struct {
 	types:     []Type,
 	globals:   []Global_Var,
-	functions: []Function,
+	functions: []^Function,
 }
-
 
 Function :: struct {
 	id:        common.Symbol_ID,
 	name:      common.Identifier,
 	no_mangle: bool,
 	params:    []Parameter,
-	returns:   Type,
-	error:     Type,
+	ret:       Type,
+	err:       Type,
 	fallible:  bool,
 	locals:    []Local_Var,
-	blocks:    []Block,
+	blocks:    []^Block,
 }
-
 
 Block :: struct {
 	id:  int,
-	ops: []Operation,
+	ops: []Instruction,
 	end: Terminator,
 }

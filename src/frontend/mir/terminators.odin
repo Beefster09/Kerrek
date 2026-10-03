@@ -36,13 +36,11 @@ Branch_Equal :: struct {
 	ne_branch: int,
 }
 
-
 Weak_Ptr_Valid :: struct {
 	value:          Operand,
 	valid_branch:   int,
 	invalid_branch: int,
 }
-
 
 Switch :: struct {
 	value: Operand,

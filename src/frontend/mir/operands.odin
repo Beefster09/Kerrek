@@ -3,6 +3,13 @@ package mir
 import "../../common"
 
 
+Primitive_Operand :: union {
+	Constant,
+	Temporary,
+	Local_Var,
+	Global_Var,
+	Parameter,
+}
 Operand :: union {
 	Constant,
 	Temporary,
@@ -11,6 +18,7 @@ Operand :: union {
 	Parameter,
 	Field_Of,
 	Index_Of,
+	Dereferenced,
 }
 Writable :: union {
 	Discard,
@@ -19,10 +27,7 @@ Writable :: union {
 	Global_Var,
 	Field_Of,
 	Index_Of,
-}
-Addressible :: union {
-	Local_Var,
-	Global_Var,
+	Dereferenced,
 }
 
 
@@ -55,13 +60,13 @@ Parameter :: struct {
 
 
 Field_Of :: struct {
-	base:  ^Operand,
+	base:  Primitive_Operand,
 	field: common.Identifier,
 }
 
 Index_Of :: struct {
-	base: ^Operand,
-	elem: ^Operand,
+	base: Primitive_Operand,
+	elem: Primitive_Operand,
 }
 
 Constant :: union {
@@ -74,6 +79,6 @@ Constant :: union {
 }
 
 Dereferenced :: struct {
-	base:        Operand,
-	indirection: int,
+	base:   Primitive_Operand,
+	levels: int,
 }
