@@ -11,6 +11,7 @@ Type :: union {
 }
 
 Primitive_Type :: enum {
+	Int256,
 	Int128,
 	Int64,
 	Int32,

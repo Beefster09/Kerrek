@@ -13,7 +13,7 @@ import "../units"
 Translation_State :: struct {
 	symbol_resolver:  ^resolver.Resolver,
 	entry_package:    ^resolver.Package,
-	output:           ^hir.Translation_Unit,
+	output:           ^hir.Module,
 	hir_items:        HIR_Accumulator,
 	pending_bodies:   [dynamic]Pending_Function_Body,
 	processing_stack: [dynamic]resolver.Symbol, // used to detect and emit diagnostics for dependency cycles
@@ -40,7 +40,7 @@ init_state :: proc(
 	state: ^Translation_State,
 	res: ^resolver.Resolver,
 	entry_package: ^resolver.Package,
-	output: ^hir.Translation_Unit,
+	output: ^hir.Module,
 ) {
 	assert(state != nil)
 	assert(res != nil)

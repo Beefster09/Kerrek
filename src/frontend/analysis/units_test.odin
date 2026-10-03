@@ -29,7 +29,7 @@ test_invalid_compound_units_fail :: proc(t: ^testing.T) {
 	resolver.init(&res)
 	defer resolver.destroy(&res)
 	pkg: resolver.Package
-	tu: hir.Translation_Unit
+	tu: hir.Module
 	hir.init(&tu)
 	defer hir.destroy(&tu)
 	ts: Translation_State

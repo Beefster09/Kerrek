@@ -100,7 +100,7 @@ Truncate :: struct {
 
 Call :: struct {
 	dest: Writable,
-	func: Function,
+	func: ^Function,
 	args: []Operand,
 }
 

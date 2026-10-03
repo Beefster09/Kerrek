@@ -18,8 +18,12 @@ build_release() {
 	odin build src/ -out=kerrek -show-timings -o:speed "${VET_OPTIONS[@]}"
 }
 
+run_tests() {
+	odin test src/ -all-packages
+}
+
 usage() {
-	printf 'Usage: %s [debug|debug-run|release] [program arguments...]\n' "$0" >&2
+	printf 'Usage: %s [debug|debug-run|release|test] [program arguments...]\n' "$0" >&2
 }
 
 command="${1:-debug}"
@@ -52,6 +56,13 @@ case "$command" in
 			exit 2
 		fi
 		build_release
+		;;
+	test)
+		if (($# > 0)); then
+			usage
+			exit 2
+		fi
+		run_tests
 		;;
 	*)
 		usage

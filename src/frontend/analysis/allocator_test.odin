@@ -17,7 +17,7 @@ test_translation_state_allocator_ownership :: proc(t: ^testing.T) {
 	resolver.init(&res)
 	defer resolver.destroy(&res)
 	pkg: resolver.Package
-	tu: hir.Translation_Unit
+	tu: hir.Module
 	hir.init(&tu)
 	defer hir.destroy(&tu)
 	ts: Translation_State
@@ -53,7 +53,7 @@ test_output_values_copy_owned_data :: proc(t: ^testing.T) {
 	defer mem.dynamic_arena_destroy(&source_arena)
 	source_allocator := mem.dynamic_arena_allocator(&source_arena)
 
-	tu: hir.Translation_Unit
+	tu: hir.Module
 	hir.init(&tu)
 	defer hir.destroy(&tu)
 	ts := Translation_State{output = &tu}

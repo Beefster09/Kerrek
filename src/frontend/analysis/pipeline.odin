@@ -20,7 +20,7 @@ build_hir :: proc(
 	res: ^resolver.Resolver,
 	entry_package: ^resolver.Package,
 ) -> (
-	output: ^hir.Translation_Unit,
+	output: ^hir.Module,
 	ret_err: Translation_Error,
 ) {
 	assert(res != nil)
@@ -42,7 +42,7 @@ build_hir :: proc(
 	defer mem.dynamic_arena_destroy(&arena)
 	context.temp_allocator = mem.dynamic_arena_allocator(&arena)
 
-	tu := new(hir.Translation_Unit)
+	tu := new(hir.Module)
 	hir.init(tu)
 	defer if ret_err != .OK {
 		hir.destroy(tu)

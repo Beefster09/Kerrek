@@ -37,6 +37,7 @@ Func_Flag :: enum {
 	Fallible,
 	Pure,
 	Diverges,
+	No_Mangle,
 }
 
 

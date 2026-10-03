@@ -13,7 +13,7 @@ Identifier :: common.Identifier
 Name :: common.Name
 
 
-Translation_Unit :: struct {
+Module :: struct {
 	entry_point:  ^Func_Definition,
 	types:        []Type_Definition,
 	funcs:        []^Func_Definition,
@@ -25,12 +25,12 @@ Translation_Unit :: struct {
 	allocator:    runtime.Allocator,
 }
 
-init :: proc(tu: ^Translation_Unit) {
+init :: proc(tu: ^Module) {
 	mem.dynamic_arena_init(&tu.arena)
 	tu.allocator = mem.dynamic_arena_allocator(&tu.arena)
 }
 
-destroy :: proc(tu: ^Translation_Unit) {
+destroy :: proc(tu: ^Module) {
 	mem.dynamic_arena_destroy(&tu.arena)
 	tu^ = {}
 }
