@@ -50,6 +50,5 @@ Array_Type :: struct {
 }
 
 Pointer_Type :: struct {
-	name: common.Identifier,
-	to:   Type,
+	to: Type,
 }
