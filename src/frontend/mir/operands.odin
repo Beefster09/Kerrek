@@ -65,9 +65,9 @@ Index_Of :: struct {
 }
 
 Constant :: union {
-	[4]i64,
 	i128,
 	u128,
+	[4]i64, // fake i256
 	f64,
 	bool,
 	string,
