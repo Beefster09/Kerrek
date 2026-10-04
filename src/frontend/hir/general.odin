@@ -125,3 +125,8 @@ Capability_Any_Of :: struct {
 Poison :: struct {
 	span: Span,
 }
+
+
+span :: proc {
+	statement_span,
+}

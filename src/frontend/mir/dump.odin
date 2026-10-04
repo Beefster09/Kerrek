@@ -93,7 +93,7 @@ dump_instruction :: proc(w: io.Writer, instruction: Instruction) {
 	case Set:
 		io.write_string(w, "set ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = ")
+		io.write_string(w, ", ")
 		dump_operand(w, instruction.value)
 	case Clear:
 		io.write_string(w, "clear ")
@@ -101,7 +101,7 @@ dump_instruction :: proc(w: io.Writer, instruction: Instruction) {
 	case Convert:
 		io.write_string(w, "conv ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = ")
+		io.write_string(w, ", ")
 		dump_operand(w, instruction.value)
 		io.write_string(w, ", ")
 		dump_type(w, instruction.type)
@@ -127,52 +127,52 @@ dump_instruction :: proc(w: io.Writer, instruction: Instruction) {
 	case Derive_Weak:
 		io.write_string(w, "drvwk ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = ")
+		io.write_string(w, ", ")
 		dump_operand(w, instruction.ptr)
 	case Get_Addr:
 		io.write_string(w, "addr ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = ")
+		io.write_string(w, ", ")
 		dump_operand(w, instruction.of)
 	case Add:
 		io.write_string(w, "add ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = ")
+		io.write_string(w, ", ")
 		dump_operand(w, instruction.lhs)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.rhs)
 	case Sub:
 		io.write_string(w, "sub ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = ")
+		io.write_string(w, ", ")
 		dump_operand(w, instruction.lhs)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.rhs)
 	case Mul:
 		io.write_string(w, "mul ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = ")
+		io.write_string(w, ", ")
 		dump_operand(w, instruction.lhs)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.rhs)
 	case Div:
 		io.write_string(w, "div ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = ")
+		io.write_string(w, ", ")
 		dump_operand(w, instruction.lhs)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.rhs)
 	case Rem:
 		io.write_string(w, "rem ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = ")
+		io.write_string(w, ", ")
 		dump_operand(w, instruction.lhs)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.rhs)
 	case Truncate:
 		io.write_string(w, "trunc ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = ")
+		io.write_string(w, ", ")
 		dump_operand(w, instruction.value)
 	case Call:
 		io.write_string(w, "call ")

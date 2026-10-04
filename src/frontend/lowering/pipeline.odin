@@ -48,6 +48,7 @@ hir_to_mir :: proc(h: ^hir.Module) -> mir.Module {
 
 Translation_Context :: struct {
 	type_cache: map[common.Symbol_ID]mir.Type,
+	debug:      bool,
 	arena:      mem.Dynamic_Arena,
 	allocator:  runtime.Allocator,
 }

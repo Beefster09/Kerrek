@@ -40,3 +40,21 @@ Block :: struct {
 	span: Span,
 	body: []Statement,
 }
+
+statement_span :: proc "contextless" (stmt: Statement) -> Span {
+	switch stmt in stmt {
+	case ^Local_Variable:
+		return stmt.span
+	case ^Return_Statement:
+		return stmt.span
+	case ^Expr_Statement:
+		return stmt.span
+	case ^Assign_Statement:
+		return stmt.span
+	case ^Block:
+		return stmt.span
+	case ^Poison:
+		return stmt.span
+	}
+	return {}
+}

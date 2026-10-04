@@ -1,5 +1,6 @@
 package lowering
 
+import "base:intrinsics"
 import "core:fmt"
 import "core:math/big"
 import "core:reflect"
@@ -152,9 +153,12 @@ _end_block :: proc(fb: ^Func_Builder, end: mir.Terminator, to_block: mir.Block_I
 
 _lower_block :: proc(fb: ^Func_Builder, src: ^hir.Block) {
 	_new_block(fb)
-	// TODO: defers
+	// TODO: defers, pointer cleanup
 
 	for stmt in src.body {
+		if fb.ctx.debug {
+			_append_ops(fb, mir.Debug_Marker{hir.span(stmt)})
+		}
 		switch stmt in stmt {
 		case ^hir.Local_Variable:
 			var := _new_var(fb, stmt)
@@ -183,6 +187,7 @@ _lower_expression :: proc(fb: ^Func_Builder, expr: hir.Expression) -> mir.Operan
 	switch node in expr {
 	case ^hir.Const_Expr:
 		return _lower_constant(fb, node)
+
 	case ^hir.Var_Expr:
 		#partial switch referenced in node.references {
 		case ^hir.Local_Variable:
@@ -194,65 +199,74 @@ _lower_expression :: proc(fb: ^Func_Builder, expr: hir.Expression) -> mir.Operan
 			"mir lowering does not support variables referencing %T",
 			reflect.get_union_variant(node.references),
 		)
+
 	case ^hir.Binop_Expr:
 		return _lower_binop(fb, node^)
+
 	case ^hir.Unit_Reinterpret_Expr:
 		return _lower_expression(fb, node.expr)
-	case ^hir.Field_Access_Expr,
-	     ^hir.Enum_Value,
-	     ^hir.Move_Expr,
-	     ^hir.Condition_Expr,
-	     ^hir.Unary_Expr,
-	     ^hir.Address_Of_Expr,
-	     ^hir.Dereference_Expr,
-	     ^hir.Cast_Expr,
-	     ^hir.Unit_Conversion_Expr,
-	     ^hir.Index_Expr,
-	     ^hir.Func_Call_Expr,
-	     ^hir.Static_Func_Expr,
-	     hir.Type:
+
+	case ^hir.Cast_Expr:
+		expr := _lower_expression(fb, node.expr)
+		type, _, ok := hir.type_and_unit(node.expr)
+		assert(ok)
+		dest := _new_tmp(fb, type)
+		_append_ops(fb, mir.Convert{dest, expr, lower_type(fb.ctx, node.to)})
+		return mir.Temp{id = dest.id}
+
+	case ^hir.Field_Access_Expr:
+		switch expr in _lower_expression(fb, node.base) {
+		case mir.Constant:
+			panic("cannot take a field of a MIR constant")
+		case mir.Temp:
+			return mir.Field_Of{base = expr, field = node.field}
+		case mir.Local_Var:
+			return mir.Field_Of{base = expr, field = node.field}
+		case mir.Global_Var:
+			return mir.Field_Of{base = expr, field = node.field}
+		case mir.Parameter:
+			return mir.Field_Of{base = expr, field = node.field}
+		case mir.Field_Of:
+		case mir.Index_Of:
+		case mir.Dereferenced:
+		}
+
+	case ^hir.Enum_Value:
+	case ^hir.Move_Expr:
+		// TODO: this factors into escape analysis, but that's it
+		return _lower_expression(fb, node.expr)
+
+	case ^hir.Func_Call_Expr:
+	// TODO: need distinction between static call and dynamic call, but it would go something like this:
+	/*
+		args := make([]mir.Operand, len(node.args))
+		for src_arg, i in node.args {
+			args[i] = _lower_expression(fb, src_arg)
+		}
+		dest: mir.Writable = _new_tmp(fb, node.type) if node.type != nil else mir.Discard{}
+		_append_ops(fb, mir.Call{dest, node.callee, args})
+		return mir.Temp{id = dest.id}
+		*/
+
+	case ^hir.Condition_Expr:
+	case ^hir.Unary_Expr:
+	case ^hir.Address_Of_Expr:
+	case ^hir.Dereference_Expr:
+	case ^hir.Unit_Conversion_Expr:
+	case ^hir.Index_Expr:
+	case ^hir.Static_Func_Expr:
+	case hir.Type:
 	case ^hir.Poison:
 		panic("poison expression encountered during MIR lowering")
 	}
-	fmt.panicf("mir lowering not yet implemented for %T", reflect.get_union_variant(expr))
+
+	fmt.panicf("MIR lowering not yet implemented for %T", reflect.get_union_variant(expr))
 }
 
 _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Operand {
 	switch value in constant.value {
 	case exact.Rat:
-		if analysis.is_integer(constant.type) {
-			whole := exact.rat_floordiv(value, exact.RAT_ONE, context.temp_allocator).numerator
-			unsigned := false
-			#partial switch typ in constant.type {
-			case hir.Primitive_Type:
-				#partial switch typ {
-				case .UInt128, .UInt64, .UInt32, .UInt16, .UInt8:
-					unsigned = true
-				}
-			}
-
-			switch integer in whole {
-			case i128:
-				if unsigned {
-					assert(integer >= 0)
-					return mir.Constant(u128(integer))
-				}
-				return mir.Constant(integer)
-			case ^big.Int:
-				if unsigned {
-					result, err := big.int_get(integer, u128, context.temp_allocator)
-					assert(err == nil)
-					return mir.Constant(result)
-				}
-				result, err := big.int_get(integer, i128, context.temp_allocator)
-				assert(err == nil)
-				return mir.Constant(result)
-			}
-		}
-
-		if analysis.is_decimal(constant.type) || analysis.is_binfloat(constant.type) {
-			// FIXME: decimal is currently materialized as f64, which is wrong
-			// Decimals should be materialized into i128 if all the digits fit, or [4]i64 otherwise
+		if analysis.is_binfloat(constant.type) {
 			numerator: f64
 			switch integer in value.numerator {
 			case i128:
@@ -273,6 +287,81 @@ _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Ope
 				assert(err == nil)
 			}
 			return mir.Constant(numerator / denominator)
+		}
+
+		if analysis.is_integer(constant.type) {
+			assert(exact.is_one(value.denominator))
+			prim_type := analysis.underlying_type(constant.type).(hir.Type).(hir.Primitive_Type)
+			unsigned := analysis.PRIMITIVE_TYPE_METADATA[prim_type].signedness != .Signed
+
+			switch integer in value.numerator {
+			case i128:
+				if unsigned {
+					assert(integer >= 0)
+					return mir.Constant(u128(integer))
+				} else {
+					return mir.Constant(integer)
+				}
+			case ^big.Int:
+				if unsigned {
+					result, err := big.int_get(integer, u128, context.temp_allocator)
+					assert(err == nil)
+					return mir.Constant(result)
+				} else {
+					result, err := big.int_get(integer, i128, context.temp_allocator)
+					assert(err == nil)
+					return mir.Constant(result)
+				}
+			}
+		}
+
+		if dec_type, ok := constant.type.(hir.Fixed_Decimal); ok {
+			scale_power_of_ten := exact.Int(1)
+			if dec_type.scale >= 0 {
+				scale_power_of_ten = exact.int_pow_int(
+					exact.Int(10),
+					uint(dec_type.scale),
+					context.temp_allocator,
+				)
+			}
+
+			result := exact.div(
+				exact.mul(value.numerator, scale_power_of_ten, context.temp_allocator),
+				value.denominator,
+				fb.ctx.allocator,
+			)
+
+			if dec_type.scale < 0 {
+				result = exact.div(
+					result,
+					exact.int_pow_int(exact.Int(10), uint(dec_type.scale), context.temp_allocator),
+				)
+			}
+
+			switch result in result {
+			case i128:
+				return mir.Constant(result)
+			case ^big.Int:
+				bits, err := big.int_log(result, 2, context.temp_allocator)
+				assert(err == nil && bits <= 255)
+				u256_result: [4]big.DIGIT
+				copy(u256_result[:], result.digit[:])
+				if result.sign == .Negative {
+					// do two's complement over multiple legs
+					overflow_one := true
+					#unroll for i in 0 ..< 4 {
+						u256_result[i] = ~u256_result[i]
+						if overflow_one {
+							u256_result[i], overflow_one = intrinsics.overflow_add(
+								u256_result[i],
+								1,
+							)
+						}
+					}
+				}
+
+				return mir.Constant(transmute([4]i64)u256_result)
+			}
 		}
 	case rune:
 		return mir.Constant(i128(value))

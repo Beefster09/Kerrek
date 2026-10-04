@@ -6,6 +6,7 @@ import "core:os"
 import "frontend/analysis"
 import "frontend/diagnostics"
 import "frontend/lowering"
+import "frontend/mir"
 import "frontend/resolver"
 
 build :: proc(entry_point: string, backend_id: string = "c99") {
@@ -31,5 +32,13 @@ build :: proc(entry_point: string, backend_id: string = "c99") {
 	resolver.destroy(&res)
 	resolver_alive = false
 
-	lowering.hir_to_mir(tu)
+	mod := lowering.hir_to_mir(tu)
+	for func in mod.functions {
+		stdout := os.to_writer(os.stdout)
+		fmt.println()
+		fmt.printfln("; === func %s ===", func.name)
+		for block in func.blocks {
+			mir.dump_block(stdout, block)
+		}
+	}
 }

@@ -312,6 +312,21 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 	return {}, false
 }
 
+underlying_type :: proc(t: Comptime_Type) -> Comptime_Type {
+	switch comptime_type in t {
+	case Flexible_Type:
+		return comptime_type
+	case hir.Type:
+		#partial switch concrete in comptime_type {
+		case ^hir.Distinct_Type:
+			return underlying_type(concrete.underlying)
+		case ^hir.Tagged_Type:
+			return underlying_type(concrete.base)
+		}
+	}
+	return t
+}
+
 types_equal :: proc(a, b: Comptime_Type) -> bool {
 	switch a in a {
 	case Flexible_Type:
