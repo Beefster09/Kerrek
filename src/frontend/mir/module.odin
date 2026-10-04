@@ -8,7 +8,7 @@ import "../hir"
 Module :: struct {
 	types:     []Type,
 	globals:   []Global_Var_Def,
-	functions: []^Function,
+	functions: []Function,
 }
 
 Function :: struct {
@@ -22,8 +22,9 @@ Function :: struct {
 	blocks: []Block,
 }
 
+Block_ID :: distinct int
 Block :: struct {
-	id:  int,
+	id:  Block_ID,
 	ops: []Instruction,
 	end: Terminator,
 }

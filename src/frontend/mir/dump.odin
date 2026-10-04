@@ -83,9 +83,9 @@ dump_terminator :: proc(w: io.Writer, terminator: Terminator) {
 	}
 }
 
-dump_block_label :: proc(w: io.Writer, id: int) {
+dump_block_label :: proc(w: io.Writer, id: Block_ID) {
 	io.write_rune(w, 'b')
-	io.write_int(w, id)
+	io.write_int(w, int(id))
 }
 
 dump_instruction :: proc(w: io.Writer, instruction: Instruction) {

@@ -11,35 +11,34 @@ Terminator :: union {
 	Fail,
 }
 
-
 Jump :: struct {
-	next: int,
+	next: Block_ID,
 }
 
 Branch_Zero :: struct {
 	value:     Operand,
-	z_branch:  int,
-	nz_branch: int,
+	z_branch:  Block_ID,
+	nz_branch: Block_ID,
 }
 
 Branch_Less :: struct {
 	lhs:       Operand,
 	rhs:       Operand,
-	lt_branch: int,
-	ge_branch: int,
+	lt_branch: Block_ID,
+	ge_branch: Block_ID,
 }
 
 Branch_Equal :: struct {
 	lhs:       Operand,
 	rhs:       Operand,
-	eq_branch: int,
-	ne_branch: int,
+	eq_branch: Block_ID,
+	ne_branch: Block_ID,
 }
 
 Weak_Ptr_Valid :: struct {
 	value:          Operand,
-	valid_branch:   int,
-	invalid_branch: int,
+	valid_branch:   Block_ID,
+	invalid_branch: Block_ID,
 }
 
 Switch :: struct {
@@ -49,7 +48,7 @@ Switch :: struct {
 
 Switch_Case :: struct {
 	value:  Constant,
-	branch: int,
+	branch: Block_ID,
 }
 
 Return :: struct {

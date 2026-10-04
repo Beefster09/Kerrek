@@ -31,5 +31,5 @@ build :: proc(entry_point: string, backend_id: string = "c99") {
 	resolver.destroy(&res)
 	resolver_alive = false
 
-	lowering.lower_func(tu.entry_point)
+	lowering.hir_to_mir(tu)
 }
