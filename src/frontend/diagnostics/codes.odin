@@ -87,6 +87,8 @@ Code :: enum {
 	Unbound_Global_Variable,
 	// A flexible value cannot be assigned a concrete type in this context.
 	Cannot_Infer_Type,
+	// A flexible value cannot be materialized to the target concrete type.
+	Cannot_Materialize_Value,
 	// A name does not denote a unit.
 	Invalid_Unit_Name,
 	// A unit exponent cannot be represented by the compiler.
@@ -226,6 +228,7 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Missing_Variable_Type = {origin = .Semantic, default_level = .Error},
 	.Unbound_Global_Variable = {origin = .Semantic, default_level = .Error},
 	.Cannot_Infer_Type = {origin = .Semantic, default_level = .Error},
+	.Cannot_Materialize_Value = {origin = .Semantic, default_level = .Error},
 	.Invalid_Unit_Name = {origin = .Semantic, default_level = .Error},
 	.Unit_Exponent_Not_Representable = {origin = .Semantic, default_level = .Error},
 	.Invalid_Unit_Reinterpretation = {origin = .Semantic, default_level = .Error},

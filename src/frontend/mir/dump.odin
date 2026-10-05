@@ -264,10 +264,10 @@ dump_primitive_operand :: proc(w: io.Writer, operand: Primitive_Operand) {
 
 dump_constant :: proc(w: io.Writer, constant: Constant) {
 	switch constant in constant {
-	case [4]i64:
+	case i256:
 		io.write_string(w, "i256(")
 		{
-			value := transmute([4]u64)constant
+			value := cast([4]u64)constant
 			i: big.Int
 			if value[3] & 0x8000_0000_0000_0000 != 0 {
 				i.sign = .Negative
@@ -291,7 +291,7 @@ dump_constant :: proc(w: io.Writer, constant: Constant) {
 				cap = 4,
 				allocator = runtime.nil_allocator(),
 			}
-			digits: [80]u8 // 77 digits is enough, but 80 looks nicer
+			digits: [78]u8
 			n, err := big.int_itoa_raw(&i, 10, digits[:])
 			if err == nil {
 				io.write_string(w, transmute(string)digits[:n])
@@ -304,13 +304,53 @@ dump_constant :: proc(w: io.Writer, constant: Constant) {
 		io.write_string(w, "i128(")
 		io.write_i128(w, constant)
 		io.write_rune(w, ')')
+	case i64:
+		io.write_string(w, "i64(")
+		io.write_i64(w, constant)
+		io.write_rune(w, ')')
+	case i32:
+		io.write_string(w, "i32(")
+		io.write_i64(w, i64(constant))
+		io.write_rune(w, ')')
+	case i16:
+		io.write_string(w, "i16(")
+		io.write_i64(w, i64(constant))
+		io.write_rune(w, ')')
+	case i8:
+		io.write_string(w, "i8(")
+		io.write_i64(w, i64(constant))
+		io.write_rune(w, ')')
 	case u128:
 		io.write_string(w, "u128(")
 		io.write_u128(w, constant)
 		io.write_rune(w, ')')
+	case u64:
+		io.write_string(w, "u64(")
+		io.write_u64(w, constant)
+		io.write_rune(w, ')')
+	case u32:
+		io.write_string(w, "u32(")
+		io.write_u64(w, u64(constant))
+		io.write_rune(w, ')')
+	case u16:
+		io.write_string(w, "u16(")
+		io.write_u64(w, u64(constant))
+		io.write_rune(w, ')')
+	case u8:
+		io.write_string(w, "u8(")
+		io.write_u64(w, u64(constant))
+		io.write_rune(w, ')')
 	case f64:
 		io.write_string(w, "f64(")
 		io.write_f64(w, constant)
+		io.write_rune(w, ')')
+	case f32:
+		io.write_string(w, "f32(")
+		io.write_f32(w, constant)
+		io.write_rune(w, ')')
+	case f16:
+		io.write_string(w, "f16(")
+		io.write_f16(w, constant)
 		io.write_rune(w, ')')
 	case bool:
 		if constant {

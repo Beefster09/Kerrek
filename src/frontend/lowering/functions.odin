@@ -266,110 +266,16 @@ _lower_expression :: proc(fb: ^Func_Builder, expr: hir.Expression) -> mir.Operan
 _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Operand {
 	switch value in constant.value {
 	case exact.Rat:
-		if analysis.is_binfloat(constant.type) {
-			fmt.println("binfloat", reflect.get_union_variant(constant.type), value)
-			numerator: f64
-			switch integer in value.numerator {
-			case i128:
-				numerator = f64(integer)
-			case ^big.Int:
-				err: big.Error
-				numerator, err = big.int_get_float(integer, context.temp_allocator)
-				assert(err == nil)
-			}
-
-			denominator: f64
-			switch integer in value.denominator {
-			case i128:
-				denominator = f64(integer)
-			case ^big.Int:
-				err: big.Error
-				denominator, err = big.int_get_float(integer, context.temp_allocator)
-				assert(err == nil)
-			}
-			return mir.Constant(numerator / denominator)
-		}
-
-		if analysis.is_integer(constant.type) {
-			fmt.println("integer", reflect.get_union_variant(constant.type), value)
-			assert(exact.is_one(value.denominator))
-			prim_type := analysis.underlying_type(constant.type).(hir.Type).(hir.Primitive_Type)
-			unsigned := analysis.PRIMITIVE_TYPE_METADATA[prim_type].signedness != .Signed
-
-			switch integer in value.numerator {
-			case i128:
-				if unsigned {
-					assert(integer >= 0)
-					return mir.Constant(u128(integer))
-				} else {
-					return mir.Constant(integer)
-				}
-			case ^big.Int:
-				if unsigned {
-					result, err := big.int_get(integer, u128, context.temp_allocator)
-					assert(err == nil)
-					return mir.Constant(result)
-				} else {
-					result, err := big.int_get(integer, i128, context.temp_allocator)
-					assert(err == nil)
-					return mir.Constant(result)
-				}
-			}
-		}
-
-		if dec_type, ok := constant.type.(hir.Fixed_Decimal); ok {
-			fmt.println("decimal", reflect.get_union_variant(constant.type), value)
-			scale_power_of_ten := exact.Int(1)
-			if dec_type.scale >= 0 {
-				scale_power_of_ten = exact.int_pow_int(
-					exact.Int(10),
-					uint(dec_type.scale),
-					context.temp_allocator,
-				)
-			}
-
-			result := exact.div(
-				exact.mul(value.numerator, scale_power_of_ten, context.temp_allocator),
-				value.denominator,
-				fb.ctx.allocator,
-			)
-
-			if dec_type.scale < 0 {
-				result = exact.div(
-					result,
-					exact.int_pow_int(exact.Int(10), uint(dec_type.scale), context.temp_allocator),
-				)
-			}
-
-			switch result in result {
-			case i128:
-				return mir.Constant(result)
-			case ^big.Int:
-				bits, err := big.int_log(result, 2, context.temp_allocator)
-				assert(err == nil && bits <= 255)
-				u256_result: [4]big.DIGIT
-				copy(u256_result[:], result.digit[:])
-				if result.sign == .Negative {
-					// do two's complement over multiple legs
-					overflow_one := true
-					#unroll for i in 0 ..< 4 {
-						u256_result[i] = ~u256_result[i]
-						if overflow_one {
-							u256_result[i], overflow_one = intrinsics.overflow_add(
-								u256_result[i],
-								1,
-							)
-						}
-					}
-				}
-
-				return mir.Constant(transmute([4]i64)u256_result)
-			}
-		}
+		return _materialize_number(fb, value, constant.type)
 	case rune:
-		return mir.Constant(i128(value))
+		if primitive, ok := analysis.underlying_type(
+			   constant.type,
+		   ).(hir.Type).(hir.Primitive_Type); ok && primitive == .Byte {
+			return mir.Constant(u8(value))
+		}
+		return mir.Constant(u32(value))
 	case byte:
-		return mir.Constant(u128(value))
+		return mir.Constant(u8(value))
 	case string:
 		return mir.Constant(value)
 	case bool:
@@ -381,14 +287,25 @@ _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Ope
 		if analysis.is_pointer(constant.type) {
 			return mir.Constant(nil)
 		}
-		if analysis.is_binfloat(constant.type) || analysis.is_decimal(constant.type) {
-			return mir.Constant(f64(0))
-		}
 		if analysis.is_boolean(constant.type) {
 			return mir.Constant(false)
 		}
-		if analysis.is_integer(constant.type) {
-			return mir.Constant(i128(0))
+		if primitive, ok := analysis.underlying_type(
+			   constant.type,
+		   ).(hir.Type).(hir.Primitive_Type); ok {
+			#partial switch primitive {
+			case .Byte:
+				return mir.Constant(u8(0))
+			case .Rune:
+				return mir.Constant(u32(0))
+			}
+		}
+		_, fixed_decimal := constant.type.(hir.Fixed_Decimal)
+		if fixed_decimal ||
+		   analysis.is_binfloat(constant.type) ||
+		   analysis.is_decimal(constant.type) ||
+		   analysis.is_integer(constant.type) {
+			return _materialize_number(fb, exact.RAT_ZERO, constant.type)
 		}
 	}
 	fmt.panicf(
@@ -396,6 +313,128 @@ _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Ope
 		reflect.get_union_variant(constant.value),
 		constant.type,
 	)
+}
+
+_materialize_number :: proc(fb: ^Func_Builder, value: exact.Rat, type: hir.Type) -> mir.Constant {
+	if dec_type, ok := type.(hir.Fixed_Decimal); ok {
+		factor := exact.int_pow_int(
+			exact.Int(10),
+			uint(abs(int(dec_type.scale))),
+			context.temp_allocator,
+		)
+		result: exact.Int
+		if dec_type.scale >= 0 {
+			result = exact.div(
+				exact.mul(value.numerator, factor, context.temp_allocator),
+				value.denominator,
+				fb.ctx.allocator,
+			)
+		} else {
+			result = exact.div(
+				value.numerator,
+				exact.mul(value.denominator, factor, context.temp_allocator),
+				fb.ctx.allocator,
+			)
+		}
+
+		switch integer in result {
+		case i128:
+			if i128(min(i64)) <= integer && integer <= i128(max(i64)) {
+				return i64(integer)
+			} else {
+				return integer
+			}
+		case ^big.Int:
+			bits, err := big.int_log(integer, 2, context.temp_allocator)
+			assert(err == nil && bits <= 255)
+			result: [4]big.DIGIT
+			copy(result[:], integer.digit[:])
+			if integer.sign == .Negative {
+				overflow_one := true
+				#unroll for i in 0 ..< 4 {
+					result[i] = ~result[i]
+					if overflow_one {
+						result[i], overflow_one = intrinsics.overflow_add(result[i], 1)
+					}
+				}
+			}
+			return transmute(mir.i256)result
+		}
+		unreachable()
+	}
+
+	if analysis.is_binfloat(type) {
+		prim_type := analysis.underlying_type(type).(hir.Type).(hir.Primitive_Type)
+		result := _exact_int_to_f64(value.numerator) / _exact_int_to_f64(value.denominator)
+		#partial switch prim_type {
+		case .Bin64:
+			return mir.Constant(f64(result))
+		case .Bin32:
+			return mir.Constant(f32(result))
+		case .Bin16:
+			return mir.Constant(f16(result))
+		}
+		unreachable()
+	}
+
+	if analysis.is_integer(type) {
+		assert(exact.is_one(value.denominator))
+		prim_type := analysis.underlying_type(type).(hir.Type).(hir.Primitive_Type)
+		#partial switch prim_type {
+		case .Int128:
+			return mir.Constant(_exact_int_get(value.numerator, i128))
+		case .Int64:
+			return mir.Constant(_exact_int_get(value.numerator, i64))
+		case .Int32:
+			return mir.Constant(_exact_int_get(value.numerator, i32))
+		case .Int16:
+			return mir.Constant(_exact_int_get(value.numerator, i16))
+		case .Int8:
+			return mir.Constant(_exact_int_get(value.numerator, i8))
+		case .UInt128:
+			return mir.Constant(_exact_int_get(value.numerator, u128))
+		case .UInt64:
+			return mir.Constant(_exact_int_get(value.numerator, u64))
+		case .UInt32:
+			return mir.Constant(_exact_int_get(value.numerator, u32))
+		case .UInt16:
+			return mir.Constant(_exact_int_get(value.numerator, u16))
+		case .UInt8:
+			return mir.Constant(_exact_int_get(value.numerator, u8))
+		}
+		unreachable()
+	}
+
+	primitive := analysis.underlying_type(type).(hir.Type).(hir.Primitive_Type)
+	if primitive == .Byte {
+		assert(exact.is_one(value.denominator))
+		return mir.Constant(_exact_int_get(value.numerator, u8))
+	}
+	unreachable()
+}
+
+_exact_int_get :: proc(value: exact.Int, $T: typeid) -> T {
+	switch integer in value {
+	case i128:
+		return T(integer)
+	case ^big.Int:
+		result, err := big.int_get(integer, T, context.temp_allocator)
+		assert(err == nil)
+		return result
+	}
+	unreachable()
+}
+
+_exact_int_to_f64 :: proc(value: exact.Int) -> f64 {
+	switch integer in value {
+	case i128:
+		return f64(integer)
+	case ^big.Int:
+		result, err := big.int_get_float(integer, context.temp_allocator)
+		assert(err == nil)
+		return result
+	}
+	unreachable()
 }
 
 _lower_binop :: proc(fb: ^Func_Builder, binop: hir.Binop_Expr) -> mir.Operand {
@@ -453,7 +492,7 @@ _lower_binop :: proc(fb: ^Func_Builder, binop: hir.Binop_Expr) -> mir.Operand {
 		_append_ops(fb, mir.Add{dest = result, lhs = result, rhs = rhs})
 		after := _new_block(fb)
 
-		zero := mir.Constant(i128(0))
+		zero := _materialize_number(fb, exact.RAT_ZERO, binop.type)
 		_end_block(
 			fb,
 			mir.Branch_Less{lhs = result, rhs = zero, lt_branch = negative, ge_branch = after},

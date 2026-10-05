@@ -384,7 +384,7 @@ can_materialize_value :: proc(target: hir.Type, value: resolver.Comptime_Value) 
 	case common.Untyped_Zero:
 		return is_zeroable(target)
 	case exact.Rat:
-		return _can_materialize_number(target, concrete)
+		return _can_materialize_number(target, concrete, value.type)
 	case rune:
 		if primitive, ok := target.(hir.Primitive_Type); ok && primitive == .Byte {
 			return concrete >= 0 && concrete <= 255
@@ -396,7 +396,7 @@ can_materialize_value :: proc(target: hir.Type, value: resolver.Comptime_Value) 
 }
 
 
-_can_materialize_number :: proc(target: hir.Type, value: exact.Rat) -> bool {
+_can_materialize_number :: proc(target: hir.Type, value: exact.Rat, type: Comptime_Type) -> bool {
 	value := exact.reduce(value)
 	#partial switch concrete in target {
 	case hir.Fixed_Decimal:
@@ -415,6 +415,9 @@ _can_materialize_number :: proc(target: hir.Type, value: exact.Rat) -> bool {
 
 		magnitude := scaled.numerator
 		if !exact.is_one(scaled.denominator) {
+			if flex, ok := type.(resolver.Flexible_Type); ok && flex.affinity != .Rational {
+				return false
+			}
 			// lossy is ok; maybe this should trigger a warning?
 			magnitude = exact.div(scaled.numerator, scaled.denominator, context.temp_allocator)
 		}

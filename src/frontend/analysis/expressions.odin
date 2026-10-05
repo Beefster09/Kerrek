@@ -45,9 +45,9 @@ materialize_value :: proc(
 	}
 	if !can_materialize_value(real_type, value) {
 		diagnostics.emit(
-			.Cannot_Infer_Type,
+			.Cannot_Materialize_Value,
 			span,
-			"this compile-time value cannot be represented as %s",
+			"this value cannot be represented as a(n) %s",
 			real_type,
 		)
 		return nil, false

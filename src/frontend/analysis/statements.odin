@@ -207,7 +207,7 @@ _build_var :: proc(
 			unit = hir.Indeterminate_Unit.No_Unit
 		}
 	} else if expr != nil {
-		built, ok := build_expr(ts, expr, scope)
+		built, ok := build_expr(ts, expr, scope, var_type)
 		if !ok {
 			return nil
 		}
@@ -226,10 +226,12 @@ _build_var :: proc(
 			return nil
 		}
 
-		inferred: bool
-		var_type, inferred = infer_type(value_type, src.span)
-		if !inferred {
-			return nil
+		if var_type == nil {
+			inference_ok: bool
+			var_type, inference_ok = infer_type(value_type, src.span)
+			if !inference_ok {
+				return nil
+			}
 		}
 		if unit_is_inferred {
 			unit = value_unit

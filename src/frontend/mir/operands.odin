@@ -64,11 +64,22 @@ Index_Of :: struct {
 	elem: Primitive_Operand,
 }
 
+i256 :: distinct [4]u64
 Constant :: union {
+	i256,
 	i128,
+	i64,
+	i32,
+	i16,
+	i8,
 	u128,
-	[4]i64, // fake i256
+	u64,
+	u32,
+	u16,
+	u8,
 	f64,
+	f32,
+	f16,
 	bool,
 	string,
 	// and nil, implicitly
