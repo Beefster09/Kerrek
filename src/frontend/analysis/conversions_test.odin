@@ -3,6 +3,7 @@ package analysis
 
 import "core:testing"
 
+import "../../common/exact"
 import "../hir"
 
 
@@ -347,6 +348,92 @@ test_coerce_fixed_decimals :: proc(t: ^testing.T) {
 	for tc in FIXED_DECIMAL_COERCION_CASES {
 		_expect_fixed_decimal_coercion(t, tc.name, tc.left, tc.right, tc.expected, tc.ok)
 		_expect_fixed_decimal_coercion(t, tc.name, tc.right, tc.left, tc.expected, tc.ok)
+	}
+}
+
+
+@(test)
+test_implicit_conversions_preserve_direction :: proc(t: ^testing.T) {
+	int32 := hir.Type(hir.Primitive_Type.Int32)
+	int64 := hir.Type(hir.Primitive_Type.Int64)
+
+	array32 := hir.Type(&hir.Fixed_Array_Type{elem = int32, shape = []int{1, 2}})
+	array64 := hir.Type(&hir.Fixed_Array_Type{elem = int64, shape = []int{1, 2}})
+	optional32 := hir.Type(&hir.Optional_Type{base = int32})
+	optional64 := hir.Type(&hir.Optional_Type{base = int64})
+	tagged32 := hir.Type(&hir.Tagged_Type{base = int32})
+	tagged64 := hir.Type(&hir.Tagged_Type{base = int64})
+	scalar_array32 := hir.Type(&hir.Fixed_Array_Type{elem = int32, shape = []int{1}})
+	scalar_array64 := hir.Type(&hir.Fixed_Array_Type{elem = int64, shape = []int{1}})
+
+	cases := []struct {
+		name:        string,
+		destination: hir.Type,
+		source:      hir.Type,
+		expected:    bool,
+	} {
+		{"widen fixed array elements", array64, array32, true},
+		{"reject narrowing fixed array elements", array32, array64, false},
+		{"widen optional base", optional64, optional32, true},
+		{"reject narrowing optional base", optional32, optional64, false},
+		{"unwrap widened tagged base", int64, tagged32, true},
+		{"reject narrowing tagged base", int32, tagged64, false},
+		{"widen scalar array element", int64, scalar_array32, true},
+		{"reject narrowing scalar array element", int32, scalar_array64, false},
+	}
+
+	for tc in cases {
+		actual := _type_implicitly_converts(tc.destination, tc.source)
+		testing.expectf(t, actual == tc.expected, "%s: expected %v, got %v", tc.name, tc.expected, actual)
+	}
+}
+
+
+@(test)
+test_can_materialize_numeric_values :: proc(t: ^testing.T) {
+	flex_integer := Comptime_Type(Flexible_Type{affinity = .Integer})
+	flex_decimal := Comptime_Type(Flexible_Type{affinity = .Decimal})
+
+	cases := []struct {
+		name:     string,
+		target:   hir.Type,
+		value:    exact.Rat,
+		type:     Comptime_Type,
+		expected: bool,
+	} {
+		{"Int8 minimum", hir.Primitive_Type.Int8, {-128, 1}, flex_integer, true},
+		{"Int8 maximum", hir.Primitive_Type.Int8, {127, 1}, flex_integer, true},
+		{"below Int8", hir.Primitive_Type.Int8, {-129, 1}, flex_integer, false},
+		{"above Int8", hir.Primitive_Type.Int8, {128, 1}, flex_integer, false},
+		{"UInt8 maximum", hir.Primitive_Type.UInt8, {255, 1}, flex_integer, true},
+		{"negative UInt8", hir.Primitive_Type.UInt8, {-1, 1}, flex_integer, false},
+		{"above UInt8", hir.Primitive_Type.UInt8, {256, 1}, flex_integer, false},
+		{"Byte maximum", hir.Primitive_Type.Byte, {255, 1}, flex_integer, true},
+		{"above Byte", hir.Primitive_Type.Byte, {256, 1}, flex_integer, false},
+		{"fractional integer", hir.Primitive_Type.Int64, {3, 2}, flex_decimal, false},
+		{"reduced integer", hir.Primitive_Type.Int8, {254, 2}, flex_integer, true},
+		{"Binary16 maximum", hir.Primitive_Type.Bin16, {65504, 1}, flex_integer, true},
+		{"above Binary16", hir.Primitive_Type.Bin16, {65505, 1}, flex_integer, false},
+		{"Decimal boundary", hir.Fixed_Decimal{digits = 3, scale = 2}, {999, 100}, flex_decimal, true},
+		{"Decimal overflow", hir.Fixed_Decimal{digits = 3, scale = 2}, {10, 1}, flex_decimal, false},
+		{"Decimal excess scale", hir.Fixed_Decimal{digits = 3, scale = 2}, {1, 1000}, flex_decimal, false},
+		{
+			"typed narrowing remains explicit",
+			hir.Primitive_Type.Int8,
+			{1, 1},
+			hir.Type(hir.Primitive_Type.Int64),
+			false,
+		},
+	}
+
+	for tc in cases {
+		value := Comptime_Value {
+			value = tc.value,
+			type  = tc.type,
+			unit  = hir.Indeterminate_Unit.No_Unit,
+		}
+		actual := can_materialize_value(tc.target, value)
+		testing.expectf(t, actual == tc.expected, "%s: expected %v, got %v", tc.name, tc.expected, actual)
 	}
 }
 

@@ -56,15 +56,17 @@ test_output_values_copy_owned_data :: proc(t: ^testing.T) {
 	tu: hir.Module
 	hir.init(&tu)
 	defer hir.destroy(&tu)
-	ts := Translation_State{output = &tu}
+	ts := Translation_State {
+		output = &tu,
+	}
 
 	source_string := strings.clone("temporary string", source_allocator)
 	value := Comptime_Value {
 		value = source_string,
-		type = Comptime_Type(hir.Type(hir.Primitive_Type.String)),
-		unit = hir.Indeterminate_Unit.No_Unit,
+		type  = Comptime_Type(hir.Type(hir.Primitive_Type.String)),
+		unit  = hir.Indeterminate_Unit.No_Unit,
 	}
-	built, ok := materialize(&ts, value, {}, hir.Type(hir.Primitive_Type.String))
+	built, ok := materialize_value(&ts, value, {}, hir.Type(hir.Primitive_Type.String))
 	testing.expect(t, ok)
 	if !ok {
 		return
@@ -76,12 +78,15 @@ test_output_values_copy_owned_data :: proc(t: ^testing.T) {
 
 	components := make([]units.Component, units.MAX_INLINE_UNITS + 1, source_allocator)
 	for &component, i in components {
-		component = {unit = hir.Symbol_ID(i + 1), exp = units.RAT_ONE}
+		component = {
+			unit = hir.Symbol_ID(i + 1),
+			exp  = units.RAT_ONE,
+		}
 	}
 	source_unit := hir.Realized_Unit(
 		units.Compound_Unit(units.Heap_Compound_Unit{components = components}),
 	)
-	output_unit := _clone_unit(source_unit, tu.allocator)
+	output_unit := source_unit
 	output_compound := output_unit.(units.Compound_Unit)
 	output_heap := output_compound.(units.Heap_Compound_Unit)
 	testing.expect(t, len(output_heap.components) == len(components))

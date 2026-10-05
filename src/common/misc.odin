@@ -50,6 +50,32 @@ Binary_Op :: enum {
 	Or,
 }
 
+ARITHMETIC_UNOPS :: bit_set[Unary_Op]{.Positive, .Negate}
+ARITHMETIC_BINOPS :: bit_set[Binary_Op] {
+	.Add,
+	.Subtract,
+	.Multiply,
+	.True_Divide,
+	.Floor_Divide,
+	.Power,
+	.Modulo,
+	.Remainder,
+}
+
+COMPARISON_BINOPS :: bit_set[Binary_Op] {
+	.Equal,
+	.Not_Equal,
+	.Less,
+	.Less_Equal,
+	.Greater,
+	.Greater_Equal,
+	.Is,
+	.Is_Not,
+}
+
+BOOLEAN_UNOPS :: bit_set[Unary_Op]{.Not}
+BOOLEAN_BINOPS :: bit_set[Binary_Op]{.And, .Or}
+
 @(rodata)
 UNARY_OP_STRINGS := [Unary_Op]string {
 	.Positive = "+",

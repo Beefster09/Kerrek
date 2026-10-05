@@ -66,7 +66,7 @@ translate_function_signature :: proc(
 
 		pdefault: ^hir.Const_Expr
 		if ast_param.default != nil {
-			built_default, def_ok := build_expr(ts, ast_param.default, scope)
+			built_default, def_ok := build_expr(ts, ast_param.default, scope, ptype)
 			if const_default, ok := built_default.(^hir.Const_Expr); ok {
 				pdefault = const_default
 			} else {
@@ -465,7 +465,7 @@ _build_func_call :: proc(
 
 		if value, comptime := arg.value.(Comptime_Value); comptime {
 			ok: bool
-			converted[arg_idx], ok = materialize(ts, value, arg.span, expected.type)
+			converted[arg_idx], ok = materialize_value(ts, value, arg.span, expected.type)
 			if !ok {
 				return poison(ts, span)
 			}

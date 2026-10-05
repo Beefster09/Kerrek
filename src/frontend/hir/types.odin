@@ -57,11 +57,13 @@ Primitive_Type :: enum {
 Fixed_Decimal :: struct {
 	digits:    u8,
 	scale:     i8,
-	flags:     bit_set[enum {
-		Inferred,
-		Intermediate,
-	};u16],
+	flags:     Decimal_Flags,
 	magnitude: f32,
+}
+Decimal_Flags :: bit_set[Decimal_Flag;u16]
+Decimal_Flag :: enum {
+	Inferred,
+	Intermediate,
 }
 
 Generic_Type :: struct {

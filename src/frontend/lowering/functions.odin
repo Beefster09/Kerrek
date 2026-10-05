@@ -267,6 +267,7 @@ _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Ope
 	switch value in constant.value {
 	case exact.Rat:
 		if analysis.is_binfloat(constant.type) {
+			fmt.println("binfloat", reflect.get_union_variant(constant.type), value)
 			numerator: f64
 			switch integer in value.numerator {
 			case i128:
@@ -290,6 +291,7 @@ _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Ope
 		}
 
 		if analysis.is_integer(constant.type) {
+			fmt.println("integer", reflect.get_union_variant(constant.type), value)
 			assert(exact.is_one(value.denominator))
 			prim_type := analysis.underlying_type(constant.type).(hir.Type).(hir.Primitive_Type)
 			unsigned := analysis.PRIMITIVE_TYPE_METADATA[prim_type].signedness != .Signed
@@ -316,6 +318,7 @@ _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Ope
 		}
 
 		if dec_type, ok := constant.type.(hir.Fixed_Decimal); ok {
+			fmt.println("decimal", reflect.get_union_variant(constant.type), value)
 			scale_power_of_ten := exact.Int(1)
 			if dec_type.scale >= 0 {
 				scale_power_of_ten = exact.int_pow_int(

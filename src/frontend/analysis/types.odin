@@ -346,7 +346,7 @@ types_equal :: proc(a, b: Comptime_Type) -> bool {
 
 		case hir.Fixed_Decimal:
 			b, ok := b.(hir.Fixed_Decimal)
-			return ok && a == b
+			return ok && a.digits == b.digits && a.scale == b.scale
 
 		case ^hir.Struct_Type:
 			b, ok := b.(^hir.Struct_Type)

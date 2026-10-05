@@ -26,7 +26,7 @@ Eval_Result :: union {
 	^resolver.Import,
 }
 
-materialize :: proc(
+materialize_value :: proc(
 	ts: ^Translation_State,
 	value: Comptime_Value,
 	span: common.Span,
@@ -42,6 +42,15 @@ materialize :: proc(
 		if !ok {
 			return nil, false
 		}
+	}
+	if !can_materialize_value(real_type, value) {
+		diagnostics.emit(
+			.Cannot_Infer_Type,
+			span,
+			"this compile-time value cannot be represented as %s",
+			real_type,
+		)
+		return nil, false
 	}
 
 	real_value: hir.Value
@@ -71,20 +80,14 @@ materialize :: proc(
 		span  = span,
 		value = real_value,
 		type  = real_type,
-		unit  = _clone_unit(value.unit, ts.output.allocator),
+		unit  = value.unit,
 	}
 	return hir.Expression(expr), true
 }
 
 INT64_DECIMAL_DIGITS :: 18
 
-infer_type :: proc(
-	evaluated_type: Comptime_Type,
-	diagnostic_span: common.Span,
-) -> (
-	hir.Type,
-	bool,
-) {
+infer_type :: proc(evaluated_type: Comptime_Type, span: common.Span) -> (hir.Type, bool) {
 	switch typ in evaluated_type {
 	case Flexible_Type:
 		switch typ.affinity {
@@ -102,7 +105,7 @@ infer_type :: proc(
 			if dec.digits > INT64_DECIMAL_DIGITS {
 				diagnostics.emit(
 					.Large_Decimal,
-					diagnostic_span,
+					span,
 					"this expression is inferred as Decimal(%d, %d) and may be slower than expected",
 				)
 			}
@@ -120,7 +123,7 @@ infer_type :: proc(
 		case .Rational, .Nil, .Any_Zero:
 			diagnostics.emit(
 				.Cannot_Infer_Type,
-				diagnostic_span,
+				span,
 				"no singular type can be inferred from this expression",
 			)
 			return nil, false
@@ -135,13 +138,14 @@ build_expr :: proc(
 	ts: ^Translation_State,
 	expr: ast.Expression,
 	scope: resolver.Scope,
+	type_hint: hir.Type = nil,
 ) -> (
 	hir.Expression,
 	bool,
 ) {
-	switch result in evaluate(ts, expr, scope) {
+	switch result in evaluate(ts, expr, scope, type_hint) {
 	case Comptime_Value:
-		return materialize(ts, result, ast.span(expr))
+		return materialize_value(ts, result, ast.span(expr), type_hint)
 	case hir.Expression:
 		return result, true
 	case ^resolver.Import:
@@ -155,6 +159,7 @@ evaluate :: proc(
 	ts: ^Translation_State,
 	node: ast.Expression,
 	scope: resolver.Scope,
+	type_hint: hir.Type = nil,
 ) -> Eval_Result {
 	_not_implemented :: proc(ts: ^Translation_State, node: $S) -> hir.Expression {
 		diagnostics.emit(
@@ -170,6 +175,7 @@ evaluate :: proc(
 	case ^ast.Simple_Literal_Expr:
 		switch value in node.value {
 		case exact.Rat:
+			panic("simple literal expression contained a rational")
 		case string:
 			return Comptime_Value {
 				value = value,
@@ -236,10 +242,10 @@ evaluate :: proc(
 		}
 
 	case ^ast.Binop_Expr:
-		return _eval_binop(ts, node, scope)
+		return _eval_binop(ts, node, scope, type_hint)
 
 	case ^ast.Unary_Expr:
-		return _eval_unary(ts, node, scope)
+		return _eval_unary(ts, node, scope, type_hint)
 
 	case ^ast.Name_Expr:
 		return _eval_name_expr(ts, node, scope)
@@ -250,7 +256,11 @@ evaluate :: proc(
 		case ^ast.No_Unit:
 			new_unit = hir.Indeterminate_Unit.No_Unit
 		case ^ast.Flexible_Unit:
-			diagnostics.emit(.Invalid_Unit_Reinterpretation, unit.span, "cannot reinterpret units as flexible")
+			diagnostics.emit(
+				.Invalid_Unit_Reinterpretation,
+				unit.span,
+				"cannot reinterpret units as flexible",
+			)
 		case ^ast.Inferred_Unit:
 			// might be a panic("unreachable")
 			diagnostics.emit(
@@ -266,7 +276,7 @@ evaluate :: proc(
 			return hir.Expression(poison(ts, node.span))
 		}
 
-		switch result in evaluate(ts, node.expr, scope) {
+		switch result in evaluate(ts, node.expr, scope, type_hint) {
 		case Comptime_Value:
 			return Comptime_Value{value = result.value, type = result.type, unit = new_unit}
 		case hir.Expression:
@@ -275,7 +285,7 @@ evaluate :: proc(
 				expr^ = {
 					span = node.span,
 					type = type,
-					unit = _clone_unit(new_unit, ts.output.allocator),
+					unit = new_unit,
 					expr = result,
 				}
 				return hir.Expression(expr)
@@ -445,12 +455,7 @@ _eval_callish_expr :: proc(
 
 	switch callee in evaluated_callee {
 	case Comptime_Value:
-		diagnostics.emit(
-			.Not_Callable,
-			ast.span(callish.callee),
-			"cannot call a %s",
-			callee.type,
-		)
+		diagnostics.emit(.Not_Callable, ast.span(callish.callee), "cannot call a %s", callee.type)
 		return poison(ts, callish.span)
 	case hir.Expression:
 		if c, is_poison := callee.(^hir.Poison); is_poison {
@@ -504,7 +509,7 @@ _eval_callish_expr :: proc(
 			arg: hir.Expression
 			switch value in arg_exprs[0].value {
 			case Comptime_Value:
-				arg, ok = materialize(ts, value, arg_exprs[0].span)
+				arg, ok = materialize_value(ts, value, arg_exprs[0].span)
 				if !ok {
 					return poison(ts, callish.span)
 				}
@@ -546,8 +551,10 @@ _eval_unary :: proc(
 	ts: ^Translation_State,
 	unary: ^ast.Unary_Expr,
 	scope: resolver.Scope,
+	type_hint: hir.Type = nil,
 ) -> Eval_Result {
 	expr := evaluate(ts, unary.expr, scope)
+
 	assert(expr != nil)
 	if poison, is_poison := util.chain_extract(expr, hir.Expression, ^hir.Poison); is_poison {
 		poison.span = unary.span
@@ -618,6 +625,7 @@ _eval_binop :: proc(
 	ts: ^Translation_State,
 	binop: ^ast.Binop_Expr,
 	scope: resolver.Scope,
+	type_hint: hir.Type = nil,
 ) -> Eval_Result {
 	lhs := evaluate(ts, binop.lhs, scope)
 	rhs := evaluate(ts, binop.rhs, scope)
@@ -660,7 +668,24 @@ _eval_binop :: proc(
 		return _eval_boolean_multiply(ts, rhs, lhs, ltype, binop, binop.lhs)
 	}
 
-	coerced_type, coerce_ok := coerce(ltype, rtype)
+	// TODO: handle decimal-aware binops here
+	// they are not coerced like other operations are
+
+	calculation_hint := type_hint
+	if calculation_hint != nil &&
+	   binop.op not_in OP_CATEGORY_DEFS[_op_category_of(calculation_hint)].supported_binops {
+		calculation_hint = nil
+	}
+	if binop.op == .Power {
+		// TODO: Propagate result context to the base without coercing the exponent.
+		calculation_hint = nil
+	}
+
+	coerced_type, coerce_ok := coerce(
+		ltype,
+		rtype,
+		calculation_hint if binop.op in common.ARITHMETIC_BINOPS else nil,
+	)
 	if !coerce_ok {
 		diagnostics.emit(
 			.Binop_Not_Defined,
@@ -709,8 +734,8 @@ _eval_binop :: proc(
 	if l, r, ok := util.extract_pair(u_lhs, u_rhs, Comptime_Value); ok {
 		return Comptime_Value {
 			value = _comptime_binop(binop.op, l.value, r.value),
-			type = coerced_type,
-			unit = res_unit,
+			type = coerced_type if binop.op in common.ARITHMETIC_BINOPS else hir.Type(hir.Primitive_Type.Boolean),
+			unit = res_unit if binop.op in common.ARITHMETIC_BINOPS else hir.Indeterminate_Unit.No_Unit,
 		}
 	}
 
@@ -718,7 +743,12 @@ _eval_binop :: proc(
 	l_ok := true
 	switch value in u_lhs {
 	case Comptime_Value:
-		l, l_ok = materialize(ts, value, ast.expression_span(binop.lhs))
+		l, l_ok = materialize_value(
+			ts,
+			value,
+			ast.expression_span(binop.lhs),
+			coerced_type.(hir.Type) or_else nil,
+		)
 	case hir.Expression:
 		l = value
 	case ^resolver.Import:
@@ -734,7 +764,12 @@ _eval_binop :: proc(
 	r_ok := true
 	switch value in u_rhs {
 	case Comptime_Value:
-		r, r_ok = materialize(ts, value, ast.expression_span(binop.rhs))
+		r, r_ok = materialize_value(
+			ts,
+			value,
+			ast.expression_span(binop.rhs),
+			coerced_type.(hir.Type) or_else nil,
+		)
 	case hir.Expression:
 		r = value
 	case ^resolver.Import:
@@ -789,8 +824,8 @@ _eval_binop :: proc(
 		op   = binop.op,
 		lhs  = l,
 		rhs  = r,
-		type = inferred_type,
-		unit = _clone_unit(res_unit, ts.output.allocator),
+		type = inferred_type if binop.op in common.ARITHMETIC_BINOPS else .Boolean,
+		unit = res_unit,
 	}
 	return hir.Expression(result)
 }
@@ -831,7 +866,7 @@ _eval_boolean_multiply :: proc(
 
 	case hir.Expression:
 		if known, ok := nonbool.(Comptime_Value); ok {
-			if_true, mat_ok := materialize(ts, known, ast.expression_span(nonbool_ast))
+			if_true, mat_ok := materialize_value(ts, known, ast.expression_span(nonbool_ast))
 			if !mat_ok {
 				return nil
 			}
@@ -974,13 +1009,15 @@ _eval_binop_unit :: proc(
 		Eval_Result,
 		bool,
 	) {
+		// FIXME: this function tends to materialize too early,
+		// and prefers coercing the right unit to match the left even when context would say otherwise
 		if exact.is_one(rmult) || rhs == nil {
 			return rhs, true
 		}
 
 		value := rhs
 		if comptime, ok := value.(Comptime_Value); ok {
-			materialized, mat_ok := materialize(ts, comptime, ast.expression_span(binop.rhs))
+			materialized, mat_ok := materialize_value(ts, comptime, ast.expression_span(binop.rhs))
 			if !mat_ok {
 				return nil, false
 			}

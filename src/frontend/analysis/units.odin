@@ -67,21 +67,37 @@ get_canonical_unit :: proc(
 			if exp_span, exp, ok := _canonical_exponent(component.exponent); ok {
 				if units.builder_add(&b, unit.canonical, exp) != .OK {
 					all_ok = false
-					diagnostics.emit(.Unit_Exponent_Not_Representable, exp_span, "this exponent is not representable")
+					diagnostics.emit(
+						.Unit_Exponent_Not_Representable,
+						exp_span,
+						"this exponent is not representable",
+					)
 				}
 			} else {
 				all_ok = false
-				diagnostics.emit(.Unit_Exponent_Not_Representable, exp_span, "this exponent is not representable")
+				diagnostics.emit(
+					.Unit_Exponent_Not_Representable,
+					exp_span,
+					"this exponent is not representable",
+				)
 			}
 		case ^resolver.Base_Unit:
 			if exp_span, exp, ok := _canonical_exponent(component.exponent); ok {
 				if units.builder_add(&b, unit.id, exp) != .OK {
 					all_ok = false
-					diagnostics.emit(.Unit_Exponent_Not_Representable, exp_span, "this exponent is not representable")
+					diagnostics.emit(
+						.Unit_Exponent_Not_Representable,
+						exp_span,
+						"this exponent is not representable",
+					)
 				}
 			} else {
 				all_ok = false
-				diagnostics.emit(.Unit_Exponent_Not_Representable, exp_span, "this exponent is not representable")
+				diagnostics.emit(
+					.Unit_Exponent_Not_Representable,
+					exp_span,
+					"this exponent is not representable",
+				)
 			}
 		case:
 			all_ok = false
@@ -95,24 +111,6 @@ get_canonical_unit :: proc(
 	}
 
 	return units.to_compound_unit(&b, allocator), all_ok
-}
-
-_clone_unit :: proc(unit: hir.Realized_Unit, allocator: runtime.Allocator) -> hir.Realized_Unit {
-	switch value in unit {
-	case units.Compound_Unit:
-		switch concrete in value {
-		case units.Inline_Compound_Unit:
-			return hir.Realized_Unit(units.Compound_Unit(concrete))
-		case units.Heap_Compound_Unit:
-			cloned := units.Heap_Compound_Unit {
-				components = slice.clone(concrete.components, allocator),
-			}
-			return hir.Realized_Unit(units.Compound_Unit(cloned))
-		}
-	case hir.Indeterminate_Unit:
-		return value
-	}
-	return nil
 }
 
 _canonical_exponent :: proc(exponent: ast.Unit_Exponent) -> (common.Span, units.Small_Rat, bool) {

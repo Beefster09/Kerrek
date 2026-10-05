@@ -1,6 +1,8 @@
 package mir
 
+import "base:intrinsics"
 import "base:runtime"
+import "core:fmt"
 import "core:io"
 import "core:math/big"
 
@@ -265,15 +267,30 @@ dump_constant :: proc(w: io.Writer, constant: Constant) {
 	case [4]i64:
 		io.write_string(w, "i256(")
 		{
-			value := constant
+			value := transmute([4]u64)constant
 			i: big.Int
+			if value[3] & 0x8000_0000_0000_0000 != 0 {
+				i.sign = .Negative
+				// negate via two's complement
+				overflow_one := true
+				#unroll for j in 0 ..< 4 {
+					value[j] = ~value[j]
+					if overflow_one {
+						value[j], overflow_one = intrinsics.overflow_add(value[j], 1)
+					}
+				}
+			}
+			for d, j in value {
+				if d != 0 {
+					i.used = j + 1
+				}
+			}
 			i.digit = transmute([dynamic]big.DIGIT)runtime.Raw_Dynamic_Array {
 				data = &value[0],
 				len = 4,
 				cap = 4,
 				allocator = runtime.nil_allocator(),
 			}
-			i.sign = .Negative if value[3] < 0 else .Zero_or_Positive
 			digits: [80]u8 // 77 digits is enough, but 80 looks nicer
 			n, err := big.int_itoa_raw(&i, 10, digits[:])
 			if err == nil {
