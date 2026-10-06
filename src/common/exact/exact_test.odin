@@ -332,4 +332,5 @@ test_exact :: proc(t: ^testing.T) {
 	_test_rat_arithmetic(t)
 	_test_comparisons(t)
 	_test_parsing(t)
+	_test_float_conversion(t)
 }

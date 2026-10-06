@@ -289,10 +289,20 @@ int_div_half_even :: proc(a, b: Int, allocator := bigint_allocator) -> Int {
 	unreachable()
 }
 
+int_div_pow2_half_even :: proc(a, b: Int, shift: int, allocator := bigint_allocator) -> Int {
+	if shift >= 0 {
+		scale := int_shl(1, uint(shift), context.temp_allocator)
+		return int_div_half_even(mul(a, scale, context.temp_allocator), b, allocator)
+	}
+
+	scale := int_shl(1, uint(-shift), context.temp_allocator)
+	return int_div_half_even(a, mul(b, scale, context.temp_allocator), allocator)
+}
+
 int_bit_length :: proc(i: Int) -> int {
 	ii, i_inline := i.(i128)
 	if intrinsics.likely(i_inline) {
-		return 128 - abs(int(intrinsics.count_leading_zeros(ii)))
+		return 128 - int(intrinsics.count_leading_zeros(_i128_abs_u128(ii)))
 	}
 
 	result, err := big.count_bits(i.(^big.Int), context.temp_allocator)
@@ -301,8 +311,8 @@ int_bit_length :: proc(i: Int) -> int {
 }
 
 int_shl :: proc(i: Int, shift: uint, allocator := bigint_allocator) -> Int {
-	if int_bit_length(i) + int(shift) < 127 {
-		return i.(i128) << shift
+	if inline, ok := i.(i128); ok && int_bit_length(inline) + int(shift) < 127 {
+		return inline << shift
 	}
 
 	base: ^big.Int
@@ -597,16 +607,6 @@ int_is_negative :: proc(i: Int) -> bool {
 		return ii.sign == .Negative
 	}
 	return false
-}
-
-int_sign :: proc(i: Int) -> int {
-	if is_zero(i) {
-		return 0
-	} else if is_negative(i) {
-		return -1
-	} else {
-		return +1
-	}
 }
 
 int_abs :: proc(i: Int, allocator := bigint_allocator) -> Int {

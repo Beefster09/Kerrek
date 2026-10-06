@@ -154,11 +154,6 @@ NON_INTEGER_PRIMITIVES := [?]hir.Primitive_Type {
 	.Rune,
 	.Byte,
 	.Any,
-	.Opaque,
-	.Opaque8,
-	.Opaque16,
-	.Opaque32,
-	.Opaque64,
 }
 
 @(rodata)
@@ -237,11 +232,6 @@ NON_SIGNED_INTEGER_PRIMITIVES := [?]hir.Primitive_Type {
 	.String,
 	.Rune,
 	.Byte,
-	.Opaque,
-	.Opaque8,
-	.Opaque16,
-	.Opaque32,
-	.Opaque64,
 }
 
 
@@ -384,7 +374,14 @@ test_implicit_conversions_preserve_direction :: proc(t: ^testing.T) {
 
 	for tc in cases {
 		actual := _type_implicitly_converts(tc.destination, tc.source)
-		testing.expectf(t, actual == tc.expected, "%s: expected %v, got %v", tc.name, tc.expected, actual)
+		testing.expectf(
+			t,
+			actual == tc.expected,
+			"%s: expected %v, got %v",
+			tc.name,
+			tc.expected,
+			actual,
+		)
 	}
 }
 
@@ -414,9 +411,27 @@ test_can_materialize_numeric_values :: proc(t: ^testing.T) {
 		{"reduced integer", hir.Primitive_Type.Int8, {254, 2}, flex_integer, true},
 		{"Binary16 maximum", hir.Primitive_Type.Bin16, {65504, 1}, flex_integer, true},
 		{"above Binary16", hir.Primitive_Type.Bin16, {65505, 1}, flex_integer, false},
-		{"Decimal boundary", hir.Fixed_Decimal{digits = 3, scale = 2}, {999, 100}, flex_decimal, true},
-		{"Decimal overflow", hir.Fixed_Decimal{digits = 3, scale = 2}, {10, 1}, flex_decimal, false},
-		{"Decimal excess scale", hir.Fixed_Decimal{digits = 3, scale = 2}, {1, 1000}, flex_decimal, false},
+		{
+			"Decimal boundary",
+			hir.Fixed_Decimal{digits = 3, scale = 2},
+			{999, 100},
+			flex_decimal,
+			true,
+		},
+		{
+			"Decimal overflow",
+			hir.Fixed_Decimal{digits = 3, scale = 2},
+			{10, 1},
+			flex_decimal,
+			false,
+		},
+		{
+			"Decimal excess scale",
+			hir.Fixed_Decimal{digits = 3, scale = 2},
+			{1, 1000},
+			flex_decimal,
+			false,
+		},
 		{
 			"typed narrowing remains explicit",
 			hir.Primitive_Type.Int8,
@@ -433,7 +448,14 @@ test_can_materialize_numeric_values :: proc(t: ^testing.T) {
 			unit  = hir.Indeterminate_Unit.No_Unit,
 		}
 		actual := can_materialize_value(tc.target, value)
-		testing.expectf(t, actual == tc.expected, "%s: expected %v, got %v", tc.name, tc.expected, actual)
+		testing.expectf(
+			t,
+			actual == tc.expected,
+			"%s: expected %v, got %v",
+			tc.name,
+			tc.expected,
+			actual,
+		)
 	}
 }
 

@@ -53,9 +53,18 @@ test_output_values_copy_owned_data :: proc(t: ^testing.T) {
 	defer mem.dynamic_arena_destroy(&source_arena)
 	source_allocator := mem.dynamic_arena_allocator(&source_arena)
 
-	tu: hir.Module
-	hir.init(&tu)
-	defer hir.destroy(&tu)
+	output_arena: mem.Dynamic_Arena
+	mem.dynamic_arena_init(&output_arena)
+	defer mem.dynamic_arena_destroy(&output_arena)
+	output_allocations: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&output_allocations, mem.dynamic_arena_allocator(&output_arena))
+	defer mem.tracking_allocator_destroy(&output_allocations)
+	output_allocator := mem.tracking_allocator(&output_allocations)
+	defer mem.free_all(output_allocator)
+
+	tu := hir.Module {
+		allocator = output_allocator,
+	}
 	ts := Translation_State {
 		output = &tu,
 	}
@@ -76,7 +85,7 @@ test_output_values_copy_owned_data :: proc(t: ^testing.T) {
 	testing.expect(t, output_string == source_string)
 	testing.expect(t, raw_data(output_string) != raw_data(source_string))
 
-	components := make([]units.Component, units.MAX_INLINE_UNITS + 1, source_allocator)
+	components := make([]units.Component, units.MAX_INLINE_UNITS + 1, output_allocator)
 	for &component, i in components {
 		component = {
 			unit = hir.Symbol_ID(i + 1),
@@ -90,7 +99,7 @@ test_output_values_copy_owned_data :: proc(t: ^testing.T) {
 	output_compound := output_unit.(units.Compound_Unit)
 	output_heap := output_compound.(units.Heap_Compound_Unit)
 	testing.expect(t, len(output_heap.components) == len(components))
-	testing.expect(t, raw_data(output_heap.components) != raw_data(components))
+	testing.expect(t, raw_data(output_heap.components) in output_allocations.allocation_map)
 	for component, i in output_heap.components {
 		testing.expect(t, component == components[i])
 	}

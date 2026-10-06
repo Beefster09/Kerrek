@@ -1,7 +1,6 @@
 package exact
 
 import "base:intrinsics"
-import "core:fmt"
 import "core:math"
 import "core:math/big"
 
@@ -63,12 +62,14 @@ _demote :: proc(bigint: ^big.Int) -> (i128, bool) {
 }
 
 to_float :: proc(r: Rat, $F: typeid) -> F where intrinsics.type_is_float(F) {
+	assert(!is_zero(r.denominator), "rational denominator is zero")
 	if is_zero(r) {
 		return 0.0
 	}
 
-	sign := int_sign(r.numerator)
+	sign := -1 if rat_is_negative(r) else 1
 	numerator := int_abs(r.numerator, context.temp_allocator)
+	denominator := int_abs(r.denominator, context.temp_allocator)
 
 	when F == f16 {
 		precision :: 11
@@ -88,16 +89,16 @@ to_float :: proc(r: Rat, $F: typeid) -> F where intrinsics.type_is_float(F) {
 	} else {
 		#panic("type not supported")
 	}
-	mask :: 1 << precision - 1
+	fraction_mask :: (1 << (precision - 1)) - 1
 
-	e := int_floor_log2_ratio(r.numerator, r.denominator)
+	e := int_floor_log2_ratio(numerator, denominator)
 
 	if intrinsics.unlikely(e < emin) {
 		// subnormal
-		scale := int_shl(1, uint(precision - 1 - emin), context.temp_allocator)
-		m := int_div_half_even(
-			mul(r.numerator, scale, context.temp_allocator),
-			r.denominator,
+		m := int_div_pow2_half_even(
+			numerator,
+			denominator,
+			precision - 1 - emin,
 			context.temp_allocator,
 		)
 
@@ -106,17 +107,16 @@ to_float :: proc(r: Rat, $F: typeid) -> F where intrinsics.type_is_float(F) {
 		}
 
 		if eq(m, 1 << (precision - 1), context.temp_allocator) {
-			return math.copy_sign(transmute(F)I(1), F(sign))
+			return math.copy_sign(transmute(F)(I(1) << (precision - 1)), F(sign))
 		}
 
-		return math.copy_sign(transmute(F)(I(m.(i128)) & mask), F(sign))
+		return math.copy_sign(transmute(F)(I(m.(i128)) & fraction_mask), F(sign))
 	}
 
-	// normal
-	scale := int_shl(1, uint(precision - 1 - e), context.temp_allocator)
-	m := int_div_half_even(
-		mul(r.numerator, scale, context.temp_allocator),
-		r.denominator,
+	m := int_div_pow2_half_even(
+		numerator,
+		denominator,
+		precision - 1 - e,
 		context.temp_allocator,
 	)
 
@@ -127,22 +127,16 @@ to_float :: proc(r: Rat, $F: typeid) -> F where intrinsics.type_is_float(F) {
 
 	if e > emax {
 		when F == f16 {
-			return math.INF_F16
+			return math.copy_sign(math.INF_F16, F(sign))
 		} else when F == f32 {
-			return math.INF_F32
+			return math.copy_sign(math.INF_F32, F(sign))
 		} else when F == f64 {
-			return math.INF_F64
+			return math.copy_sign(math.INF_F64, F(sign))
 		}
 	}
 
-	fmt.printfln(
-		"%016x %016x %g",
-		m,
-		mask,
-		transmute(F)(I(m.(i128)) & mask | I(e + emax) << (precision - 1)),
-	)
 	return math.copy_sign(
-		transmute(F)(I(m.(i128)) & mask | I(e + emax) << (precision - 1)),
+		transmute(F)(I(m.(i128)) & fraction_mask | I(e + emax) << (precision - 1)),
 		F(sign),
 	)
 }

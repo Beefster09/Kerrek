@@ -253,7 +253,7 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 		base_big, mul: big.Int
 		switch b in base {
 		case i128:
-			err := big.set(&base_big, b)
+			err := big.set(&base_big, b, allocator = scratch_alloc)
 			if err != nil {
 				return {}, false
 			}
