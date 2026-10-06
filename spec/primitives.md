@@ -159,15 +159,6 @@ A byte is a single 8-bit value without numeric semantics. It can be converted to
 The zero value is 0x00
 
 
-## Opaque
-
-The Opaque types are sized types (in 8, 16, 32, 64 bits as well as the pointer-sized bare `Opaque`) that support only equality testing. They can be converted to and from sized integers of the same size. Opaques must be explicitly converted and will never implicitly convert from integer literals, constants, or runtime values.
-
-These are mainly intended to be the underlying type for distinct types for use with foreign functions (as many C APIs operate on an opaque pointer) and certain system calls (e.g. opaque file handles from fopen, pipes, sockets, etc...)
-
-The zero value is valid, but likely not meaningful.
-
-
 # Truthiness
 
 Of the primitive types, only booleans are allowed in contexts that require booleans.

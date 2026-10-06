@@ -973,7 +973,7 @@ _primitive_zero :: proc(type: Comptime_Type) -> common.Primitive_Value {
 			case .String:
 				return ""
 
-			case .Any, .Opaque, .Opaque8, .Opaque16, .Opaque32, .Opaque64:
+			case .Any:
 				return Untyped_Nil{}
 			case .Type:
 				panic("_primitive_zero(...) should only be called with zeroable types")

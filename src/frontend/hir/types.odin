@@ -45,11 +45,6 @@ Primitive_Type :: enum {
 	String,
 	Rune,
 	Byte,
-	Opaque,
-	Opaque8,
-	Opaque16,
-	Opaque32,
-	Opaque64,
 	Type,
 	Any,
 }

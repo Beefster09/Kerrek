@@ -365,14 +365,13 @@ _materialize_number :: proc(fb: ^Func_Builder, value: exact.Rat, type: hir.Type)
 
 	if analysis.is_binfloat(type) {
 		prim_type := analysis.underlying_type(type).(hir.Type).(hir.Primitive_Type)
-		result := _exact_int_to_f64(value.numerator) / _exact_int_to_f64(value.denominator)
 		#partial switch prim_type {
 		case .Bin64:
-			return mir.Constant(f64(result))
+			return mir.Constant(exact.to_float(value, f64))
 		case .Bin32:
-			return mir.Constant(f32(result))
+			return mir.Constant(exact.to_float(value, f32))
 		case .Bin16:
-			return mir.Constant(f16(result))
+			return mir.Constant(exact.to_float(value, f16))
 		}
 		unreachable()
 	}
@@ -419,18 +418,6 @@ _exact_int_get :: proc(value: exact.Int, $T: typeid) -> T {
 		return T(integer)
 	case ^big.Int:
 		result, err := big.int_get(integer, T, context.temp_allocator)
-		assert(err == nil)
-		return result
-	}
-	unreachable()
-}
-
-_exact_int_to_f64 :: proc(value: exact.Int) -> f64 {
-	switch integer in value {
-	case i128:
-		return f64(integer)
-	case ^big.Int:
-		result, err := big.int_get_float(integer, context.temp_allocator)
 		assert(err == nil)
 		return result
 	}

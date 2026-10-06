@@ -230,51 +230,6 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 		signedness = .Unknown,
 		numeric_class = .Unknown,
 	},
-	.Opaque = {
-		implicitly_to = {.Any, .Opaque},
-		explicit_group = .Unconvertible,
-		size_bytes = -1,
-		significant_bits = -1,
-		decimal_digits = -1,
-		signedness = .Unknown,
-		numeric_class = .Not_A_Number,
-	},
-	.Opaque8 = {
-		implicitly_to = {.Any, .Opaque8},
-		explicit_group = .Unconvertible,
-		size_bytes = 1,
-		significant_bits = -1,
-		decimal_digits = -1,
-		signedness = .Unknown,
-		numeric_class = .Not_A_Number,
-	},
-	.Opaque16 = {
-		implicitly_to = {.Any, .Opaque16},
-		explicit_group = .Unconvertible,
-		size_bytes = 2,
-		significant_bits = -1,
-		decimal_digits = -1,
-		signedness = .Unknown,
-		numeric_class = .Not_A_Number,
-	},
-	.Opaque32 = {
-		implicitly_to = {.Any, .Opaque32},
-		explicit_group = .Unconvertible,
-		size_bytes = 4,
-		significant_bits = -1,
-		decimal_digits = -1,
-		signedness = .Unknown,
-		numeric_class = .Not_A_Number,
-	},
-	.Opaque64 = {
-		implicitly_to = {.Any, .Opaque64},
-		explicit_group = .Unconvertible,
-		size_bytes = 8,
-		significant_bits = -1,
-		decimal_digits = -1,
-		signedness = .Unknown,
-		numeric_class = .Not_A_Number,
-	},
 }
 
 
@@ -449,7 +404,7 @@ _can_materialize_number :: proc(target: hir.Type, value: exact.Rat, type: Compti
 				return false
 			}
 			return _integer_fits_primitive(value.numerator, concrete)
-		case .Boolean, .String, .Rune, .Opaque, .Opaque8, .Opaque16, .Opaque32, .Opaque64, .Type:
+		case .Boolean, .String, .Rune, .Type:
 			return false
 		}
 	case:
@@ -640,15 +595,7 @@ _flex_converts_to :: proc(flex: Flexible_Type, to: Comptime_Type) -> bool {
 				     .Any:
 					return true
 
-				case .Boolean,
-				     .String,
-				     .Rune,
-				     .Opaque,
-				     .Opaque8,
-				     .Opaque16,
-				     .Opaque32,
-				     .Opaque64,
-				     .Type:
+				case .Boolean, .String, .Rune, .Type:
 					return false
 				}
 			case .Decimal:

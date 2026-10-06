@@ -295,16 +295,6 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 		return .Byte, true
 	case "Any":
 		return .Any, true
-	case "Opaque":
-		return .Opaque, true
-	case "Opaque8":
-		return .Opaque8, true
-	case "Opaque16":
-		return .Opaque16, true
-	case "Opaque32":
-		return .Opaque32, true
-	case "Opaque64":
-		return .Opaque64, true
 	case "TypeID":
 		return .Type, true
 	}
@@ -447,20 +437,7 @@ is_integer :: proc(t: Comptime_Type) -> bool {
 			     .UInt16,
 			     .UInt8:
 				return true
-			case .Bin64,
-			     .Bin32,
-			     .Bin16,
-			     .Boolean,
-			     .String,
-			     .Rune,
-			     .Byte,
-			     .Any,
-			     .Type,
-			     .Opaque,
-			     .Opaque8,
-			     .Opaque16,
-			     .Opaque32,
-			     .Opaque64:
+			case .Bin64, .Bin32, .Bin16, .Boolean, .String, .Rune, .Byte, .Any, .Type:
 				return false
 			}
 		}

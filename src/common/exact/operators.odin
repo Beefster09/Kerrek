@@ -30,6 +30,10 @@ div :: proc {
 	rat_div,
 }
 
+divrem :: proc {
+	int_divrem,
+}
+
 floordiv :: proc {
 	int_div,
 	rat_floordiv,
@@ -105,6 +109,11 @@ is_zero :: proc {
 	rat_is_zero,
 }
 
+is_even :: proc {
+	int_is_even,
+	rat_is_even,
+}
+
 gcd :: int_gcd
 reduce :: rat_reduce
 
@@ -121,7 +130,7 @@ _int_big_op :: proc(a, b: Int, op: _Int_Op, allocator := bigint_allocator) -> In
 	a_big: ^big.Int
 	switch aa in a {
 	case i128:
-		a_big = _promote(aa, allocator)
+		a_big = _promote(aa, context.temp_allocator)
 	case ^big.Int:
 		a_big = aa
 	}
@@ -129,33 +138,33 @@ _int_big_op :: proc(a, b: Int, op: _Int_Op, allocator := bigint_allocator) -> In
 	b_big: ^big.Int
 	switch bb in b {
 	case i128:
-		b_big = _promote(bb, allocator)
+		b_big = _promote(bb, context.temp_allocator)
 	case ^big.Int:
 		b_big = bb
 	}
 
-	result := new(big.Int, allocator)
+	result := new(big.Int, context.temp_allocator)
 	err: big.Error
 	switch op {
 	case .Add:
-		err = big.add(result, a_big, b_big, allocator)
+		err = big.add(result, a_big, b_big, context.temp_allocator)
 	case .Sub:
-		err = big.sub(result, a_big, b_big, allocator)
+		err = big.sub(result, a_big, b_big, context.temp_allocator)
 	case .Mul:
-		err = big.mul(result, a_big, b_big, allocator)
+		err = big.mul(result, a_big, b_big, context.temp_allocator)
 	case .Div:
-		err = big.div(result, a_big, b_big, allocator)
+		err = big.div(result, a_big, b_big, context.temp_allocator)
 	case .Rem:
-		err = big.divmod(nil, result, a_big, b_big, allocator)
+		err = big.divmod(nil, result, a_big, b_big, context.temp_allocator)
 	case .Gcd:
-		err = big.gcd(result, a_big, b_big, allocator)
+		err = big.gcd(result, a_big, b_big, context.temp_allocator)
 	}
 	assert(err == nil)
 
 	if inline, ok := _demote(result); ok {
 		return inline
 	}
-	return result
+	return clone(result, allocator)
 }
 
 int_negate :: proc(i: Int, allocator := bigint_allocator) -> Int {
@@ -223,6 +232,109 @@ int_rem :: proc(a, b: Int, allocator := bigint_allocator) -> Int {
 		return aa % bb
 	}
 	return _int_big_op(a, b, .Rem, allocator)
+}
+
+int_divrem :: proc(a, b: Int, allocator := bigint_allocator) -> (Int, Int) {
+	assert(!int_is_zero(b), "division by zero")
+	aa, a_inline := a.(i128)
+	bb, b_inline := b.(i128)
+	if intrinsics.likely(a_inline && b_inline) {
+		if aa != I128_MIN || bb != -1 {
+			return math.divmod(aa, bb)
+		}
+	}
+
+	a_big: ^big.Int
+	switch aa in a {
+	case i128:
+		a_big = _promote(aa, allocator)
+	case ^big.Int:
+		a_big = aa
+	}
+
+	b_big: ^big.Int
+	switch bb in b {
+	case i128:
+		b_big = _promote(bb, allocator)
+	case ^big.Int:
+		b_big = bb
+	}
+
+	quotient := new(big.Int, allocator)
+	remainder := new(big.Int, allocator)
+	err := big.divmod(quotient, remainder, a_big, b_big, allocator)
+	assert(err == nil)
+
+	q_res: Int = quotient
+	if d, ok := _demote(quotient); ok {
+		q_res = d
+	}
+	r_res: Int = remainder
+	if r, ok := _demote(remainder); ok {
+		r_res = r
+	}
+	return q_res, r_res
+}
+
+int_div_half_even :: proc(a, b: Int, allocator := bigint_allocator) -> Int {
+	q, r := divrem(a, b, context.temp_allocator)
+	switch cmp(mul(r, 2, context.temp_allocator), b, context.temp_allocator) {
+	case .Less:
+		return clone(q, allocator)
+	case .Greater:
+		return add(q, 1, allocator)
+	case .Equal:
+		return add(q, 0 if int_is_even(q) else 1, allocator)
+	}
+	unreachable()
+}
+
+int_bit_length :: proc(i: Int) -> int {
+	ii, i_inline := i.(i128)
+	if intrinsics.likely(i_inline) {
+		return 128 - abs(int(intrinsics.count_leading_zeros(ii)))
+	}
+
+	result, err := big.count_bits(i.(^big.Int), context.temp_allocator)
+	assert(err == nil)
+	return result
+}
+
+int_shl :: proc(i: Int, shift: uint, allocator := bigint_allocator) -> Int {
+	if int_bit_length(i) + int(shift) < 127 {
+		return i.(i128) << shift
+	}
+
+	base: ^big.Int
+	switch ii in i {
+	case i128:
+		base = _promote(ii, context.temp_allocator)
+	case ^big.Int:
+		base = ii
+	}
+
+	result := new(big.Int, allocator)
+	err := big.shl(result, base, int(shift), allocator)
+	assert(err == nil)
+	return result
+}
+
+int_floor_log2_ratio :: proc(a, b: Int) -> int {
+	e0 := int_bit_length(a) - int_bit_length(b)
+
+	if e0 >= 0 {
+		if lt(a, int_shl(b, uint(e0), context.temp_allocator), context.temp_allocator) {
+			return e0 - 1
+		} else {
+			return e0
+		}
+	} else {
+		if lt(int_shl(a, uint(-e0), context.temp_allocator), b, context.temp_allocator) {
+			return e0 - 1
+		} else {
+			return e0
+		}
+	}
 }
 
 _i128_abs_u128 :: proc(value: i128) -> u128 {
@@ -487,6 +599,24 @@ int_is_negative :: proc(i: Int) -> bool {
 	return false
 }
 
+int_sign :: proc(i: Int) -> int {
+	if is_zero(i) {
+		return 0
+	} else if is_negative(i) {
+		return -1
+	} else {
+		return +1
+	}
+}
+
+int_abs :: proc(i: Int, allocator := bigint_allocator) -> Int {
+	if is_negative(i) {
+		return negate(i, allocator)
+	} else {
+		return i
+	}
+}
+
 rat_is_negative :: proc(i: Rat) -> bool {
 	return int_is_negative(i.numerator) != int_is_negative(i.denominator)
 }
@@ -506,6 +636,16 @@ rat_is_one :: proc(r: Rat) -> bool {
 	return int_is_one(r.numerator) && int_is_one(r.denominator)
 }
 
+int_is_even :: proc(i: Int) -> bool {
+	switch ii in i {
+	case i128:
+		return ii & 1 == 0
+	case ^big.Int:
+		return ii.digit == nil || ii.digit[0] & 1 == 0
+	}
+	return false
+}
+
 int_is_zero :: proc(i: Int) -> bool {
 	switch ii in i {
 	case i128:
@@ -519,6 +659,10 @@ int_is_zero :: proc(i: Int) -> bool {
 
 rat_is_zero :: proc(r: Rat) -> bool {
 	return int_is_zero(r.numerator) && !int_is_zero(r.denominator)
+}
+
+rat_is_even :: proc(r: Rat) -> bool {
+	return int_is_even(r.numerator) && int_is_one(r.denominator)
 }
 
 I128_MIN :: -1 << 127
