@@ -26,65 +26,6 @@ Eval_Result :: union {
 	^resolver.Import,
 }
 
-materialize_value :: proc(
-	ts: ^Translation_State,
-	value: Comptime_Value,
-	span: common.Span,
-	target: hir.Type = nil,
-) -> (
-	hir.Expression,
-	bool,
-) {
-	real_type := target
-	if real_type == nil {
-		ok: bool
-		real_type, ok = infer_type(value.type, span)
-		if !ok {
-			return nil, false
-		}
-	}
-	if !can_materialize_value(real_type, value) {
-		diagnostics.emit(
-			.Cannot_Materialize_Value,
-			span,
-			"this value cannot be represented as a(n) %s",
-			real_type,
-		)
-		return nil, false
-	}
-
-	real_value: hir.Value
-	switch v in value.value {
-	case Untyped_Nil:
-		real_value = hir.Nil_Of {
-			type = real_type,
-		}
-	case Untyped_Zero:
-		real_value = hir.Zero_Of {
-			type = real_type,
-		}
-	case exact.Rat:
-		real_value = v
-	case string:
-		real_value = strings.clone(v, ts.output.allocator)
-	case rune:
-		real_value = v
-	case byte:
-		real_value = v
-	case bool:
-		real_value = v
-	}
-
-	expr := new(hir.Const_Expr, ts.output.allocator)
-	expr^ = {
-		span  = span,
-		value = real_value,
-		type  = real_type,
-		unit  = value.unit,
-	}
-	return hir.Expression(expr), true
-}
-
 INT64_DECIMAL_DIGITS :: 18
 
 infer_type :: proc(evaluated_type: Comptime_Type, span: common.Span) -> (hir.Type, bool) {

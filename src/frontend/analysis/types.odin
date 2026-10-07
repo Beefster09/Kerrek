@@ -583,6 +583,43 @@ is_zeroable :: proc(typ: Comptime_Type) -> bool {
 	return false
 }
 
+is_nilable :: proc(typ: Comptime_Type) -> bool {
+	switch comptime_type in typ {
+	case Flexible_Type:
+		return true
+	case hir.Type:
+		switch concrete in comptime_type {
+		case ^hir.Interface,
+		     ^hir.Enum_Type,
+		     ^hir.Struct_Type,
+		     ^hir.Fixed_Array_Type,
+		     hir.Fixed_Decimal,
+		     ^hir.Func_Type:
+			return false
+		case ^hir.Pointer_Type:
+			return concrete.ownership == .Unsafe || concrete.ownership == .Weak
+		case ^hir.Distinct_Type:
+			return is_nilable(concrete.underlying)
+		case ^hir.Tagged_Type:
+			return is_nilable(concrete.base)
+		case hir.Primitive_Type:
+			return concrete == .Any
+		case ^hir.Generic_Type:
+		case ^hir.Dynamic_Array_Type:
+			return true
+		case ^hir.View_Type:
+			return true
+		case ^hir.Map_Type:
+			return true
+		case ^hir.Optional_Type:
+			return true
+		case:
+			unreachable()
+		}
+	}
+	return false
+}
+
 fmt_comptime_type :: proc(fi: ^fmt.Info, arg: any, verb: rune) -> bool {
 	assert(arg.id == Comptime_Type)
 	switch verb {

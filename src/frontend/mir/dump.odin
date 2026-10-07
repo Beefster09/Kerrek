@@ -1,10 +1,10 @@
 package mir
 
-import "base:intrinsics"
 import "base:runtime"
 import "core:fmt"
 import "core:io"
-import "core:math/big"
+
+import "../../common"
 
 
 dump_blocks :: proc(w: io.Writer, blocks: []Block) {
@@ -281,39 +281,7 @@ dump_constant :: proc(w: io.Writer, constant: Constant) {
 	switch constant in constant {
 	case i256:
 		io.write_string(w, "i256(")
-		{
-			value := cast([4]u64)constant
-			i: big.Int
-			if value[3] & 0x8000_0000_0000_0000 != 0 {
-				i.sign = .Negative
-				// negate via two's complement
-				overflow_one := true
-				#unroll for j in 0 ..< 4 {
-					value[j] = ~value[j]
-					if overflow_one {
-						value[j], overflow_one = intrinsics.overflow_add(value[j], 1)
-					}
-				}
-			}
-			for d, j in value {
-				if d != 0 {
-					i.used = j + 1
-				}
-			}
-			i.digit = transmute([dynamic]big.DIGIT)runtime.Raw_Dynamic_Array {
-				data = &value[0],
-				len = 4,
-				cap = 4,
-				allocator = runtime.nil_allocator(),
-			}
-			digits: [78]u8
-			n, err := big.int_itoa_raw(&i, 10, digits[:])
-			if err == nil {
-				io.write_string(w, transmute(string)digits[:n])
-			} else {
-				io.write_string(w, "##ERROR##")
-			}
-		}
+		common.write_i256(w, constant)
 		io.write_string(w, ")")
 	case i128:
 		io.write_string(w, "i128(")

@@ -142,6 +142,7 @@ func flapjacks_required(num_workers: Int | man) -> Bin64 | count
 	\\ fhqwhgads();
 
 	let ddd: Decimal(76, 6) = 1234567890123456789012345678901234567890123456789012345678901234567890.123456;
+	let eee: Decimal(50, 18) = 987654321987654321987654321.123456895783748362;
 	let df: Decimal(12, 4) = 1234/67;
 	let j: Int32 = 0x7FFF_FFFF+56-78;
 

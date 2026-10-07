@@ -265,17 +265,34 @@ _lower_expression :: proc(fb: ^Func_Builder, expr: hir.Expression) -> mir.Operan
 
 _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Operand {
 	switch value in constant.value {
-	case exact.Rat:
-		return _materialize_number(fb, value, constant.type)
-	case rune:
-		if primitive, ok := analysis.underlying_type(
-			   constant.type,
-		   ).(hir.Type).(hir.Primitive_Type); ok && primitive == .Byte {
-			return mir.Constant(u8(value))
-		}
-		return mir.Constant(u32(value))
-	case byte:
-		return mir.Constant(u8(value))
+	case common.i256:
+		return mir.Constant(value)
+	case i128:
+		return mir.Constant(value)
+	case u128:
+		return mir.Constant(value)
+	case i64:
+		return mir.Constant(value)
+	case u64:
+		return mir.Constant(value)
+	case i32:
+		return mir.Constant(value)
+	case u32:
+		return mir.Constant(value)
+	case i16:
+		return mir.Constant(value)
+	case u16:
+		return mir.Constant(value)
+	case i8:
+		return mir.Constant(value)
+	case u8:
+		return mir.Constant(value)
+	case f64:
+		return mir.Constant(value)
+	case f32:
+		return mir.Constant(value)
+	case f16:
+		return mir.Constant(value)
 	case string:
 		return mir.Constant(value)
 	case bool:

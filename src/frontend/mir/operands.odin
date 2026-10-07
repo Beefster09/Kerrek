@@ -64,7 +64,7 @@ Index_Of :: struct {
 	elem: Primitive_Operand,
 }
 
-i256 :: distinct [4]u64
+i256 :: common.i256
 Constant :: union {
 	i256,
 	i128,

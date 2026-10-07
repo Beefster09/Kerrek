@@ -91,9 +91,20 @@ Zero_Of :: struct {
 }
 
 Value :: union {
-	exact.Rat,
-	rune,
-	byte,
+	i8,
+	u8,
+	i16,
+	u16,
+	i32,
+	u32,
+	i64,
+	u64,
+	i128,
+	u128,
+	common.i256, // should maybe be a proper decimal type instead...
+	f16,
+	f32,
+	f64,
 	string,
 	bool,
 	Nil_Of,
