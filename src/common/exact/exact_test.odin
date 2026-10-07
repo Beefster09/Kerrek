@@ -4,6 +4,7 @@ package exact
 import "core:math/big"
 import "core:mem"
 import "core:slice"
+import "core:strings"
 import "core:testing"
 
 _ints_equal :: proc(a, b: Int) -> bool {
@@ -200,6 +201,52 @@ _test_rat_arithmetic :: proc(t: ^testing.T) {
 	}
 }
 
+_test_rat_allocator_ownership :: proc(t: ^testing.T) {
+	denominator, ok := parse_int("170141183460469231731687303715884105729")
+	testing.expect(t, ok)
+	if !ok {
+		return
+	}
+
+	arena: mem.Dynamic_Arena
+	mem.dynamic_arena_init(&arena)
+	defer mem.dynamic_arena_destroy(&arena)
+	allocations: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&allocations, mem.dynamic_arena_allocator(&arena))
+	defer mem.tracking_allocator_destroy(&allocations)
+	allocator := mem.tracking_allocator(&allocations)
+
+	result := negate(Rat{I128_MIN, denominator}, allocator)
+	numerator := result.numerator.(^big.Int)
+	result_denominator := result.denominator.(^big.Int)
+	testing.expect(t, rawptr(numerator) in allocations.allocation_map)
+	testing.expect(t, rawptr(result_denominator) in allocations.allocation_map)
+	testing.expect(t, result_denominator != denominator.(^big.Int))
+}
+
+_test_bigint_formatting :: proc(t: ^testing.T) {
+	heap_source := strings.repeat("9", STACK_DIGITS + 1)
+	defer delete(heap_source)
+	cases := []string {
+		"170141183460469231731687303715884105729",
+		"-170141183460469231731687303715884105729",
+		heap_source,
+	}
+	for source in cases {
+		value, ok := parse_int(source)
+		testing.expect(t, ok)
+		if !ok {
+			continue
+		}
+
+		builder: strings.Builder
+		strings.builder_init(&builder)
+		write_int(strings.to_writer(&builder), value)
+		testing.expect_value(t, strings.to_string(builder), source)
+		strings.builder_destroy(&builder)
+	}
+}
+
 _test_parsing :: proc(t: ^testing.T) {
 	value, ok := parse_int("170141183460469231731687303715884105728")
 	testing.expect(t, ok)
@@ -330,6 +377,8 @@ test_exact :: proc(t: ^testing.T) {
 	_test_int_arithmetic(t)
 	_test_gcd_and_reduction(t)
 	_test_rat_arithmetic(t)
+	_test_rat_allocator_ownership(t)
+	_test_bigint_formatting(t)
 	_test_comparisons(t)
 	_test_parsing(t)
 	_test_float_conversion(t)

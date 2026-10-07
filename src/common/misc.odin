@@ -23,6 +23,10 @@ Untyped_Zero :: struct {}
 
 i256 :: distinct [4]u64
 
+INT64_DECIMAL_MAX_MAGNITUDE :: 18.964889726830815
+INT128_DECIMAL_MAX_MAGNITUDE :: 38.23080944932561
+INT256_DECIMAL_MAX_MAGNITUDE :: 76.7626488943152
+
 write_i256 :: proc(w: io.Writer, value: i256) {
 	value := cast([4]u64)value
 	i: big.Int
@@ -51,7 +55,15 @@ write_i256 :: proc(w: io.Writer, value: i256) {
 	digits: [80]u8
 	n, err := big.int_itoa_raw(&i, 10, digits[:])
 	if err == nil {
-		io.write_string(w, strings.trim_left(transmute(string)digits[:n], "0"))
+		// (ODIN BUG) itoa_raw is still null-terminating and/or returning too big of a value for n
+		digits_str := strings.trim_right(
+			strings.trim_left(transmute(string)digits[:n], "0"),
+			"\x00",
+		)
+		if digits_str == "" {
+			digits_str = "0"
+		}
+		io.write_string(w, digits_str)
 	} else {
 		io.write_string(w, "##ERROR##")
 	}

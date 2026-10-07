@@ -99,11 +99,14 @@ write_int :: proc(w: io.Writer, value: Int, radix: int = 10) {
 	case ^big.Int:
 		stack_buf: [STACK_DIGITS]u8
 		bytes_needed, err := big.radix_size(i, i8(radix))
-		buf := make([]u8, bytes_needed) if bytes_needed > STACK_DIGITS else stack_buf[:]
+		assert(err == nil)
+		buf := make([]u8, bytes_needed) if bytes_needed > STACK_DIGITS else stack_buf[:bytes_needed]
 		defer if raw_data(buf) != &stack_buf[0] {
 			delete(buf)
 		}
-		big.int_itoa_raw(i, i8(radix), buf)
-		io.write(w, buf)
+		written: int
+		written, err = big.int_itoa_raw(i, i8(radix), buf, size = bytes_needed)
+		assert(err == nil)
+		io.write(w, buf[:written])
 	}
 }

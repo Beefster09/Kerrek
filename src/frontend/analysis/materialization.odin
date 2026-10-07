@@ -1,9 +1,9 @@
 package analysis
 
-import "core:fmt"
-
 import "base:runtime"
+import "core:fmt"
 import "core:math/big"
+import "core:reflect"
 import "core:strings"
 
 import "../../common"
@@ -19,6 +19,7 @@ materialize_value :: proc(
 	value: Comptime_Value,
 	span: common.Span,
 	target: hir.Type = nil,
+	loc := #caller_location,
 ) -> (
 	hir.Expression,
 	bool,
@@ -34,7 +35,7 @@ materialize_value :: proc(
 		diagnostics.emit(
 			.Cannot_Materialize_Value,
 			span,
-			"this value cannot be represented as a(n) %s",
+			"this value cannot be represented as %s",
 			real_type,
 		)
 		return poison(ts, span), false
@@ -79,9 +80,7 @@ materialize_value :: proc(
 		case hir.Primitive_Type:
 			real_value, ok = _materialize_primitive(t, v)
 		case hir.Fixed_Decimal:
-			fmt.println(t, v)
 			if flex, flex_ok := value.type.(resolver.Flexible_Type); flex_ok {
-				fmt.println(flex.affinity, flex.digits, flex.scale)
 				real_value, ok = _materialize_decimal(t, v, flex)
 			}
 		}

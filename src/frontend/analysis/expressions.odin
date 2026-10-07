@@ -177,7 +177,7 @@ evaluate :: proc(
 		}
 
 		return Comptime_Value {
-			value = node.value,
+			value = exact.clone(node.value, ts.output.allocator),
 			type = Flexible_Type{affinity = affinity, digits = node.digits, scale = node.scale},
 			unit = out_unit,
 		}
@@ -531,7 +531,7 @@ _eval_unary :: proc(
 	switch expr in expr {
 	case Comptime_Value:
 		return Comptime_Value {
-			value = _comptime_unop(unary.op, expr.value),
+			value = _comptime_unop(unary.op, expr.value, ts.output.allocator),
 			type = type,
 			unit = unit,
 		}
@@ -673,9 +673,27 @@ _eval_binop :: proc(
 	}
 
 	if l, r, ok := util.extract_pair(u_lhs, u_rhs, Comptime_Value); ok {
+		result_type := coerced_type
+		if binop.op not_in common.ARITHMETIC_BINOPS {
+			result_type = resolver.Flexible_Type {
+				affinity = .Boolean,
+			}
+		} else if _, _, both_flex := util.extract_pair(l.type, r.type, resolver.Flexible_Type);
+		   both_flex {
+			if binop.op == .True_Divide {
+				result_type = resolver.Flexible_Type {
+					affinity = .Rational,
+				}
+			} else if binop.op == .Floor_Divide {
+				result_type = resolver.Flexible_Type {
+					affinity = .Integer,
+				}
+			}
+		}
+
 		return Comptime_Value {
-			value = _comptime_binop(binop.op, l.value, r.value),
-			type = coerced_type if binop.op in common.ARITHMETIC_BINOPS else hir.Type(hir.Primitive_Type.Boolean),
+			value = _comptime_binop(binop.op, l.value, r.value, ts.output.allocator),
+			type = result_type,
 			unit = res_unit if binop.op in common.ARITHMETIC_BINOPS else hir.Indeterminate_Unit.No_Unit,
 		}
 	}
@@ -981,7 +999,7 @@ _eval_binop_unit :: proc(
 			expr   = value.(hir.Expression),
 			type   = realized_type,
 			unit   = unit,
-			factor = rmult,
+			factor = exact.clone(rmult, ts.output.allocator),
 		}
 		return hir.Expression(expr), true
 	}

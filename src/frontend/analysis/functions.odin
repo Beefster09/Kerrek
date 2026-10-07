@@ -3,6 +3,7 @@ package analysis
 import "core:slice"
 
 import "../../common"
+import "../../common/exact"
 import "../../util"
 import "../ast"
 import "../diagnostics"
@@ -487,7 +488,7 @@ _build_func_call :: proc(
 				expr   = converted[arg_idx],
 				type   = expected.type,
 				unit   = expected.unit,
-				factor = factor,
+				factor = exact.clone(factor, ts.output.allocator),
 			}
 			converted[arg_idx] = conversion
 		}

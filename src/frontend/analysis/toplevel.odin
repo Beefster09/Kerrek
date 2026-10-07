@@ -151,7 +151,7 @@ ensure_toplevel_symbol_processed :: proc(
 				mul, m_ok := _get_conversion_operand(ts, symbol.defined_in, conv.multiplier)
 				div, d_ok := _get_conversion_operand(ts, symbol.defined_in, conv.divisor)
 				if m_ok && d_ok {
-					ratio := exact.div(mul, div)
+					ratio := exact.div(mul, div, ts.output.allocator)
 					if conv.direction == .To {
 						units.add_conversion(
 							&ts.unit_conversions,

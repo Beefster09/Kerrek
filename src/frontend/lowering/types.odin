@@ -3,16 +3,13 @@ package lowering
 import "core:fmt"
 import "core:reflect"
 
+import "../../common"
 import "../hir"
 import "../mir"
 
 lower_type_def :: proc(ctx: ^Translation_Context, type: hir.Type_Definition) -> mir.Type {
 	return nil
 }
-
-INT64_DECIMAL_MAX_MAGNITUDE :: 18.964889726830815
-INT128_DECIMAL_MAX_MAGNITUDE :: 38.23080944932561
-INT256_DECIMAL_MAX_MAGNITUDE :: 76.7626488943152
 
 lower_type :: proc(ctx: ^Translation_Context, type: hir.Type) -> mir.Type {
 	switch type in type {
@@ -60,11 +57,11 @@ lower_type :: proc(ctx: ^Translation_Context, type: hir.Type) -> mir.Type {
 
 	case hir.Fixed_Decimal:
 		switch {
-		case type.magnitude < INT64_DECIMAL_MAX_MAGNITUDE:
+		case type.magnitude < common.INT64_DECIMAL_MAX_MAGNITUDE:
 			return mir.Primitive_Type.Int64
-		case type.magnitude < INT128_DECIMAL_MAX_MAGNITUDE:
+		case type.magnitude < common.INT128_DECIMAL_MAX_MAGNITUDE:
 			return mir.Primitive_Type.Int128
-		case type.magnitude < INT256_DECIMAL_MAX_MAGNITUDE:
+		case type.magnitude < common.INT256_DECIMAL_MAX_MAGNITUDE:
 			return mir.Primitive_Type.Int256
 		}
 

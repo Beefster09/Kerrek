@@ -442,7 +442,7 @@ rat_reduce :: proc(r: Rat, allocator := bigint_allocator) -> Rat {
 }
 
 rat_negate :: proc(r: Rat, allocator := bigint_allocator) -> Rat {
-	return {int_negate(r.numerator, allocator), r.denominator}
+	return {int_negate(r.numerator, allocator), clone(r.denominator, allocator)}
 }
 
 rat_add :: proc(a, b: Rat, allocator := bigint_allocator) -> Rat {

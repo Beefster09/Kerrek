@@ -4,6 +4,7 @@ import "../../common"
 import "../../common/exact"
 import "../diagnostics"
 import "../hir"
+import "base:runtime"
 import "core:fmt"
 import "core:reflect"
 import "core:strings"
@@ -191,12 +192,13 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 _comptime_unop :: proc(
 	op: common.Unary_Op,
 	value: common.Primitive_Value,
+	allocator: runtime.Allocator,
 ) -> common.Primitive_Value {
 	switch op {
 	case .Positive:
-		return value.(exact.Rat)
+		return exact.clone(value.(exact.Rat), allocator)
 	case .Negate:
-		return exact.negate(value.(exact.Rat))
+		return exact.negate(value.(exact.Rat), allocator)
 	case .Not:
 		return !value.(bool)
 	}
@@ -211,28 +213,29 @@ _comptime_unop :: proc(
 _comptime_binop :: proc(
 	op: common.Binary_Op,
 	lhs, rhs: common.Primitive_Value,
+	allocator: runtime.Allocator,
 ) -> common.Primitive_Value {
 	switch op {
 	case .Add:
-		return exact.add(lhs.(exact.Rat), rhs.(exact.Rat))
+		return exact.add(lhs.(exact.Rat), rhs.(exact.Rat), allocator)
 	case .Subtract:
-		return exact.sub(lhs.(exact.Rat), rhs.(exact.Rat))
+		return exact.sub(lhs.(exact.Rat), rhs.(exact.Rat), allocator)
 	case .Multiply:
-		return exact.mul(lhs.(exact.Rat), rhs.(exact.Rat))
+		return exact.mul(lhs.(exact.Rat), rhs.(exact.Rat), allocator)
 	case .True_Divide:
-		return exact.div(lhs.(exact.Rat), rhs.(exact.Rat))
+		return exact.div(lhs.(exact.Rat), rhs.(exact.Rat), allocator)
 	case .Floor_Divide:
-		return exact.floordiv(lhs.(exact.Rat), rhs.(exact.Rat))
+		return exact.floordiv(lhs.(exact.Rat), rhs.(exact.Rat), allocator)
 	case .Remainder:
-		return exact.rem(lhs.(exact.Rat), rhs.(exact.Rat))
+		return exact.rem(lhs.(exact.Rat), rhs.(exact.Rat), allocator)
 	case .Modulo:
-		return exact.mod(lhs.(exact.Rat), rhs.(exact.Rat))
+		return exact.mod(lhs.(exact.Rat), rhs.(exact.Rat), allocator)
 	case .Power:
 		r := rhs.(exact.Rat)
 		if exact.is_one(r.denominator) &&
 		   r.numerator.(i128) >= -i128(max(int)) &&
 		   r.numerator.(i128) <= i128(max(int)) {
-			return exact.pow(lhs.(exact.Rat), int(r.numerator.(i128)))
+			return exact.pow(lhs.(exact.Rat), int(r.numerator.(i128)), allocator)
 		} else {
 			fmt.panicf(
 				"%T %s %T is only supported for integer exponents in 64-bit signed integer range",
