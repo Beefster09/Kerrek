@@ -92,7 +92,7 @@ infer_type :: proc(evaluated_type: Comptime_Type, span: common.Span) -> (hir.Typ
 	case Flexible_Type:
 		switch typ.affinity {
 		case .Integer:
-			return hir.Primitive_Type.Int64, true
+			return hir.Primitive_Type.Int, true
 		case .Unsigned_Integer:
 			return hir.Primitive_Type.UInt64, true
 		case .Decimal:
@@ -950,7 +950,8 @@ _primitive_zero :: proc(type: Comptime_Type) -> common.Primitive_Value {
 			return exact.RAT_ZERO
 		case hir.Primitive_Type:
 			switch concrete {
-			case .Int128,
+			case .Int,
+			     .Int128,
 			     .Int64,
 			     .Int32,
 			     .Int16,

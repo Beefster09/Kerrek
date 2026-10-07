@@ -32,6 +32,7 @@ FIRST_USER_SYMBOL_ID :: 10_000
 // ID, and makes adding a builtin unable to collide with an existing ID.
 BUILTINS := [?]Builtin {
 	// Types.
+	{name = "Int", kind = .Primitive_Type},
 	{name = "Int128", kind = .Primitive_Type},
 	{name = "Int64", kind = .Primitive_Type},
 	{name = "Int32", kind = .Primitive_Type},

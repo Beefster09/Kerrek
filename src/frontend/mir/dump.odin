@@ -137,35 +137,50 @@ dump_instruction :: proc(w: io.Writer, instruction: Instruction) {
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.of)
 	case Add:
-		io.write_string(w, "add ")
+		io.write_string(w, "add.")
+		io.write_string(w, PRIMITIVE_TYPE_NAMES[instruction.mode.type])
+		io.write_string(w, OVERFLOW_MODE_MNEMONICS[instruction.mode.overflow])
+		io.write_rune(w, ' ')
 		dump_writable(w, instruction.dest)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.lhs)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.rhs)
 	case Sub:
-		io.write_string(w, "sub ")
+		io.write_string(w, "sub.")
+		io.write_string(w, PRIMITIVE_TYPE_NAMES[instruction.mode.type])
+		io.write_string(w, OVERFLOW_MODE_MNEMONICS[instruction.mode.overflow])
+		io.write_rune(w, ' ')
 		dump_writable(w, instruction.dest)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.lhs)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.rhs)
 	case Mul:
-		io.write_string(w, "mul ")
+		io.write_string(w, "mul.")
+		io.write_string(w, PRIMITIVE_TYPE_NAMES[instruction.mode.type])
+		io.write_string(w, OVERFLOW_MODE_MNEMONICS[instruction.mode.overflow])
+		io.write_rune(w, ' ')
 		dump_writable(w, instruction.dest)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.lhs)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.rhs)
 	case Div:
-		io.write_string(w, "div ")
+		io.write_string(w, "div.")
+		io.write_string(w, PRIMITIVE_TYPE_NAMES[instruction.mode.type])
+		io.write_string(w, OVERFLOW_MODE_MNEMONICS[instruction.mode.overflow])
+		io.write_rune(w, ' ')
 		dump_writable(w, instruction.dest)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.lhs)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.rhs)
 	case Rem:
-		io.write_string(w, "rem ")
+		io.write_string(w, "rem.")
+		io.write_string(w, PRIMITIVE_TYPE_NAMES[instruction.mode.type])
+		io.write_string(w, OVERFLOW_MODE_MNEMONICS[instruction.mode.overflow])
+		io.write_rune(w, ' ')
 		dump_writable(w, instruction.dest)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.lhs)
@@ -341,17 +356,11 @@ dump_constant :: proc(w: io.Writer, constant: Constant) {
 		io.write_u64(w, u64(constant))
 		io.write_rune(w, ')')
 	case f64:
-		io.write_string(w, "f64(")
-		io.write_f64(w, constant)
-		io.write_rune(w, ')')
+		fmt.wprintf(w, "f64(%g)", constant)
 	case f32:
-		io.write_string(w, "f32(")
-		io.write_f32(w, constant)
-		io.write_rune(w, ')')
+		fmt.wprintf(w, "f32(%g)", constant)
 	case f16:
-		io.write_string(w, "f16(")
-		io.write_f16(w, constant)
-		io.write_rune(w, ')')
+		fmt.wprintf(w, "f16(%g)", constant)
 	case bool:
 		if constant {
 			io.write_string(w, "true")
@@ -386,27 +395,6 @@ dump_parameter :: proc(w: io.Writer, parameter: Parameter) {
 	io.write_string(w, "p")
 	io.write_int(w, int(parameter.index))
 }
-
-@(rodata)
-PRIMITIVE_TYPE_NAMES := [Primitive_Type]string {
-	.Int256  = "i256",
-	.Int128  = "i128",
-	.Int64   = "i64",
-	.Int32   = "i32",
-	.Int16   = "i16",
-	.Int8    = "i8",
-	.UInt128 = "u128",
-	.UInt64  = "u64",
-	.UInt32  = "u32",
-	.UInt16  = "u16",
-	.UInt8   = "u8",
-	.Bin64   = "f64",
-	.Bin32   = "f32",
-	.Bin16   = "f16",
-	.Boolean = "bool",
-	.String  = "string",
-}
-
 dump_type :: proc(w: io.Writer, type: Type) {
 	switch type in type {
 	case Primitive_Type:
@@ -420,9 +408,8 @@ dump_type :: proc(w: io.Writer, type: Type) {
 		io.write_string(w, string(type.name))
 		io.write_rune(w, ')')
 	case ^Array_Type:
-		io.write_string(w, "array(")
-		io.write_string(w, string(type.name))
-		io.write_rune(w, ')')
+		fmt.wprintf(w, "[%d]", type.size)
+		dump_type(w, type.elem)
 	case ^Pointer_Type:
 		io.write_rune(w, '*')
 		dump_type(w, type.to)

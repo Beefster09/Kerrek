@@ -324,13 +324,13 @@ _materialize_number :: proc(fb: ^Func_Builder, value: exact.Rat, type: hir.Type)
 		)
 		result: exact.Int
 		if dec_type.scale >= 0 {
-			result = exact.div(
+			result = exact.int_div_half_even(
 				exact.mul(value.numerator, factor, context.temp_allocator),
 				value.denominator,
 				fb.ctx.allocator,
 			)
 		} else {
-			result = exact.div(
+			result = exact.int_div_half_even(
 				value.numerator,
 				exact.mul(value.denominator, factor, context.temp_allocator),
 				fb.ctx.allocator,
@@ -382,7 +382,7 @@ _materialize_number :: proc(fb: ^Func_Builder, value: exact.Rat, type: hir.Type)
 		#partial switch prim_type {
 		case .Int128:
 			return mir.Constant(_exact_int_get(value.numerator, i128))
-		case .Int64:
+		case .Int64, .Int:
 			return mir.Constant(_exact_int_get(value.numerator, i64))
 		case .Int32:
 			return mir.Constant(_exact_int_get(value.numerator, i32))
@@ -425,36 +425,41 @@ _exact_int_get :: proc(value: exact.Int, $T: typeid) -> T {
 }
 
 _lower_binop :: proc(fb: ^Func_Builder, binop: hir.Binop_Expr) -> mir.Operand {
+	mode: mir.Arithmetic_Mode
+	if binop.op in common.ARITHMETIC_BINOPS {
+		mode = _arithmetic_mode(fb, binop.lhs)
+	}
+
 	switch binop.op {
 	case .Add:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_tmp(fb, binop.type)
-		_append_ops(fb, mir.Add{dest = result, lhs = lhs, rhs = rhs})
+		_append_ops(fb, mir.Add{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 		return mir.Temp{id = result.id}
 	case .Subtract:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_tmp(fb, binop.type)
-		_append_ops(fb, mir.Sub{dest = result, lhs = lhs, rhs = rhs})
+		_append_ops(fb, mir.Sub{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 		return mir.Temp{id = result.id}
 	case .Multiply:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_tmp(fb, binop.type)
-		_append_ops(fb, mir.Mul{dest = result, lhs = lhs, rhs = rhs})
+		_append_ops(fb, mir.Mul{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 		return mir.Temp{id = result.id}
 	case .True_Divide:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_tmp(fb, binop.type)
-		_append_ops(fb, mir.Div{dest = result, lhs = lhs, rhs = rhs})
+		_append_ops(fb, mir.Div{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 		return mir.Temp{id = result.id}
 	case .Floor_Divide:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_mut_tmp(fb, binop.type)
-		_append_ops(fb, mir.Div{dest = result, lhs = lhs, rhs = rhs})
+		_append_ops(fb, mir.Div{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 
 		lhs_type, _, _ := hir.type_and_unit(binop.lhs)
 		rhs_type, _, _ := hir.type_and_unit(binop.rhs)
@@ -466,17 +471,17 @@ _lower_binop :: proc(fb: ^Func_Builder, binop: hir.Binop_Expr) -> mir.Operand {
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_tmp(fb, binop.type)
-		_append_ops(fb, mir.Rem{dest = result, lhs = lhs, rhs = rhs})
+		_append_ops(fb, mir.Rem{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 		return mir.Temp{id = result.id}
 	case .Modulo:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_mut_tmp(fb, binop.type)
-		_append_ops(fb, mir.Rem{dest = result, lhs = lhs, rhs = rhs})
+		_append_ops(fb, mir.Rem{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 
 		before := fb.current_block_id
 		negative := _new_block(fb)
-		_append_ops(fb, mir.Add{dest = result, lhs = result, rhs = rhs})
+		_append_ops(fb, mir.Add{mode = mode, dest = result, lhs = result, rhs = rhs})
 		after := _new_block(fb)
 
 		zero := _materialize_number(fb, exact.RAT_ZERO, binop.type)
@@ -492,6 +497,21 @@ _lower_binop :: proc(fb: ^Func_Builder, binop: hir.Binop_Expr) -> mir.Operand {
 	case .Power:
 	}
 	fmt.panicf("mir lowering not implemented for binop %s", common.BINARY_OP_STRINGS[binop.op])
+}
+
+_arithmetic_mode :: proc(fb: ^Func_Builder, input: hir.Expression) -> mir.Arithmetic_Mode {
+	type, _, ok := hir.type_and_unit(input)
+	assert(ok)
+	underlying := analysis.underlying_type(type).(hir.Type)
+	primitive := lower_type(fb.ctx, underlying).(mir.Primitive_Type)
+	overflow: mir.Overflow_Mode = .None
+	if hir_primitive, primitive_ok := underlying.(hir.Primitive_Type);
+	   primitive_ok && hir_primitive == .Int {
+		overflow = .Panic
+	} else if analysis.is_integer(type) {
+		overflow = .Wrap
+	}
+	return {type = primitive, overflow = overflow}
 }
 
 _lower_binop_cond :: proc(fb: ^Func_Builder, cond: hir.Binop_Expr) {

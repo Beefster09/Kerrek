@@ -155,7 +155,8 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 				return .Boolean
 			case .String, .Rune:
 				return .Ordered
-			case .Int128,
+			case .Int,
+			     .Int128,
 			     .Int64,
 			     .Int32,
 			     .Int16,

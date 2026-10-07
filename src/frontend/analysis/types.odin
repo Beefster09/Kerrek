@@ -259,6 +259,8 @@ build_type :: proc(
 
 _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool) {
 	switch builtin.name {
+	case "Int":
+		return .Int, true
 	case "Int128":
 		return .Int128, true
 	case "Int64":
@@ -426,7 +428,8 @@ is_integer :: proc(t: Comptime_Type) -> bool {
 			return concrete.scale < 0
 		case hir.Primitive_Type:
 			switch concrete {
-			case .Int128,
+			case .Int,
+			     .Int128,
 			     .Int64,
 			     .Int32,
 			     .Int16,

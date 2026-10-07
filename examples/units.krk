@@ -110,7 +110,7 @@ unit ratio = 1;
 const exp_test = 5**-123;
 
 
-func how_long_to_complete(num_workers: Int64 | man, blocks: Bin64 | ratio)
+func how_long_to_complete(num_workers: Int | man, blocks: Bin64 | ratio)
 	-> Bin64 | day
 {
 	const city_block_len = 0.125 mile;
@@ -122,12 +122,12 @@ func how_long_to_complete(num_workers: Int64 | man, blocks: Bin64 | ratio)
 }
 
 
-func flapjacks_required(num_workers: Int64 | man) -> Bin64 | count
+func flapjacks_required(num_workers: Int | man) -> Bin64 | count
 {
 	let hunger = Bin64(num_workers) * 314.15 / 1 man;
 	hunger = (hunger + 2.717) * true;
 
-	let a: Int64 = 500;
+	let a: Int = 500;
 	let b = 8;
 	let c = a // b;
 	let d = a % b;

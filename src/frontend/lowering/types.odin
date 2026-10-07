@@ -18,6 +18,8 @@ lower_type :: proc(ctx: ^Translation_Context, type: hir.Type) -> mir.Type {
 	switch type in type {
 	case hir.Primitive_Type:
 		switch type {
+		case .Int:
+			return mir.Primitive_Type.Int64
 		case .Int128:
 			return mir.Primitive_Type.Int128
 		case .Int64:

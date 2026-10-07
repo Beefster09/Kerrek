@@ -67,27 +67,45 @@ Get_Addr :: struct {
 	of:   Operand,
 }
 
+Arithmetic_Mode :: struct {
+	type:     Primitive_Type,
+	overflow: Overflow_Mode,
+}
+
+Overflow_Mode :: enum u8 {
+	None,
+	Wrap,
+	Panic,
+	Saturate,
+	Checked,
+}
+
 Add :: struct {
+	mode: Arithmetic_Mode,
 	dest: Writable,
 	lhs:  Operand,
 	rhs:  Operand,
 }
 Sub :: struct {
+	mode: Arithmetic_Mode,
 	dest: Writable,
 	lhs:  Operand,
 	rhs:  Operand,
 }
 Mul :: struct {
+	mode: Arithmetic_Mode,
 	dest: Writable,
 	lhs:  Operand,
 	rhs:  Operand,
 }
 Div :: struct {
+	mode: Arithmetic_Mode,
 	dest: Writable,
 	lhs:  Operand,
 	rhs:  Operand,
 }
 Rem :: struct {
+	mode: Arithmetic_Mode,
 	dest: Writable,
 	lhs:  Operand,
 	rhs:  Operand,
@@ -106,4 +124,13 @@ Call :: struct {
 
 Debug_Marker :: struct {
 	span: common.Span,
+}
+
+@(rodata)
+OVERFLOW_MODE_MNEMONICS := [Overflow_Mode]string {
+	.None     = "",
+	.Wrap     = ".wr",
+	.Checked  = ".chk",
+	.Saturate = ".sat",
+	.Panic    = "!",
 }

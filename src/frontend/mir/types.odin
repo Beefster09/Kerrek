@@ -45,11 +45,31 @@ Field :: struct {
 }
 
 Array_Type :: struct {
-	name: common.Identifier,
 	elem: Type,
 	size: int,
 }
 
 Pointer_Type :: struct {
 	to: Type,
+}
+
+
+@(rodata)
+PRIMITIVE_TYPE_NAMES := [Primitive_Type]string {
+	.Int256  = "i256",
+	.Int128  = "i128",
+	.Int64   = "i64",
+	.Int32   = "i32",
+	.Int16   = "i16",
+	.Int8    = "i8",
+	.UInt128 = "u128",
+	.UInt64  = "u64",
+	.UInt32  = "u32",
+	.UInt16  = "u16",
+	.UInt8   = "u8",
+	.Bin64   = "f64",
+	.Bin32   = "f32",
+	.Bin16   = "f16",
+	.Boolean = "bool",
+	.String  = "string",
 }

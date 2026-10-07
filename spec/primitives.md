@@ -20,15 +20,21 @@ When an irrational number is demanded by some calculation, the result must have 
 
 ## Integers
 
-- Sized integers (`Int64`, `UInt32`, etc...) behave as expected for machine integers
-	- overflow and underflow wrap by default for machine integers, as that is the behavior most commonly expected for machine integers
-	- you can set the overflow behavior to saturating arithmetic or to emit `OverflowError`
+- The standard integer `Int` is a bounded mathematical integer with a large practical range.
+	- overflow and underflow are checked and will panic
+		- this is also the case on release builds by default
+	- the size is 64 bits or the size of a standard machine register, whichever is larger. On most hardware, this is 64 bits, but theoretically this could be 128 bits or 256 bits on some theoretical CPU with registers that size.
+	- even though these are register-sized on most platforms and their size is known at compile time, intrinsics for wrapped and saturating arithmetic are not defined for `Int`
+		- however, checked arithmetic *is* available if you want to handle edge cases instead of panicking.
+- Sized machine integers (`Int64`, `UInt32`, etc...) behave as expected for machine integers
+	- overflow and underflow wrap, as specifying the size is taken as consent for wrapping behavior
+	- you can opt-in to other behaviors (checked, saturating, trapping) via intrinsics
+
+The safe standard `Int` requires explicit conversion to and from the sized machine integers
 
 ### Operator Semantics
 
 All mathematical operators except for `/` are defined for integers. The operator you are looking for is `//`, the floor-division operator. Requiring you to opt into floor division instead of silently truncating helps to prevent subtle logic bugs and surprises.
-
-Division by zero emits a `ZeroDivisionError` which panics by default
 
 ## Decimals
 

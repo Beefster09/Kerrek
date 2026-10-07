@@ -34,6 +34,15 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 		Integer,
 	},
 } {
+	.Int = {
+		implicitly_to = {.Any},
+		explicit_group = .Numeric,
+		size_bytes = 8,
+		significant_bits = 63,
+		decimal_digits = 18,
+		signedness = .Signed,
+		numeric_class = .Integer,
+	},
 	.Int128 = {
 		implicitly_to = {.Any, .Int128},
 		explicit_group = .Numeric,
@@ -389,7 +398,8 @@ _can_materialize_number :: proc(target: hir.Type, value: exact.Rat, type: Compti
 			return _rational_fits_binary(value, concrete)
 		case .Any:
 			return true
-		case .Int128,
+		case .Int,
+		     .Int128,
 		     .Int64,
 		     .Int32,
 		     .Int16,
@@ -451,7 +461,7 @@ _integer_fits_primitive :: proc(value: exact.Int, target: hir.Primitive_Type) ->
 		#partial switch target {
 		case .Int128:
 			return true
-		case .Int64:
+		case .Int64, .Int:
 			return integer >= i128(min(i64)) && integer <= i128(max(i64))
 		case .Int32:
 			return integer >= i128(min(i32)) && integer <= i128(max(i32))
@@ -578,7 +588,8 @@ _flex_converts_to :: proc(flex: Flexible_Type, to: Comptime_Type) -> bool {
 				return is_zeroable(dest)
 			case .Unsigned_Integer, .Integer:
 				switch concrete {
-				case .Int128,
+				case .Int,
+				     .Int128,
 				     .Int64,
 				     .Int32,
 				     .Int16,

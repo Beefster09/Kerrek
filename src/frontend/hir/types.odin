@@ -27,7 +27,8 @@ Type :: union {
 	^Func_Type,
 }
 
-Primitive_Type :: enum {
+Primitive_Type :: enum u8 {
+	Int,
 	Int128,
 	Int64,
 	Int32,
