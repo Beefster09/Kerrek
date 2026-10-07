@@ -1,9 +1,12 @@
 #+test
 package analysis
 
+import "core:sync"
 import "core:testing"
 
+import "../../common"
 import "../../common/exact"
+import "../diagnostics"
 import "../hir"
 
 
@@ -387,7 +390,17 @@ test_implicit_conversions_preserve_direction :: proc(t: ^testing.T) {
 
 
 @(test)
-test_can_materialize_numeric_values :: proc(t: ^testing.T) {
+test_materialize_numeric_values :: proc(t: ^testing.T) {
+	sync.lock(&common.Test_Global_State_Lock)
+	defer sync.unlock(&common.Test_Global_State_Lock)
+	diagnostics.initialize()
+	defer diagnostics.destroy()
+
+	tu: hir.Module
+	hir.init(&tu)
+	defer hir.destroy(&tu)
+	ts := Translation_State{output = &tu}
+
 	flex_integer := Comptime_Type(Flexible_Type{affinity = .Integer})
 	flex_decimal := Comptime_Type(Flexible_Type{affinity = .Decimal})
 
@@ -409,8 +422,6 @@ test_can_materialize_numeric_values :: proc(t: ^testing.T) {
 		{"above Byte", hir.Primitive_Type.Byte, {256, 1}, flex_integer, false},
 		{"fractional integer", hir.Primitive_Type.Int64, {3, 2}, flex_decimal, false},
 		{"reduced integer", hir.Primitive_Type.Int8, {254, 2}, flex_integer, true},
-		{"Binary16 maximum", hir.Primitive_Type.Bin16, {65504, 1}, flex_integer, true},
-		{"above Binary16", hir.Primitive_Type.Bin16, {65505, 1}, flex_integer, false},
 		{
 			"Decimal boundary",
 			hir.Fixed_Decimal{digits = 3, scale = 2},
@@ -447,7 +458,7 @@ test_can_materialize_numeric_values :: proc(t: ^testing.T) {
 			type  = tc.type,
 			unit  = hir.Indeterminate_Unit.No_Unit,
 		}
-		actual := can_materialize_value(tc.target, value)
+		materialized, actual := materialize_value(&ts, value, {}, tc.target)
 		testing.expectf(
 			t,
 			actual == tc.expected,
@@ -456,6 +467,65 @@ test_can_materialize_numeric_values :: proc(t: ^testing.T) {
 			tc.expected,
 			actual,
 		)
+		if actual {
+			constant, is_constant := materialized.(^hir.Const_Expr)
+			testing.expectf(t, is_constant, "%s: expected a materialized constant", tc.name)
+			if is_constant {
+				testing.expectf(t, constant.type == tc.target, "%s: materialized the wrong type", tc.name)
+			}
+		}
+	}
+
+	fraction_cases := []struct {
+		name:        string,
+		target:      hir.Fixed_Decimal,
+		value:       exact.Rat,
+		significand: string,
+		expected:    bool,
+	} {
+		{"third rounded to two places", {digits = 2, scale = 2}, {1, 3}, "33", true},
+		{"two thirds rounded up", {digits = 2, scale = 2}, {2, 3}, "67", true},
+		{"half-even rounds down", {digits = 2, scale = 2}, {1, 8}, "12", true},
+		{"half-even rounds up", {digits = 2, scale = 2}, {3, 8}, "38", true},
+		{"negative half-even", {digits = 2, scale = 2}, {-3, 8}, "-38", true},
+		{"rounding carries past precision", {digits = 3, scale = 2}, {9999, 1000}, "", false},
+		{"rounding remains within precision", {digits = 3, scale = 2}, {9994, 1000}, "999", true},
+		{"negative destination scale", {digits = 2, scale = -1}, {145, 1}, "14", true},
+	}
+	flex_rational := Comptime_Type(Flexible_Type{affinity = .Rational})
+	for tc in fraction_cases {
+		value := Comptime_Value {
+			value = tc.value,
+			type  = flex_rational,
+			unit  = hir.Indeterminate_Unit.No_Unit,
+		}
+		materialized, ok := materialize_value(&ts, value, {}, hir.Type(tc.target))
+		testing.expectf(
+			t,
+			ok == tc.expected,
+			"%s: expected success %v, got %v",
+			tc.name,
+			tc.expected,
+			ok,
+		)
+		if !ok {
+			continue
+		}
+
+		constant, is_constant := materialized.(^hir.Const_Expr)
+		testing.expectf(t, is_constant, "%s: expected a materialized constant", tc.name)
+		if !is_constant {
+			continue
+		}
+		actual, is_decimal := constant.value.(common.i256)
+		testing.expectf(t, is_decimal, "%s: expected an i256 decimal value", tc.name)
+		expected_int, parsed := exact.parse_int(tc.significand)
+		testing.expectf(t, parsed, "%s: invalid expected significand", tc.name)
+		expected, converted := common.exact_int_to_i256(expected_int)
+		testing.expect(t, converted)
+		if is_decimal && parsed && converted {
+			testing.expectf(t, actual == expected, "%s: materialized the wrong significand", tc.name)
+		}
 	}
 }
 

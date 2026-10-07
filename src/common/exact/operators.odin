@@ -8,16 +8,19 @@ import "core:slice"
 add :: proc {
 	int_add,
 	rat_add,
+	decimal_add,
 }
 
 sub :: proc {
 	int_sub,
 	rat_sub,
+	decimal_sub,
 }
 
 mul :: proc {
 	int_mul,
 	rat_mul,
+	decimal_mul,
 }
 
 pow :: proc {
@@ -37,11 +40,15 @@ divrem :: proc {
 floordiv :: proc {
 	int_div,
 	rat_floordiv,
+	decimal_floordiv,
 }
+
+floor_div :: floordiv
 
 rem :: proc {
 	int_rem,
 	rat_rem,
+	decimal_rem,
 }
 
 mod :: proc {
@@ -52,36 +59,43 @@ mod :: proc {
 cmp :: proc {
 	int_cmp,
 	rat_cmp,
+	decimal_cmp,
 }
 
 eq :: proc {
 	int_eq,
 	rat_eq,
+	decimal_eq,
 }
 
 ne :: proc {
 	int_ne,
 	rat_ne,
+	decimal_ne,
 }
 
 lt :: proc {
 	int_lt,
 	rat_lt,
+	decimal_lt,
 }
 
 le :: proc {
 	int_le,
 	rat_le,
+	decimal_le,
 }
 
 gt :: proc {
 	int_gt,
 	rat_gt,
+	decimal_gt,
 }
 
 ge :: proc {
 	int_ge,
 	rat_ge,
+	decimal_ge,
 }
 
 negate :: proc {
@@ -94,19 +108,27 @@ reciprocal :: proc {
 	rat_reciprocal,
 }
 
+decimal_digit_count :: proc {
+	int_decimal_digit_count,
+	decimal_decimal_digit_count,
+}
+
 is_negative :: proc {
 	int_is_negative,
 	rat_is_negative,
+	decimal_is_negative,
 }
 
 is_one :: proc {
 	int_is_one,
 	rat_is_one,
+	decimal_is_one,
 }
 
 is_zero :: proc {
 	int_is_zero,
 	rat_is_zero,
+	decimal_is_zero,
 }
 
 is_even :: proc {
@@ -278,13 +300,20 @@ int_divrem :: proc(a, b: Int, allocator := bigint_allocator) -> (Int, Int) {
 
 int_div_half_even :: proc(a, b: Int, allocator := bigint_allocator) -> Int {
 	q, r := divrem(a, b, context.temp_allocator)
-	switch cmp(mul(r, 2, context.temp_allocator), b, context.temp_allocator) {
+	twice_remainder := mul(int_abs(r, context.temp_allocator), 2, context.temp_allocator)
+	abs_denominator := int_abs(b, context.temp_allocator)
+	switch cmp(twice_remainder, abs_denominator, context.temp_allocator) {
 	case .Less:
 		return clone(q, allocator)
 	case .Greater:
-		return add(q, 1, allocator)
+		step := -1 if is_negative(a) != is_negative(b) else 1
+		return add(q, Int(i128(step)), allocator)
 	case .Equal:
-		return add(q, 0 if int_is_even(q) else 1, allocator)
+		if int_is_even(q) {
+			return clone(q, allocator)
+		}
+		step := -1 if is_negative(a) != is_negative(b) else 1
+		return add(q, Int(i128(step)), allocator)
 	}
 	unreachable()
 }
@@ -308,6 +337,33 @@ int_bit_length :: proc(i: Int) -> int {
 	result, err := big.count_bits(i.(^big.Int), context.temp_allocator)
 	assert(err == nil)
 	return result
+}
+
+decimal_decimal_digit_count :: proc(d: Decimal) -> int {
+	return #force_inline int_decimal_digit_count(d.significand)
+}
+
+int_decimal_digit_count :: proc(i: Int) -> int {
+	switch ii in i {
+	case i128:
+		magnitude := _i128_abs_u128(ii)
+		digits := 1
+		for magnitude >= 10 {
+			magnitude /= 10
+			digits += 1
+		}
+		return digits
+	case ^big.Int:
+		if int_is_zero(i) {
+			return 1
+		}
+		magnitude := ii^
+		magnitude.sign = .Zero_or_Positive
+		log, err := big.log(&magnitude, 10, context.temp_allocator)
+		assert(err == nil)
+		return log + 1
+	}
+	unreachable()
 }
 
 int_shl :: proc(i: Int, shift: uint, allocator := bigint_allocator) -> Int {
@@ -597,6 +653,107 @@ rat_floordiv :: proc(lhs, rhs: Rat, allocator := bigint_allocator) -> Rat {
 		whole = int_sub(whole, Int(i128(1)), allocator)
 	}
 	return Rat{numerator = whole, denominator = i128(1)}
+}
+
+_decimal_rescale :: proc(value: Decimal, scale: int, allocator := bigint_allocator) -> Int {
+	assert(scale >= value.scale, "decimal scale cannot decrease")
+	if scale == value.scale {
+		return clone(value.significand, allocator)
+	}
+	factor := int_pow_int(Int(i128(10)), uint(scale - value.scale), context.temp_allocator)
+	return int_mul(value.significand, factor, allocator)
+}
+
+_decimal_aligned :: proc(a, b: Decimal) -> (Int, Int, int) {
+	scale := max(a.scale, b.scale)
+	return _decimal_rescale(a, scale, context.temp_allocator),
+		_decimal_rescale(b, scale, context.temp_allocator),
+		scale
+}
+
+decimal_add :: proc(a, b: Decimal, allocator := bigint_allocator) -> Decimal {
+	aa, bb, scale := _decimal_aligned(a, b)
+	return {int_add(aa, bb, allocator), scale}
+}
+
+decimal_sub :: proc(a, b: Decimal, allocator := bigint_allocator) -> Decimal {
+	aa, bb, scale := _decimal_aligned(a, b)
+	return {int_sub(aa, bb, allocator), scale}
+}
+
+decimal_mul :: proc(a, b: Decimal, allocator := bigint_allocator) -> Decimal {
+	natural_scale := a.scale + b.scale
+	scale := max(max(a.scale, b.scale), natural_scale)
+	significand := int_mul(a.significand, b.significand, context.temp_allocator)
+	return {_decimal_rescale({significand, natural_scale}, scale, allocator), scale}
+}
+
+decimal_div_with_precision :: proc(
+	a, b: Decimal,
+	precision: int,
+	allocator := bigint_allocator,
+) -> Decimal {
+	assert(precision >= 0, "decimal division precision cannot be negative")
+	base_scale := max(a.scale, b.scale)
+	assert(base_scale <= max(int) - precision, "decimal division scale overflow")
+	aa := _decimal_rescale(a, base_scale, context.temp_allocator)
+	bb := _decimal_rescale(b, base_scale, context.temp_allocator)
+	return rat_to_decimal_rounded({aa, bb}, base_scale + precision, allocator)
+}
+
+decimal_rem :: proc(a, b: Decimal, allocator := bigint_allocator) -> Decimal {
+	aa, bb, scale := _decimal_aligned(a, b)
+	return {int_rem(aa, bb, allocator), scale}
+}
+
+decimal_floordiv :: proc(a, b: Decimal, allocator := bigint_allocator) -> Decimal {
+	aa, bb, _ := _decimal_aligned(a, b)
+	quotient, remainder := int_divrem(aa, bb, context.temp_allocator)
+	if int_is_negative(aa) != int_is_negative(bb) && !int_is_zero(remainder) {
+		quotient = int_sub(quotient, Int(i128(1)), context.temp_allocator)
+	}
+	return {clone(quotient, allocator), 0}
+}
+
+decimal_cmp :: proc(a, b: Decimal, allocator := bigint_allocator) -> slice.Ordering {
+	aa, bb, _ := _decimal_aligned(a, b)
+	return int_cmp(aa, bb, allocator)
+}
+
+decimal_eq :: proc(a, b: Decimal, allocator := bigint_allocator) -> bool {
+	return #force_inline decimal_cmp(a, b, allocator) == .Equal
+}
+
+decimal_ne :: proc(a, b: Decimal, allocator := bigint_allocator) -> bool {
+	return #force_inline decimal_cmp(a, b, allocator) != .Equal
+}
+
+decimal_lt :: proc(a, b: Decimal, allocator := bigint_allocator) -> bool {
+	return #force_inline decimal_cmp(a, b, allocator) == .Less
+}
+
+decimal_le :: proc(a, b: Decimal, allocator := bigint_allocator) -> bool {
+	return #force_inline decimal_cmp(a, b, allocator) != .Greater
+}
+
+decimal_gt :: proc(a, b: Decimal, allocator := bigint_allocator) -> bool {
+	return #force_inline decimal_cmp(a, b, allocator) == .Greater
+}
+
+decimal_ge :: proc(a, b: Decimal, allocator := bigint_allocator) -> bool {
+	return #force_inline decimal_cmp(a, b, allocator) != .Less
+}
+
+decimal_is_negative :: proc(value: Decimal) -> bool {
+	return int_is_negative(value.significand)
+}
+
+decimal_is_one :: proc(value: Decimal) -> bool {
+	return decimal_eq(value, DECIMAL_ONE, context.temp_allocator)
+}
+
+decimal_is_zero :: proc(value: Decimal) -> bool {
+	return int_is_zero(value.significand)
 }
 
 int_is_negative :: proc(i: Int) -> bool {

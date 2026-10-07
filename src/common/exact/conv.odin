@@ -8,10 +8,78 @@ import "core:math/big"
 clone :: proc {
 	clone_int,
 	clone_rat,
+	clone_decimal,
 }
 
 int_to_rat :: proc(i: Int) -> Rat {
 	return {i, 1}
+}
+
+decimal_to_rat :: proc(value: Decimal, allocator := bigint_allocator) -> Rat {
+	if value.scale == 0 {
+		return {clone(value.significand, allocator), 1}
+	}
+	scale_magnitude := uint(value.scale) if value.scale > 0 else uint(-(value.scale + 1)) + 1
+	factor := int_pow_int(Int(i128(10)), scale_magnitude, context.temp_allocator)
+	if value.scale < 0 {
+		return {int_mul(value.significand, factor, allocator), 1}
+	}
+	return rat_reduce({clone(value.significand, context.temp_allocator), factor}, allocator)
+}
+
+rat_to_decimal_rounded :: proc(value: Rat, scale: int, allocator := bigint_allocator) -> Decimal {
+	scale_magnitude := uint(scale) if scale >= 0 else uint(-(scale + 1)) + 1
+	factor := int_pow_int(Int(i128(10)), scale_magnitude, context.temp_allocator)
+	result: Int
+	if scale >= 0 {
+		result = int_div_half_even(
+			mul(value.numerator, factor, context.temp_allocator),
+			value.denominator,
+			allocator,
+		)
+	} else {
+		result = int_div_half_even(
+			value.numerator,
+			mul(value.denominator, factor, context.temp_allocator),
+			allocator,
+		)
+	}
+	return {result, scale}
+}
+
+rat_to_decimal_exact :: proc(value: Rat, allocator := bigint_allocator) -> (Decimal, bool) {
+	reduced := rat_reduce(value, context.temp_allocator)
+	denominator := reduced.denominator
+	twos, fives := 0, 0
+	for int_is_zero(int_rem(denominator, Int(i128(2)), context.temp_allocator)) {
+		denominator = int_div(denominator, Int(i128(2)), context.temp_allocator)
+		twos += 1
+	}
+	for int_is_zero(int_rem(denominator, Int(i128(5)), context.temp_allocator)) {
+		denominator = int_div(denominator, Int(i128(5)), context.temp_allocator)
+		fives += 1
+	}
+	if !int_is_one(denominator) {
+		return {}, false
+	}
+
+	scale := max(twos, fives)
+	significand := clone(reduced.numerator, context.temp_allocator)
+	if twos < scale {
+		significand = int_mul(
+			significand,
+			int_pow_int(Int(i128(2)), uint(scale - twos), context.temp_allocator),
+			context.temp_allocator,
+		)
+	}
+	if fives < scale {
+		significand = int_mul(
+			significand,
+			int_pow_int(Int(i128(5)), uint(scale - fives), context.temp_allocator),
+			context.temp_allocator,
+		)
+	}
+	return {clone(significand, allocator), scale}, true
 }
 
 clone_int :: proc(i: Int, allocator := bigint_allocator) -> Int {
@@ -28,6 +96,10 @@ clone_int :: proc(i: Int, allocator := bigint_allocator) -> Int {
 
 clone_rat :: proc(r: Rat, allocator := bigint_allocator) -> Rat {
 	return {clone_int(r.numerator, allocator), clone_int(r.denominator, allocator)}
+}
+
+clone_decimal :: proc(value: Decimal, allocator := bigint_allocator) -> Decimal {
+	return {clone_int(value.significand, allocator), value.scale}
 }
 
 _promote :: proc(inline: i128, allocator := bigint_allocator) -> ^big.Int {
@@ -113,12 +185,7 @@ to_float :: proc(r: Rat, $F: typeid) -> F where intrinsics.type_is_float(F) {
 		return math.copy_sign(transmute(F)(I(m.(i128)) & fraction_mask), F(sign))
 	}
 
-	m := int_div_pow2_half_even(
-		numerator,
-		denominator,
-		precision - 1 - e,
-		context.temp_allocator,
-	)
+	m := int_div_pow2_half_even(numerator, denominator, precision - 1 - e, context.temp_allocator)
 
 	if eq(m, i128(1 << precision)) {
 		e += 1

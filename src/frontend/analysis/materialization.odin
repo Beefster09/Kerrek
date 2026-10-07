@@ -54,6 +54,9 @@ materialize_value :: proc(
 	if real_type == nil {
 		return _fail(ts, real_type, span)
 	}
+	if !_type_implicitly_converts(real_type, value.type) {
+		return _fail(ts, real_type, span)
+	}
 
 	real_value: hir.Value
 	switch v in value.value {
@@ -75,13 +78,14 @@ materialize_value :: proc(
 		}
 
 	case exact.Rat:
+		reduced := exact.reduce(v, context.temp_allocator)
 		ok := false
 		#partial switch t in real_type {
 		case hir.Primitive_Type:
-			real_value, ok = _materialize_primitive(t, v)
+			real_value, ok = _materialize_primitive(t, reduced)
 		case hir.Fixed_Decimal:
 			if flex, flex_ok := value.type.(resolver.Flexible_Type); flex_ok {
-				real_value, ok = _materialize_decimal(t, v, flex)
+				real_value, ok = _materialize_decimal(t, reduced, flex)
 			}
 		}
 
@@ -144,34 +148,21 @@ _materialize_decimal :: proc(
 	if spec.affinity == .Binary_Float {
 		return nil, false
 	}
-	if spec.affinity == .Decimal {
-		if int(spec.digits) > int(target.digits) || int(spec.scale) > int(target.digits) {
-			// FIXME: this won't handle negative scale destinations correctly
-			return nil, false
-		}
+
+	result := exact.rat_to_decimal_rounded(value, int(target.scale), context.temp_allocator)
+	if spec.affinity != .Rational &&
+	   !exact.eq(
+			   exact.decimal_to_rat(result, context.temp_allocator),
+			   value,
+			   context.temp_allocator,
+		   ) {
+		return nil, false
+	}
+	if exact.decimal_digit_count(result.significand) > int(target.digits) {
+		return nil, false
 	}
 
-	factor := exact.int_pow_int(
-		exact.Int(10),
-		uint(abs(int(target.scale))),
-		context.temp_allocator,
-	)
-	result: exact.Int
-	if target.scale >= 0 {
-		result = exact.int_div_half_even(
-			exact.mul(value.numerator, factor, context.temp_allocator),
-			value.denominator,
-			context.temp_allocator,
-		)
-	} else {
-		result = exact.int_div_half_even(
-			value.numerator,
-			exact.mul(value.denominator, factor, context.temp_allocator),
-			context.temp_allocator,
-		)
-	}
-
-	return common.exact_int_to_i256(result)
+	return common.exact_int_to_i256(result.significand)
 }
 
 _materialize_primitive :: proc(prim: hir.Primitive_Type, value: exact.Rat) -> (hir.Value, bool) {

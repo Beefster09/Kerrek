@@ -1,6 +1,5 @@
 package exact
 
-import "base:intrinsics"
 import "core:math/big"
 import "core:mem"
 import "core:unicode"
@@ -24,10 +23,12 @@ _is_digit_for_radix :: proc(c: rune, radix: int) -> bool {
 }
 
 _underscore_between_digits :: proc(s: string, i, radix: int) -> bool {
-	return i > 0 &&
-	       i + 1 < len(s) &&
-	       _is_digit_for_radix(rune(s[i - 1]), radix) &&
-	       _is_digit_for_radix(rune(s[i + 1]), radix)
+	return(
+		i > 0 &&
+		i + 1 < len(s) &&
+		_is_digit_for_radix(rune(s[i - 1]), radix) &&
+		_is_digit_for_radix(rune(s[i + 1]), radix) \
+	)
 }
 
 _valid_integer_syntax :: proc(s: string, radix: int) -> bool {
@@ -128,7 +129,6 @@ parse_int :: proc(s: string, radix: int = 10, allocator := bigint_allocator) -> 
 	return 0, false
 }
 
-I128_DEC_DIGITS :: 38
 DIGIT_INITIAL_CAP :: 64
 
 parse_decimal :: proc(s: string) -> (Rat, bool) {
@@ -143,8 +143,6 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 	EXP_CHAR :: 'e' when RADIX == 10 else 'p'
 	EXP_RADIX :: 10 when RADIX == 10 else 2
 	BITS_PER_DIGIT :: 1 when RADIX == 10 else 4
-	I128_MAX_SCALE :: I128_DEC_DIGITS when RADIX == 10 else 126
-
 	scratch: mem.Scratch
 	{
 		err := mem.scratch_init(&scratch, 4 * mem.Kilobyte)
@@ -216,71 +214,19 @@ _parse_fractional :: proc(s: string, $RADIX: int) -> (Rat, bool) where RADIX == 
 
 	if prec >= exp {
 		denominator_scale := prec - exp
-		if denominator_scale <= I128_MAX_SCALE {
-			den: i128 = 1
-			for _ in 0 ..< denominator_scale {
-				den *= i128(EXP_RADIX)
-			}
-			num := clone(base)
-			if sign < 0 {
-				inplace_negate_int(&num)
-			}
-			return rat_reduce({num, den}), true
-		} else {
-			den := new(big.Int, bigint_allocator)
-			err := big.exp(den, EXP_RADIX, denominator_scale, bigint_allocator)
-			if err == nil {
-				num := clone(base)
-				if sign < 0 {
-					inplace_negate_int(&num)
-				}
-				return rat_reduce({num, den}), true
-			}
+		den := int_pow_int(Int(i128(EXP_RADIX)), uint(denominator_scale))
+		num := clone(base)
+		if sign < 0 {
+			inplace_negate_int(&num)
 		}
+		return rat_reduce({num, den}), true
 	} else {
 		scale := exp - prec
-		if base_as_i128, base_is_i128 := base.(i128); scale <= I128_MAX_SCALE && base_is_i128 {
-			mul: i128 = 1
-			for _ in 0 ..< scale {
-				mul *= i128(EXP_RADIX)
-			}
-			result, overflow := intrinsics.overflow_mul(base_as_i128, mul)
-			if !overflow {
-				return rat_reduce({result, 1}), true
-			}
-		}
-
-		base_big, mul: big.Int
-		switch b in base {
-		case i128:
-			err := big.set(&base_big, b, allocator = scratch_alloc)
-			if err != nil {
-				return {}, false
-			}
-		case ^big.Int:
-			base_big = b^ // intentional dumb copy since this is already a temp
-		}
-
-		{
-			err := big.exp(&mul, EXP_RADIX, scale, scratch_alloc)
-			if err != nil {
-				return {}, false
-			}
-		}
-
-		result := new(big.Int, bigint_allocator)
-		{
-			err := big.mul(result, &base_big, &mul, bigint_allocator)
-			if err != nil {
-				return {}, false
-			}
-		}
-
+		factor := int_pow_int(Int(i128(EXP_RADIX)), uint(scale), context.temp_allocator)
+		result := int_mul(base, factor)
 		if sign < 0 {
-			result.sign = .Negative
+			inplace_negate_int(&result)
 		}
-		return rat_reduce({result, 1}), true
+		return {result, 1}, true
 	}
-
-	return {}, false
 }
