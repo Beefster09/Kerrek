@@ -3,6 +3,7 @@ package analysis
 
 import "base:runtime"
 import "core:fmt"
+import "core:math"
 import "core:reflect"
 import "core:strings"
 
@@ -252,7 +253,7 @@ _eval_binop :: proc(
 		calculation_hint = nil
 	}
 
-	if dec_result, dec_ok := _try_decimal_binop(ts, binop.op, binop.span, lhs, rhs); dec_ok {
+	if dec_result, dec_ok := _try_decimal_binop(ts, binop, lhs, rhs, type_hint); dec_ok {
 		return dec_result
 	}
 
@@ -520,14 +521,282 @@ _eval_boolean_multiply :: proc(
 
 _try_decimal_binop :: proc(
 	ts: ^Translation_State,
-	op: common.Binary_Op,
-	span: common.Span,
+	binop: ^ast.Binop_Expr,
 	lhs, rhs: Eval_Result,
+	type_hint: hir.Type,
 ) -> (
 	Eval_Result,
 	bool,
 ) {
-	return nil, false // TODO
+	ltype, lunit, l_ok := _type_and_unit(lhs)
+	rtype, runit, r_ok := _type_and_unit(rhs)
+	if !l_ok || !r_ok {
+		return nil, false
+	}
+
+	ldec: hir.Fixed_Decimal
+	switch typ in underlying_type(ltype) {
+	case Flexible_Type:
+		if typ.affinity != .Decimal {
+			return nil, false
+		}
+		ldec = {
+			digits    = u8(typ.digits),
+			scale     = i8(typ.scale),
+			flags     = {.Inferred},
+			magnitude = f32(typ.digits),
+		}
+	case hir.Type:
+		ok: bool
+		ldec, ok = typ.(hir.Fixed_Decimal)
+		if !ok {
+			return nil, false
+		}
+	}
+
+	rdec: hir.Fixed_Decimal
+	switch typ in underlying_type(rtype) {
+	case Flexible_Type:
+		if typ.affinity != .Decimal {
+			return nil, false
+		}
+		rdec = {
+			digits    = u8(typ.digits),
+			scale     = i8(typ.scale),
+			flags     = {.Inferred},
+			magnitude = f32(typ.digits),
+		}
+	case hir.Type:
+		ok: bool
+		rdec, ok = typ.(hir.Fixed_Decimal)
+		if !ok {
+			return nil, false
+		}
+	}
+	l_concrete, l_is_concrete := ltype.(hir.Type)
+	r_concrete, r_is_concrete := rtype.(hir.Type)
+	if l_is_concrete && r_is_concrete {
+		l_distinct, l_is_distinct := l_concrete.(^hir.Distinct_Type)
+		r_distinct, r_is_distinct := r_concrete.(^hir.Distinct_Type)
+		if l_is_distinct != r_is_distinct || l_is_distinct && l_distinct != r_distinct {
+			return nil, false
+		}
+	}
+
+	if binop.op == .Power {
+		return nil, false
+	}
+	if binop.op not_in OP_CATEGORY_DEFS[.Rational].supported_binops {
+		return nil, false
+	}
+
+	division_scale := 0
+	if binop.op == .True_Divide {
+		hint_decimal, hint_ok := underlying_type(type_hint).(hir.Type).(hir.Fixed_Decimal)
+		if !hint_ok || hint_decimal.scale < max(ldec.scale, rdec.scale) {
+			diagnostics.emit(
+				.Binop_Not_Defined,
+				binop.span,
+				"decimal division requires a decimal result context whose scale is at least %d",
+				max(ldec.scale, rdec.scale),
+			)
+			return hir.Expression(poison(ts, binop.span)), true
+		}
+		division_scale = int(hint_decimal.scale)
+	}
+
+	result_scale := 0
+	result_digits := 0
+	result_magnitude: f64
+	magnitude_ulps := 0
+	#partial switch binop.op {
+	case .Add, .Subtract:
+		result_scale = max(int(ldec.scale), int(rdec.scale))
+		result_digits =
+			max(
+				int(ldec.digits) + result_scale - int(ldec.scale),
+				int(rdec.digits) + result_scale - int(rdec.scale),
+			) +
+			1
+		lmagnitude := f64(ldec.magnitude) + f64(result_scale - int(ldec.scale))
+		rmagnitude := f64(rdec.magnitude) + f64(result_scale - int(rdec.scale))
+		larger := max(lmagnitude, rmagnitude)
+		smaller := min(lmagnitude, rmagnitude)
+		result_magnitude = larger + math.log10(1 + math.pow10(smaller - larger))
+		magnitude_ulps = 2
+
+	case .Multiply:
+		result_scale = int(ldec.scale) + int(rdec.scale)
+		result_digits = int(ldec.digits) + int(rdec.digits)
+		result_magnitude = f64(ldec.magnitude) + f64(rdec.magnitude)
+
+	case .True_Divide:
+		result_scale = division_scale
+		quotient_magnitude :=
+			f64(ldec.magnitude) - f64(ldec.scale) + f64(rdec.scale) + f64(result_scale)
+		result_magnitude = math.log10(math.pow10(quotient_magnitude) + 0.5)
+		result_digits = max(1, int(math.ceil(result_magnitude)))
+		magnitude_ulps = 2
+
+	case .Floor_Divide:
+		result_scale = 0
+		quotient_magnitude := f64(ldec.magnitude) - f64(ldec.scale) + f64(rdec.scale)
+		result_magnitude = math.log10(math.ceil(math.pow10(quotient_magnitude)))
+		result_digits = max(1, int(math.ceil(result_magnitude)))
+		magnitude_ulps = 2
+
+	case .Remainder, .Modulo:
+		result_scale = max(int(ldec.scale), int(rdec.scale))
+		result_digits = max(1, int(rdec.digits) + result_scale - int(rdec.scale))
+		result_magnitude = f64(rdec.magnitude) + f64(result_scale - int(rdec.scale))
+
+	case .Equal, .Not_Equal, .Less, .Less_Equal, .Greater, .Greater_Equal:
+	case:
+		return nil, false
+	}
+
+	result_decimal: hir.Fixed_Decimal
+	if binop.op in common.ARITHMETIC_BINOPS {
+		if result_scale < int(min(i8)) || result_scale > int(max(i8)) {
+			diagnostics.emit(
+				.Binop_Not_Defined,
+				binop.span,
+				"decimal result scale exceeds the compiler's intermediate range",
+			)
+			return hir.Expression(poison(ts, binop.span)), true
+		}
+
+		magnitude := f32(result_magnitude)
+		if f64(magnitude) < result_magnitude {
+			magnitude = math.nextafter(magnitude, math.inf_f32(1))
+		}
+		for _ in 0 ..< magnitude_ulps {
+			magnitude = math.nextafter(magnitude, math.inf_f32(1))
+		}
+		if binop.op == .True_Divide || binop.op == .Floor_Divide {
+			result_digits = max(1, int(math.ceil(magnitude)))
+		}
+		if result_digits > int(max(u8)) {
+			diagnostics.emit(
+				.Binop_Not_Defined,
+				binop.span,
+				"decimal result precision exceeds the compiler's intermediate range",
+			)
+			return hir.Expression(poison(ts, binop.span)), true
+		}
+		if magnitude >= common.INT256_DECIMAL_MAX_MAGNITUDE {
+			diagnostics.emit(
+				.Binop_Not_Defined,
+				binop.span,
+				"decimal result exceeds the maximum intermediate magnitude",
+			)
+			return hir.Expression(poison(ts, binop.span)), true
+		}
+		result_decimal = {
+			digits    = u8(result_digits),
+			scale     = i8(result_scale),
+			flags     = {.Intermediate},
+			magnitude = magnitude,
+		}
+	}
+
+	result_unit, u_lhs, u_rhs, units_ok := _eval_binop_unit(ts, binop, lhs, lunit, rhs, runit)
+	if !units_ok {
+		return hir.Expression(poison(ts, binop.span)), true
+	}
+
+	if l, r, both_comptime := util.extract_pair(u_lhs, u_rhs, Comptime_Value); both_comptime {
+		result_type: Comptime_Type
+		#partial switch binop.op {
+		case .True_Divide:
+			result_type = Flexible_Type {
+				affinity = .Rational,
+			}
+		case .Floor_Divide:
+			result_type = Flexible_Type {
+				affinity = .Integer,
+			}
+		case .Equal, .Not_Equal, .Less, .Less_Equal, .Greater, .Greater_Equal:
+			result_type = Flexible_Type {
+				affinity = .Boolean,
+			}
+		case:
+			result_type = Flexible_Type {
+				affinity = .Decimal,
+				digits   = i32(result_digits),
+				scale    = i32(result_scale),
+			}
+		}
+		return Comptime_Value {
+				value = _comptime_binop(binop.op, l.value, r.value, ts.output.allocator),
+				type = result_type,
+				unit = result_unit if binop.op in common.ARITHMETIC_BINOPS else hir.Indeterminate_Unit.No_Unit,
+			},
+			true
+	}
+
+	l: hir.Expression
+	switch value in u_lhs {
+	case Comptime_Value:
+		ok: bool
+		l, ok = materialize_value(ts, value, ast.expression_span(binop.lhs), ldec)
+		if !ok {
+			return hir.Expression(poison(ts, binop.span)), true
+		}
+	case hir.Expression:
+		l = value
+		if !types_equal(ltype, hir.Type(ldec)) {
+			_, unit, _ := hir.type_and_unit(l)
+			cast_expr := new(hir.Cast_Expr, ts.output.allocator)
+			cast_expr^ = {
+				span = ast.expression_span(binop.lhs),
+				type = ldec,
+				to   = ldec,
+				unit = unit,
+				expr = l,
+			}
+			l = cast_expr
+		}
+	case ^resolver.Import:
+		return nil, false
+	}
+
+	r: hir.Expression
+	switch value in u_rhs {
+	case Comptime_Value:
+		ok: bool
+		r, ok = materialize_value(ts, value, ast.expression_span(binop.rhs), rdec)
+		if !ok {
+			return hir.Expression(poison(ts, binop.span)), true
+		}
+	case hir.Expression:
+		r = value
+		if !types_equal(rtype, hir.Type(rdec)) {
+			_, unit, _ := hir.type_and_unit(r)
+			cast_expr := new(hir.Cast_Expr, ts.output.allocator)
+			cast_expr^ = {
+				span = ast.expression_span(binop.rhs),
+				type = rdec,
+				to   = rdec,
+				unit = unit,
+				expr = r,
+			}
+			r = cast_expr
+		}
+	case ^resolver.Import:
+		return nil, false
+	}
+
+	result := new(hir.Binop_Expr, ts.output.allocator)
+	result^ = {
+		span = binop.span,
+		op   = binop.op,
+		lhs  = l,
+		rhs  = r,
+		type = result_decimal if binop.op in common.ARITHMETIC_BINOPS else hir.Primitive_Type.Boolean,
+		unit = result_unit,
+	}
+	return hir.Expression(result), true
 }
 
 _comptime_unop :: proc(

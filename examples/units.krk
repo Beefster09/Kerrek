@@ -147,7 +147,7 @@ func flapjacks_required(num_workers: Int | man) -> Bin64 | count
 	let dg: Decimal(12, 8) = -2345/23;
 	let dh: Decimal(23, 8) = 123.7864;
 	let dj: Decimal(41, 8) = -555.5555;
-	let dk = 1.000;
+	let dk = df * dg + dh + 0.1234 + 42847529.897;
 	let j: Int32 = 0x7FFF_FFFF+56-78;
 
 	return count * hunger / 0x200;
