@@ -174,7 +174,12 @@ build_type :: proc(
 			return nil, false
 		}
 
-		return hir.Fixed_Decimal{digits = u8(digits), scale = i8(scale)}, true
+		dec_type := hir.Fixed_Decimal {
+			digits    = u8(digits),
+			scale     = i8(scale),
+			magnitude = f32(digits),
+		}
+		return dec_type, true
 
 	case ^ast.Generic_Type:
 		bound: hir.Type
@@ -680,17 +685,14 @@ write_type :: proc(w: io.Writer, type: hir.Type) {
 		io.write_string(w, reflect.enum_string(type))
 
 	case hir.Fixed_Decimal:
-		if type.scale == 0 {
-			io.write_string(w, "Integer(")
-			io.write_int(w, int(type.digits))
-			io.write_rune(w, ')')
-		} else {
-			io.write_string(w, "Decimal(")
-			io.write_int(w, int(type.digits))
-			io.write_string(w, ", ")
-			io.write_int(w, int(type.scale))
-			io.write_rune(w, ')')
+		io.write_string(w, "Decimal(")
+		if type.magnitude > f32(type.digits) {
+			io.write_rune(w, '~')
 		}
+		io.write_int(w, int(type.digits))
+		io.write_string(w, ", ")
+		io.write_int(w, int(type.scale))
+		io.write_rune(w, ')')
 
 	case ^hir.Struct_Type:
 		io.write_string(w, string(type.name.id))

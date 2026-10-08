@@ -20,6 +20,7 @@ Instruction :: union {
 	Rem,
 	Truncate,
 	Call,
+	Indirect_Call,
 	Debug_Marker,
 }
 
@@ -118,7 +119,13 @@ Truncate :: struct {
 
 Call :: struct {
 	dest: Writable,
-	func: ^Function,
+	func: common.Symbol_ID,
+	args: []Operand,
+}
+
+Indirect_Call :: struct {
+	dest: Writable,
+	func: Operand,
 	args: []Operand,
 }
 

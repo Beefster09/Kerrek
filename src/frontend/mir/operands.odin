@@ -3,14 +3,14 @@ package mir
 import "../../common"
 
 
-Primitive_Operand :: union #no_nil {
+Primitive_Operand :: union {
 	Constant,
 	Temp,
 	Local_Var,
 	Global_Var,
 	Parameter,
 }
-Operand :: union #no_nil {
+Operand :: union {
 	Constant,
 	Temp,
 	Local_Var,
@@ -20,7 +20,7 @@ Operand :: union #no_nil {
 	Index_Of,
 	Dereferenced,
 }
-Writable :: union #no_nil {
+Writable :: union {
 	Discard,
 	New_Temp,
 	Local_Var,

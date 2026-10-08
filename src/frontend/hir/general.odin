@@ -77,6 +77,12 @@ Annotation :: struct {
 	args:       []Argument, // possibly should be limited to literals that can be encoded into a readonly segment of the executable
 }
 
+Argument :: struct {
+	span: Span,
+	name: Maybe(Identifier),
+	expr: Expression,
+}
+
 Global_Variable :: struct {
 	using _:     _Symbol_Header,
 	type:        Type,

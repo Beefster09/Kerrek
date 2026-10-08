@@ -191,14 +191,13 @@ dump_instruction :: proc(w: io.Writer, instruction: Instruction) {
 		dump_writable(w, instruction.dest)
 		io.write_string(w, ", ")
 		dump_operand(w, instruction.value)
+	case Indirect_Call:
+		io.write_string(w, "i")
 	case Call:
 		io.write_string(w, "call ")
 		dump_writable(w, instruction.dest)
-		io.write_string(w, " = function(")
-		io.write_uint(w, uint(instruction.func.id))
-		io.write_string(w, ", ")
-		io.write_string(w, string(instruction.func.name))
-		io.write_rune(w, ')')
+		io.write_string(w, ", fn")
+		io.write_uint(w, uint(instruction.func))
 		for arg in instruction.args {
 			io.write_string(w, ", ")
 			dump_operand(w, arg)

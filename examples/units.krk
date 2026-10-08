@@ -137,7 +137,7 @@ func flapjacks_required(num_workers: Int | man) -> Bin64 | count
 	a, b = b, a;
 
 	let e = a + b * 123 mod c;
-	\\ let f = celsius_to_fahrenheit(21.4532);
+	let f = celsius_to_fahrenheit(21.4532);
 
 	\\ fhqwhgads();
 

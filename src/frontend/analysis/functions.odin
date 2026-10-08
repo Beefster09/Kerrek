@@ -481,7 +481,10 @@ _build_func_call :: proc(
 			}
 			converted[arg_idx] = cast_expr
 		}
-		if !_units_equal(expected.unit, actual_unit) {
+
+		if _unit_is_flexible(actual_unit) {
+			hir.set_unit(&converted[arg_idx], expected.unit)
+		} else if !_units_equal(expected.unit, actual_unit) {
 			conversion := new(hir.Unit_Conversion_Expr, ts.output.allocator)
 			conversion^ = {
 				span   = arg.span,
@@ -508,19 +511,37 @@ _build_func_call :: proc(
 	}
 	shrink(&args)
 
-	call := new(hir.Func_Call_Expr, ts.output.allocator)
-	return_type: hir.Type
-	return_unit: hir.Realized_Unit
-	if signature.ret != nil {
-		return_type = signature.ret.type
-		return_unit = signature.ret.unit
+	if is_static {
+		call := new(hir.Static_Call_Expr, ts.output.allocator)
+		return_type: hir.Type
+		return_unit: hir.Realized_Unit
+		if signature.ret != nil {
+			return_type = signature.ret.type
+			return_unit = signature.ret.unit
+		}
+		call^ = {
+			span = span,
+			type = return_type,
+			unit = return_unit,
+			func = static_func.func,
+			args = args[:],
+		}
+		return call
+	} else {
+		call := new(hir.Dynamic_Call_Expr, ts.output.allocator)
+		return_type: hir.Type
+		return_unit: hir.Realized_Unit
+		if signature.ret != nil {
+			return_type = signature.ret.type
+			return_unit = signature.ret.unit
+		}
+		call^ = {
+			span   = span,
+			type   = return_type,
+			unit   = return_unit,
+			callee = callee,
+			args   = args[:],
+		}
+		return call
 	}
-	call^ = {
-		span   = span,
-		type   = return_type,
-		unit   = return_unit,
-		callee = callee,
-		args   = args[:],
-	}
-	return call
 }

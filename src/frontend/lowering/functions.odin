@@ -236,17 +236,19 @@ _lower_expression :: proc(fb: ^Func_Builder, expr: hir.Expression) -> mir.Operan
 		// TODO: this factors into escape analysis, but that's it
 		return _lower_expression(fb, node.expr)
 
-	case ^hir.Func_Call_Expr:
-	// TODO: need distinction between static call and dynamic call, but it would go something like this:
-	/*
+	case ^hir.Dynamic_Call_Expr:
+	case ^hir.Static_Call_Expr:
 		args := make([]mir.Operand, len(node.args))
 		for src_arg, i in node.args {
 			args[i] = _lower_expression(fb, src_arg)
 		}
 		dest: mir.Writable = _new_tmp(fb, node.type) if node.type != nil else mir.Discard{}
-		_append_ops(fb, mir.Call{dest, node.callee, args})
-		return mir.Temp{id = dest.id}
-		*/
+		_append_ops(fb, mir.Call{dest, node.func.id, args})
+		if tmp, ok := dest.(mir.New_Temp); ok {
+			return mir.Temp{id = tmp.id}
+		} else {
+			return nil
+		}
 
 	case ^hir.Condition_Expr:
 	case ^hir.Unary_Expr:

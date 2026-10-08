@@ -274,7 +274,12 @@ coerce :: proc(ltype, rtype: Comptime_Type, type_hint: hir.Type = nil) -> (Compt
 		   scale < hir.MIN_DECIMAL_SCALE {
 			return nil, false
 		}
-		return hir.Type(hir.Fixed_Decimal{digits = u8(digits), scale = i8(scale)}), true
+		dec_type := hir.Fixed_Decimal {
+			digits    = u8(digits),
+			scale     = i8(scale),
+			magnitude = f32(digits),
+		}
+		return hir.Type(dec_type), true
 	}
 
 	if _type_implicitly_converts(ltype, rtype) {

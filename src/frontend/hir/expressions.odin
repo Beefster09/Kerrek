@@ -24,8 +24,9 @@ Expression :: union {
 	^Unit_Conversion_Expr,
 	^Unit_Reinterpret_Expr,
 	^Index_Expr,
-	^Func_Call_Expr,
 	^Static_Func_Expr,
+	^Static_Call_Expr,
+	^Dynamic_Call_Expr,
 	Type,
 	^Poison,
 }
@@ -60,10 +61,12 @@ type_and_unit :: proc "contextless" (expr: Expression) -> (Type, Realized_Unit, 
 		return node.type, node.unit, true
 	case ^Index_Expr:
 		return node.type, node.unit, true
-	case ^Func_Call_Expr:
-		return node.type, node.unit, node.type != nil && node.unit != nil
 	case ^Static_Func_Expr:
 		return node.func.type, Indeterminate_Unit.No_Unit, true
+	case ^Static_Call_Expr:
+		return node.type, node.unit, node.type != nil && node.unit != nil
+	case ^Dynamic_Call_Expr:
+		return node.type, node.unit, node.type != nil && node.unit != nil
 	case Type:
 		return Primitive_Type.Type, Indeterminate_Unit.No_Unit, true
 	case ^Poison, nil:
@@ -71,9 +74,47 @@ type_and_unit :: proc "contextless" (expr: Expression) -> (Type, Realized_Unit, 
 	return nil, nil, false
 }
 
+set_unit :: proc "contextless" (expr: ^Expression, unit: Realized_Unit) {
+	switch &node in expr {
+	case ^Var_Expr:
+		node.unit = unit
+	case ^Const_Expr:
+		node.unit = unit
+	case ^Field_Access_Expr:
+		node.unit = unit
+	case ^Enum_Value:
+		node.unit = unit
+	case ^Move_Expr:
+		node.unit = unit
+	case ^Condition_Expr:
+		node.unit = unit
+	case ^Binop_Expr:
+		node.unit = unit
+	case ^Unary_Expr:
+		node.unit = unit
+	case ^Address_Of_Expr:
+		node.unit = unit
+	case ^Dereference_Expr:
+		node.unit = unit
+	case ^Cast_Expr:
+		node.unit = unit
+	case ^Unit_Conversion_Expr:
+		node.unit = unit
+	case ^Unit_Reinterpret_Expr:
+		node.unit = unit
+	case ^Index_Expr:
+		node.unit = unit
+	case ^Static_Call_Expr:
+		node.unit = unit
+	case ^Dynamic_Call_Expr:
+		node.unit = unit
+	case ^Poison, ^Static_Func_Expr, Type, nil:
+	}
+}
+
 has_value :: proc "contextless" (expr: Expression) -> bool {
 	#partial switch node in expr {
-	case ^Func_Call_Expr:
+	case ^Dynamic_Call_Expr:
 		return node.type != nil && node.unit != nil
 	case ^Poison, nil:
 		return false
@@ -197,14 +238,14 @@ Static_Func_Expr :: struct {
 	func: ^Func_Definition,
 }
 
-Func_Call_Expr :: struct {
+Static_Call_Expr :: struct {
 	using _: _Expr_Header,
-	callee:  Expression,
+	func:    ^Func_Definition,
 	args:    []Expression,
 }
 
-Argument :: struct {
-	span: Span,
-	name: Maybe(Identifier),
-	expr: Expression,
+Dynamic_Call_Expr :: struct {
+	using _: _Expr_Header,
+	callee:  Expression,
+	args:    []Expression,
 }
