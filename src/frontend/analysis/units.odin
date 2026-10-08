@@ -185,3 +185,260 @@ _is_no_unit :: proc(u: hir.Realized_Unit) -> bool {
 	}
 	return false
 }
+
+_eval_binop_unit :: proc(
+	ts: ^Translation_State,
+	binop: ^ast.Binop_Expr,
+	lhs: Eval_Result,
+	lunit: hir.Realized_Unit,
+	rhs: Eval_Result,
+	runit: hir.Realized_Unit,
+) -> (
+	result_unit: hir.Realized_Unit,
+	result_lhs: Eval_Result,
+	result_rhs: Eval_Result,
+	all_ok: bool,
+) {
+	_maybe_convert_rhs :: proc(
+		ts: ^Translation_State,
+		binop: ^ast.Binop_Expr,
+		rhs: Eval_Result,
+		rmult: exact.Rat,
+	) -> (
+		Eval_Result,
+		bool,
+	) {
+		// FIXME: this function tends to materialize too early,
+		// and prefers coercing the right unit to match the left even when context would say otherwise
+		if exact.is_one(rmult) || rhs == nil {
+			return rhs, true
+		}
+
+		value := rhs
+		if comptime, ok := value.(Comptime_Value); ok {
+			materialized, mat_ok := materialize_value(ts, comptime, ast.expression_span(binop.rhs))
+			if !mat_ok {
+				return nil, false
+			}
+			value = materialized
+		}
+
+		type, unit, has_value := _type_and_unit(value)
+		if !has_value {
+			return nil, false
+		}
+		realized_type, rt_ok := type.(hir.Type)
+		if !rt_ok {
+			return nil, false
+		}
+
+		expr := new(hir.Unit_Conversion_Expr, ts.output.allocator)
+		expr^ = {
+			span   = ast.expression_span(binop.rhs),
+			expr   = value.(hir.Expression),
+			type   = realized_type,
+			unit   = unit,
+			factor = exact.clone(rmult, ts.output.allocator),
+		}
+		return hir.Expression(expr), true
+	}
+
+	if lhs == nil || rhs == nil {
+		return
+	}
+
+	if _is_no_unit(lunit) && _is_no_unit(runit) {
+		return hir.Indeterminate_Unit.No_Unit, lhs, rhs, true
+	}
+
+	switch binop.op {
+	case .And, .Or:
+		return hir.Indeterminate_Unit.No_Unit, lhs, rhs, true
+
+	case .Equal, .Not_Equal, .Less, .Greater, .Less_Equal, .Greater_Equal, .Is, .Is_Not:
+		_, rmult, coerced := _coerce_units(lunit, runit)
+		if !coerced {
+			diagnostics.emit(
+				.Unit_Mismatch,
+				binop.span,
+				"units (%v) and (%v) do not match and do not have any known conversions",
+				lunit,
+				runit,
+			)
+		}
+		converted_rhs, ok := _maybe_convert_rhs(ts, binop, rhs, rmult)
+		return hir.Indeterminate_Unit.No_Unit, lhs, converted_rhs, ok
+
+	case .Add, .Subtract, .Remainder, .Modulo:
+		coerced_unit, rmult, coerced := _coerce_units(lunit, runit)
+		if !coerced {
+			diagnostics.emit(
+				.Unit_Mismatch,
+				binop.span,
+				"units (%v) and (%v) do not match and do not have any known conversions",
+				lunit,
+				runit,
+			)
+			return
+		}
+		converted_rhs, ok := _maybe_convert_rhs(ts, binop, rhs, rmult)
+		return coerced_unit, lhs, converted_rhs, ok
+
+	case .Multiply:
+		lcanonical, l_has_unit := lunit.(units.Compound_Unit)
+		rcanonical, r_has_unit := runit.(units.Compound_Unit)
+		if l_has_unit && r_has_unit {
+			unit, err := units.combine_units(
+				lcanonical,
+				units.RAT_ONE,
+				rcanonical,
+				units.RAT_ONE,
+				ts.allocator,
+			)
+			if err != .OK {
+				return
+			}
+			return unit, lhs, rhs, true
+		} else if l_has_unit && _unit_is_flexible(runit) {
+			return lunit, lhs, rhs, true
+		} else if r_has_unit && _unit_is_flexible(lunit) {
+			return runit, lhs, rhs, true
+		} else if _unit_is_flexible(lunit) && _unit_is_flexible(runit) {
+			return hir.Indeterminate_Unit.Flexible, lhs, rhs, true
+		} else if (_is_no_unit(lunit) || _unit_is_flexible(lunit)) &&
+		   (_is_no_unit(runit) || _unit_is_flexible(runit)) {
+			return hir.Indeterminate_Unit.No_Unit, lhs, rhs, true
+		}
+		diagnostics.emit(
+			.Invalid_Unit_Operation,
+			binop.span,
+			"you cannot multiply a unitless value with a value with units (|%v| %s |%v|)",
+			lunit,
+			common.BINARY_OP_STRINGS[binop.op],
+			runit,
+		)
+		return
+
+	case .True_Divide, .Floor_Divide:
+		lcanonical, l_has_unit := lunit.(units.Compound_Unit)
+		rcanonical, r_has_unit := runit.(units.Compound_Unit)
+		if l_has_unit && r_has_unit {
+			unit, err := units.combine_units(
+				lcanonical,
+				units.RAT_ONE,
+				rcanonical,
+				units.Small_Rat{n = -1},
+				ts.allocator,
+			)
+			if err != .OK {
+				return
+			}
+			return unit, lhs, rhs, true
+		} else if l_has_unit && _unit_is_flexible(runit) {
+			return lunit, lhs, rhs, true
+		} else if r_has_unit && _unit_is_flexible(lunit) {
+			unit, err := units.combine_units(
+				rcanonical,
+				units.Small_Rat{n = -1},
+				units.Inline_Compound_Unit{},
+				units.RAT_ONE,
+				ts.allocator,
+			)
+			if err != .OK {
+				return
+			}
+			return unit, lhs, rhs, true
+		} else if _unit_is_flexible(lunit) && _unit_is_flexible(runit) {
+			return hir.Indeterminate_Unit.Flexible, lhs, rhs, true
+		} else if (_is_no_unit(lunit) || _unit_is_flexible(lunit)) &&
+		   (_is_no_unit(runit) || _unit_is_flexible(runit)) {
+			return hir.Indeterminate_Unit.No_Unit, lhs, rhs, true
+		}
+		diagnostics.emit(
+			.Invalid_Unit_Operation,
+			binop.span,
+			"you cannot divide a unitless value by a value with units or vice-versa (|%v| %s |%v|)",
+			lunit,
+			common.BINARY_OP_STRINGS[binop.op],
+			runit,
+		)
+		return
+
+	case .Power:
+		if canonical, is_canonical := lunit.(units.Compound_Unit);
+		   is_canonical && units.num_components(canonical) > 0 {
+			if exponent, known := rhs.(Comptime_Value); known {
+				if exponent_value, numeric := exponent.value.(exact.Rat); numeric {
+					rhs_is_unitless := _is_no_unit(runit) || _unit_is_flexible(runit)
+					if rhs_unit, rhs_canonical := runit.(units.Compound_Unit); rhs_canonical {
+						rhs_is_unitless = units.num_components(rhs_unit) == 0
+					}
+					if rhs_is_unitless {
+						if exponent_units, representable := units.rat_from_exact(exponent_value);
+						   representable && exponent_units.d == 0 {
+							unit, err := units.combine_units(
+								canonical,
+								exponent_units,
+								units.Inline_Compound_Unit{},
+								units.RAT_ONE,
+								ts.allocator,
+							)
+							if err == .OK {
+								return unit, lhs, rhs, true
+							}
+						} else {
+							diagnostics.emit(
+								.Invalid_Unit_Exponent,
+								ast.expression_span(binop.rhs),
+								"fractional exponents are not currently supported for values with units",
+							)
+							return
+						}
+					}
+				}
+			}
+			diagnostics.emit(
+				.Invalid_Unit_Exponent,
+				ast.expression_span(binop.rhs),
+				"exponents of unit expressions must be statically known unitless integers",
+			)
+			return
+		}
+
+		if rhs_unit, rhs_canonical := runit.(units.Compound_Unit);
+		   rhs_canonical && units.num_components(rhs_unit) > 0 {
+			diagnostics.emit(
+				.Invalid_Unit_Exponent,
+				ast.expression_span(binop.rhs),
+				"exponents must be unitless or ratios",
+			)
+			return
+		}
+		return lunit, lhs, rhs, true
+	}
+
+	unreachable()
+}
+
+_coerce_units :: proc(
+	lhs: hir.Realized_Unit,
+	rhs: hir.Realized_Unit,
+) -> (
+	hir.Realized_Unit,
+	exact.Rat,
+	bool,
+) {
+	if _unit_is_flexible(lhs) {
+		return rhs, exact.RAT_ONE, true
+	} else if _unit_is_flexible(rhs) {
+		return lhs, exact.RAT_ONE, true
+	}
+
+	if _units_equal(lhs, rhs) {
+		return lhs, exact.RAT_ONE, true
+	}
+
+	// TODO: find conversion from one to the other
+
+	return nil, {}, false
+}

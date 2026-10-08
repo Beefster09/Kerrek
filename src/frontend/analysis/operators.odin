@@ -1,13 +1,19 @@
 package analysis
 
-import "../../common"
-import "../../common/exact"
-import "../diagnostics"
-import "../hir"
+
 import "base:runtime"
 import "core:fmt"
 import "core:reflect"
 import "core:strings"
+
+import "../../common"
+import "../../common/exact"
+import "../../util"
+import "../ast"
+import "../diagnostics"
+import "../hir"
+import "../resolver"
+import "../units"
 
 Operator_Compat_Category :: enum {
 	Empty,
@@ -187,6 +193,341 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 		}
 	}
 	return .Opaque
+}
+
+_eval_binop :: proc(
+	ts: ^Translation_State,
+	binop: ^ast.Binop_Expr,
+	scope: resolver.Scope,
+	type_hint: hir.Type = nil,
+) -> Eval_Result {
+	lhs := evaluate(ts, binop.lhs, scope)
+	rhs := evaluate(ts, binop.rhs, scope)
+	assert(lhs != nil && rhs != nil)
+	if poison, is_poison := util.chain_extract(lhs, hir.Expression, ^hir.Poison); is_poison {
+		poison.span = binop.span
+		return hir.Expression(poison)
+	}
+	if poison, is_poison := util.chain_extract(rhs, hir.Expression, ^hir.Poison); is_poison {
+		poison.span = binop.span
+		return hir.Expression(poison)
+	}
+
+	ltype, lunit, lok := _type_and_unit(lhs)
+	rtype, runit, rok := _type_and_unit(rhs)
+
+	if !lok {
+		diagnostics.emit(
+			.Expected_Single_Value,
+			ast.expression_span(binop.lhs),
+			"this expression does not return a value",
+		)
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	if !rok {
+		diagnostics.emit(
+			.Expected_Single_Value,
+			ast.expression_span(binop.rhs),
+			"this expression does not return a value",
+		)
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	if binop.op == .Multiply && is_boolean(ltype) {
+		return _eval_boolean_multiply(ts, lhs, rhs, rtype, binop, binop.rhs)
+	}
+
+	if binop.op == .Multiply && is_boolean(rtype) {
+		return _eval_boolean_multiply(ts, rhs, lhs, ltype, binop, binop.lhs)
+	}
+
+	calculation_hint := type_hint
+	if calculation_hint != nil &&
+	   binop.op not_in OP_CATEGORY_DEFS[_op_category_of(calculation_hint)].supported_binops {
+		calculation_hint = nil
+	}
+	if binop.op == .Power {
+		// FIXME: Propagate result context to the base without coercing the exponent.
+		calculation_hint = nil
+	}
+
+	if dec_result, dec_ok := _try_decimal_binop(ts, binop.op, binop.span, lhs, rhs); dec_ok {
+		return dec_result
+	}
+
+	coerced_type, coerce_ok := coerce(
+		ltype,
+		rtype,
+		calculation_hint if binop.op in common.ARITHMETIC_BINOPS else nil,
+	)
+	if !coerce_ok {
+		diagnostics.emit(
+			.Binop_Not_Defined,
+			binop.span,
+			"operator %s is not supported for types %s and %s" +
+			" and no implicit conversion between them exists",
+			common.BINARY_OP_STRINGS[binop.op],
+			ltype,
+			rtype,
+		)
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	if binop.op == .Add {
+		if l, r, ok := util.extract_pair(lhs, rhs, Comptime_Value); ok {
+			if lstr, rstr, str_ok := util.extract_pair(l.value, r.value, string); str_ok {
+				return Comptime_Value {
+					value = strings.concatenate({lstr, rstr}, ts.allocator),
+					type = coerced_type,
+					unit = hir.Indeterminate_Unit.No_Unit,
+				}
+			}
+		}
+	}
+
+	op_compat := OP_CATEGORY_DEFS[_op_category_of(coerced_type)]
+	if binop.op not_in op_compat.supported_binops {
+		diag := diagnostics.emit(
+			.Binop_Not_Defined,
+			binop.span,
+			"operator %s is not supported for type %s",
+			common.BINARY_OP_STRINGS[binop.op],
+			coerced_type,
+		)
+		if op_compat.binop_diagnostics != nil {
+			op_compat.binop_diagnostics(diag, binop.op)
+		}
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	res_unit, u_lhs, u_rhs, unit_ok := _eval_binop_unit(ts, binop, lhs, lunit, rhs, runit)
+	if !unit_ok {
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	if l, r, ok := util.extract_pair(u_lhs, u_rhs, Comptime_Value); ok {
+		result_type := coerced_type
+		if binop.op not_in common.ARITHMETIC_BINOPS {
+			result_type = resolver.Flexible_Type {
+				affinity = .Boolean,
+			}
+		} else if _, _, both_flex := util.extract_pair(l.type, r.type, resolver.Flexible_Type);
+		   both_flex {
+			if binop.op == .True_Divide {
+				result_type = resolver.Flexible_Type {
+					affinity = .Rational,
+				}
+			} else if binop.op == .Floor_Divide {
+				result_type = resolver.Flexible_Type {
+					affinity = .Integer,
+				}
+			}
+		}
+
+		return Comptime_Value {
+			value = _comptime_binop(binop.op, l.value, r.value, ts.output.allocator),
+			type = result_type,
+			unit = res_unit if binop.op in common.ARITHMETIC_BINOPS else hir.Indeterminate_Unit.No_Unit,
+		}
+	}
+
+	l: hir.Expression
+	l_ok := true
+	switch value in u_lhs {
+	case Comptime_Value:
+		l, l_ok = materialize_value(
+			ts,
+			value,
+			ast.expression_span(binop.lhs),
+			coerced_type.(hir.Type) or_else nil,
+		)
+	case hir.Expression:
+		l = value
+	case ^resolver.Import:
+		diagnostics.emit(
+			.Symbol_Not_Operand,
+			binop.span,
+			"this is an import, which is not a valid operand of %s",
+			common.BINARY_OP_STRINGS[binop.op],
+		)
+		return hir.Expression(poison(ts, binop.span))
+	}
+	r: hir.Expression
+	r_ok := true
+	switch value in u_rhs {
+	case Comptime_Value:
+		r, r_ok = materialize_value(
+			ts,
+			value,
+			ast.expression_span(binop.rhs),
+			coerced_type.(hir.Type) or_else nil,
+		)
+	case hir.Expression:
+		r = value
+	case ^resolver.Import:
+		diagnostics.emit(
+			.Symbol_Not_Operand,
+			binop.span,
+			"this is an import, which is not a valid operand of %s",
+			common.BINARY_OP_STRINGS[binop.op],
+		)
+		return hir.Expression(poison(ts, binop.span))
+	}
+	if !l_ok || !r_ok {
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	inferred_type, inferred := infer_type(coerced_type, binop.span)
+	if !inferred {
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	if _, flexible := ltype.(Flexible_Type); !flexible && ltype != coerced_type {
+		_, unit, has_value := hir.type_and_unit(l)
+		assert(has_value)
+		cast_expr := new(hir.Cast_Expr, ts.output.allocator)
+		cast_expr^ = {
+			span = ast.expression_span(binop.lhs),
+			type = inferred_type,
+			to   = inferred_type,
+			unit = unit,
+			expr = l,
+		}
+		l = cast_expr
+	}
+
+	if _, flexible := rtype.(Flexible_Type); !flexible && rtype != coerced_type {
+		_, unit, has_value := hir.type_and_unit(r)
+		assert(has_value)
+		cast_expr := new(hir.Cast_Expr, ts.output.allocator)
+		cast_expr^ = {
+			span = ast.expression_span(binop.rhs),
+			type = inferred_type,
+			to   = inferred_type,
+			unit = unit,
+			expr = r,
+		}
+		r = cast_expr
+	}
+
+	result := new(hir.Binop_Expr, ts.output.allocator)
+	result^ = {
+		span = binop.span,
+		op   = binop.op,
+		lhs  = l,
+		rhs  = r,
+		type = inferred_type if binop.op in common.ARITHMETIC_BINOPS else .Boolean,
+		unit = res_unit,
+	}
+	return hir.Expression(result)
+}
+
+_eval_boolean_multiply :: proc(
+	ts: ^Translation_State,
+	boolval: Eval_Result,
+	nonbool: Eval_Result,
+	nonbool_type: Comptime_Type,
+	binop: ^ast.Binop_Expr,
+	nonbool_ast: ast.Expression,
+) -> Eval_Result {
+	if !is_zeroable(nonbool_type) {
+		diagnostics.emit(
+			.Nonzeroable_Operand,
+			binop.span,
+			"cannot multiply Boolean and %v because %v does not have a well-defined zero value",
+			nonbool_type,
+			nonbool_type,
+		)
+		return nil
+	}
+
+	switch boolean in boolval {
+	case Comptime_Value:
+		value := boolean.value.(bool)
+		if value {
+			return nonbool
+		} else {
+			_, unit, has_value := _type_and_unit(nonbool)
+			assert(has_value)
+			return Comptime_Value {
+				value = _primitive_zero(nonbool_type),
+				type = nonbool_type,
+				unit = unit,
+			}
+		}
+
+	case hir.Expression:
+		if known, ok := nonbool.(Comptime_Value); ok {
+			if_true, mat_ok := materialize_value(ts, known, ast.expression_span(nonbool_ast))
+			if !mat_ok {
+				return nil
+			}
+			typ, unit, has_value := hir.type_and_unit(if_true)
+			assert(has_value)
+			if_false := new(hir.Const_Expr, ts.output.allocator)
+			if_false^ = {
+				span = ast.expression_span(nonbool_ast),
+				value = hir.Zero_Of{type = typ},
+				type = typ,
+				unit = unit,
+			}
+			result := new(hir.Condition_Expr, ts.output.allocator)
+			result^ = {
+				span      = binop.span,
+				condition = boolean,
+				if_true   = if_true,
+				if_false  = if_false,
+				type      = typ,
+				unit      = unit,
+			}
+			return hir.Expression(result)
+
+		} else {
+			nonbool_expr := nonbool.(hir.Expression)
+			typ, unit, has_value := hir.type_and_unit(nonbool_expr)
+			assert(has_value)
+			if_false := new(hir.Const_Expr, ts.output.allocator)
+			if_false^ = {
+				span = ast.expression_span(nonbool_ast),
+				value = hir.Zero_Of{type = typ},
+				type = typ,
+				unit = unit,
+			}
+			result := new(hir.Condition_Expr, ts.output.allocator)
+			result^ = {
+				span      = binop.span,
+				condition = boolean,
+				if_true   = nonbool_expr,
+				if_false  = if_false,
+				type      = typ,
+				unit      = unit,
+			}
+			return hir.Expression(result)
+		}
+	case ^resolver.Import:
+		diagnostics.emit(
+			.Symbol_Not_Operand,
+			ast.expression_span(nonbool_ast),
+			"imports cannot participate in boolean multiplication",
+			common.BINARY_OP_STRINGS[binop.op],
+		)
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	unreachable()
+}
+
+_try_decimal_binop :: proc(
+	ts: ^Translation_State,
+	op: common.Binary_Op,
+	span: common.Span,
+	lhs, rhs: Eval_Result,
+) -> (
+	Eval_Result,
+	bool,
+) {
+	return nil, false // TODO
 }
 
 _comptime_unop :: proc(
