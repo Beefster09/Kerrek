@@ -412,6 +412,35 @@ _test_decimal_division :: proc(t: ^testing.T) {
 		"33333333333333333333333333333333333333333333333333333333333333333333333333333",
 		77,
 	)
+
+	rational_cases := [?]struct {
+		left, right:             Decimal,
+		numerator, denominator: string,
+	} {
+		{_decimal(t, "1234", 2), _decimal(t, "6", 1), "617", "30"},
+		{_decimal(t, "100", 2), _decimal(t, "300", 2), "1", "3"},
+		{_decimal(t, "1", -2), _decimal(t, "4", 1), "250", "1"},
+		{_decimal(t, "4", 1), _decimal(t, "1", -2), "1", "250"},
+		{_decimal(t, "-3", 2), _decimal(t, "-9", 3), "10", "3"},
+	}
+	for tc in rational_cases {
+		actual := decimal_div_to_rational(tc.left, tc.right)
+		_expect_rat(t, actual, tc.numerator, tc.denominator)
+	}
+
+	_expect_rat(
+		t,
+		decimal_div_to_rational(
+			_decimal(
+				t,
+				"99999999999999999999999999999999999999999999999999999999999999999999999999999",
+				0,
+			),
+			_decimal(t, "3", 0),
+		),
+		"33333333333333333333333333333333333333333333333333333333333333333333333333333",
+		"1",
+	)
 }
 
 _test_decimal_digit_count :: proc(t: ^testing.T) {

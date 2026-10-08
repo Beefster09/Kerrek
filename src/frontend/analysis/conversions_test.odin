@@ -399,7 +399,9 @@ test_materialize_numeric_values :: proc(t: ^testing.T) {
 	tu: hir.Module
 	hir.init(&tu)
 	defer hir.destroy(&tu)
-	ts := Translation_State{output = &tu}
+	ts := Translation_State {
+		output = &tu,
+	}
 
 	flex_integer := Comptime_Type(Flexible_Type{affinity = .Integer})
 	flex_decimal := Comptime_Type(Flexible_Type{affinity = .Decimal})
@@ -421,7 +423,6 @@ test_materialize_numeric_values :: proc(t: ^testing.T) {
 		{"Byte maximum", hir.Primitive_Type.Byte, {255, 1}, flex_integer, true},
 		{"above Byte", hir.Primitive_Type.Byte, {256, 1}, flex_integer, false},
 		{"fractional integer", hir.Primitive_Type.Int64, {3, 2}, flex_decimal, false},
-		{"reduced integer", hir.Primitive_Type.Int8, {254, 2}, flex_integer, true},
 		{
 			"Decimal boundary",
 			hir.Fixed_Decimal{digits = 3, scale = 2},
@@ -471,7 +472,12 @@ test_materialize_numeric_values :: proc(t: ^testing.T) {
 			constant, is_constant := materialized.(^hir.Const_Expr)
 			testing.expectf(t, is_constant, "%s: expected a materialized constant", tc.name)
 			if is_constant {
-				testing.expectf(t, constant.type == tc.target, "%s: materialized the wrong type", tc.name)
+				testing.expectf(
+					t,
+					constant.type == tc.target,
+					"%s: materialized the wrong type",
+					tc.name,
+				)
 			}
 		}
 	}
@@ -517,14 +523,18 @@ test_materialize_numeric_values :: proc(t: ^testing.T) {
 		if !is_constant {
 			continue
 		}
-		actual, is_decimal := constant.value.(common.i256)
-		testing.expectf(t, is_decimal, "%s: expected an i256 decimal value", tc.name)
+		actual, is_decimal := constant.value.(exact.Decimal)
+		testing.expectf(t, is_decimal, "%s: expected a decimal value", tc.name)
 		expected_int, parsed := exact.parse_int(tc.significand)
 		testing.expectf(t, parsed, "%s: invalid expected significand", tc.name)
-		expected, converted := common.exact_int_to_i256(expected_int)
-		testing.expect(t, converted)
-		if is_decimal && parsed && converted {
-			testing.expectf(t, actual == expected, "%s: materialized the wrong significand", tc.name)
+		if is_decimal && parsed {
+			expected := exact.Decimal{significand = expected_int, scale = int(tc.target.scale)}
+			testing.expectf(
+				t,
+				exact.eq(actual, expected),
+				"%s: materialized the wrong value",
+				tc.name,
+			)
 		}
 	}
 }

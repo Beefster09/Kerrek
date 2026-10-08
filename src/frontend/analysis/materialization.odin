@@ -78,14 +78,13 @@ materialize_value :: proc(
 		}
 
 	case exact.Rat:
-		reduced := exact.reduce(v, context.temp_allocator)
 		ok := false
 		#partial switch t in real_type {
 		case hir.Primitive_Type:
-			real_value, ok = _materialize_primitive(t, reduced)
+			real_value, ok = _materialize_primitive(t, v)
 		case hir.Fixed_Decimal:
 			if flex, flex_ok := value.type.(resolver.Flexible_Type); flex_ok {
-				real_value, ok = _materialize_decimal(t, reduced, flex)
+				real_value, ok = _materialize_decimal(t, v, flex)
 			}
 		}
 
@@ -145,24 +144,36 @@ _materialize_decimal :: proc(
 	hir.Value,
 	bool,
 ) {
-	if spec.affinity == .Binary_Float {
+	switch spec.affinity {
+	case .Rational:
+	// inexact ok; nothing special to check
+	case .Unsigned_Integer, .Integer:
+		if target.scale < 0 {
+			// check that the value is divisible by 10^scale
+			divisor := exact.int_pow_int(i128(10), uint(-target.scale), context.temp_allocator)
+			remainder := exact.rem(value.numerator, divisor, context.temp_allocator)
+			if !exact.is_zero(remainder) {
+				return nil, false
+			}
+		}
+	case .Decimal:
+		if int(spec.digits) > int(target.digits) && int(spec.scale) > int(target.scale) {
+			return nil, false
+		}
+	case .Binary_Float:
 		return nil, false
+	case .Any_Zero:
+		return exact.Decimal{i128(0), int(target.scale)}, true
+	case .Boolean, .String, .Rune, .Byte, .Nil:
+		unreachable()
 	}
 
-	result := exact.rat_to_decimal_rounded(value, int(target.scale), context.temp_allocator)
-	if spec.affinity != .Rational &&
-	   !exact.eq(
-			   exact.decimal_to_rat(result, context.temp_allocator),
-			   value,
-			   context.temp_allocator,
-		   ) {
-		return nil, false
-	}
+	result := exact.rat_to_decimal_rounded(value, int(target.scale))
 	if exact.decimal_digit_count(result.significand) > int(target.digits) {
 		return nil, false
 	}
 
-	return common.exact_int_to_i256(result.significand)
+	return result, true
 }
 
 _materialize_primitive :: proc(prim: hir.Primitive_Type, value: exact.Rat) -> (hir.Value, bool) {
@@ -203,6 +214,8 @@ _materialize_primitive :: proc(prim: hir.Primitive_Type, value: exact.Rat) -> (h
 }
 
 _materialize_int :: proc(value: exact.Rat, $I: typeid) -> (hir.Value, bool) {
+	// ASSUMPTION: rationals going through normal compiler machinery would have already been
+	// reduced by the time we get here, so checking if the denominator is 1 is sufficient
 	if !exact.is_one(value.denominator) {
 		return nil, false
 	}

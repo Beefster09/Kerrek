@@ -265,8 +265,18 @@ _lower_expression :: proc(fb: ^Func_Builder, expr: hir.Expression) -> mir.Operan
 
 _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Operand {
 	switch value in constant.value {
-	case common.i256:
-		return mir.Constant(value)
+	case exact.Decimal:
+		as_int, ok := common.exact_int_to_i256(value.significand)
+		assert(ok)
+		if dec_type, is_dec := constant.type.(hir.Fixed_Decimal); is_dec {
+			mag := max(f32(dec_type.digits), dec_type.magnitude)
+			if mag < common.INT64_DECIMAL_MAX_MAGNITUDE {
+				return mir.Constant(i64(as_int[0]))
+			} else if mag < common.INT128_DECIMAL_MAX_MAGNITUDE {
+				return mir.Constant((transmute([2]i128)as_int)[0])
+			}
+		}
+		return mir.Constant(as_int)
 	case i128:
 		return mir.Constant(value)
 	case u128:

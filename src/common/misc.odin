@@ -28,10 +28,26 @@ INT128_DECIMAL_MAX_MAGNITUDE :: 38.23080944932561
 INT256_DECIMAL_MAX_MAGNITUDE :: 76.7626488943152
 
 write_i256 :: proc(w: io.Writer, value: i256) {
+	SIGN_BIT :: 1 << 63
 	value := cast([4]u64)value
-	i: big.Int
-	if value[3] & 0x8000_0000_0000_0000 != 0 {
-		i.sign = .Negative
+	is_negative := value[3] & SIGN_BIT != 0
+	size := 1
+	for d, j in value {
+		if (d != ~u64(0) if is_negative else d != 0) {
+			size = j + 1
+		}
+	}
+
+	if size <= 2 {
+		// fast-path / workaround because big.int_itoa_raw is broken for small values
+		io.write_i128(w, (transmute([2]i128)value)[0])
+		return
+	}
+
+	i := big.Int {
+		used = size,
+	}
+	if is_negative {
 		// negate via two's complement
 		overflow_one := true
 		#unroll for j in 0 ..< 4 {
@@ -40,11 +56,7 @@ write_i256 :: proc(w: io.Writer, value: i256) {
 				value[j], overflow_one = intrinsics.overflow_add(value[j], 1)
 			}
 		}
-	}
-	for d, j in value {
-		if d != 0 {
-			i.used = j + 1
-		}
+
 	}
 	i.digit = transmute([dynamic]big.DIGIT)runtime.Raw_Dynamic_Array {
 		data = &value[0],
@@ -52,18 +64,13 @@ write_i256 :: proc(w: io.Writer, value: i256) {
 		cap = 4,
 		allocator = runtime.nil_allocator(),
 	}
-	digits: [80]u8
-	n, err := big.int_itoa_raw(&i, 10, digits[:])
+	digits_str, err := big.int_itoa_string(&i, 10, allocator = context.temp_allocator)
 	if err == nil {
-		// (ODIN BUG) itoa_raw is still null-terminating and/or returning too big of a value for n
-		digits_str := strings.trim_right(
-			strings.trim_left(transmute(string)digits[:n], "0"),
-			"\x00",
-		)
-		if digits_str == "" {
-			digits_str = "0"
+		// workaround for int_itoa_string sometimes putting too many 0s at the beginning
+		if is_negative {
+			io.write_rune(w, '-')
 		}
-		io.write_string(w, digits_str)
+		io.write_string(w, strings.trim_left(digits_str, "0"))
 	} else {
 		io.write_string(w, "##ERROR##")
 	}

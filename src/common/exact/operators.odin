@@ -688,6 +688,12 @@ decimal_mul :: proc(a, b: Decimal, allocator := bigint_allocator) -> Decimal {
 	return {_decimal_rescale({significand, natural_scale}, scale, allocator), scale}
 }
 
+decimal_div_to_rational :: proc(a, b: Decimal, allocator := bigint_allocator) -> Rat {
+	assert(!decimal_is_zero(b), "division by zero")
+	numerator, denominator, _ := _decimal_aligned(a, b)
+	return rat_reduce({numerator, denominator}, allocator)
+}
+
 decimal_div_with_precision :: proc(
 	a, b: Decimal,
 	precision: int,

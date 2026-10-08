@@ -101,7 +101,7 @@ Value :: union {
 	u64,
 	i128,
 	u128,
-	common.i256, // should maybe be a proper decimal type instead...
+	exact.Decimal,
 	f16,
 	f32,
 	f64,
