@@ -165,6 +165,10 @@ Code :: enum {
 	Binop_Not_Defined,
 	// A unary operator is not defined for the type
 	Unop_Not_Defined,
+	// The expression context requires a destination result scale
+	Decimal_Result_Scale_Required,
+	// The requested decimal scale is possibly lower than would be expected by its context
+	Dubious_Decimal_Scale,
 	// == MISC ==
 
 	// this part of the compiler is not yet implemented
@@ -180,6 +184,8 @@ Code_Metadata :: struct {
 	origin:        Origin,
 	category:      Category,
 	default_level: Level,
+	stable_id:     string,
+	summary:       string,
 	description:   string,
 }
 
@@ -267,6 +273,8 @@ CODE_METADATA := [Code]Code_Metadata {
 	.Entry_Point_Has_Parameters = {origin = .Semantic, default_level = .Error},
 	.Entry_Point_Returns_Values = {origin = .Semantic, default_level = .Error},
 	.Fallible_Entry_Point = {origin = .Semantic, default_level = .Error},
+	.Decimal_Result_Scale_Required = {origin = .Semantic, default_level = .Error},
+	.Dubious_Decimal_Scale = {origin = .Semantic, default_level = .Warning},
 	// MISC
 	.Not_Implemented = {origin = .Unknown, default_level = .Error},
 	// TEST

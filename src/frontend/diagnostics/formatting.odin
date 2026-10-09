@@ -12,11 +12,21 @@ emit :: proc {
 }
 
 suggest :: proc(diag: ^Diagnostic, fmtstr: string, args: ..any) {
+	#force_inline note(diag, fmtstr, ..args, label = "suggestion", disposition = .Positive)
+}
+
+note :: proc(
+	diag: ^Diagnostic,
+	fmtstr: string,
+	args: ..any,
+	label: string = "note",
+	disposition: Note_Disposition = .Neutral,
+) {
 	msg := fmt.aprintf(fmtstr, ..args, allocator = _msg_allocator)
 	if diag.extra == nil {
 		diag.extra = make([dynamic]Addendum, _msg_allocator)
 	}
-	append(&diag.extra, Suggestion(msg))
+	append(&diag.extra, Note{message = msg, label = label, disposition = disposition})
 }
 
 reference :: proc(diag: ^Diagnostic, span: common.Span, fmtstr: string, args: ..any) {

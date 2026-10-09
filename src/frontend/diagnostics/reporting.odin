@@ -30,15 +30,14 @@ _report_format: Report_Format
 _report_theme: Color_Scheme
 
 Color_Scheme :: struct #all_or_none {
-	levels:     [Level]string, // the color of the level and error code of each diagnostic
-	message:    string, // the base message
-	location:   string, // the file path + numeric span
-	gutter:     string, // the line number gutter for showing files
-	span:       string, // the color of the pointer of the span
-	addendum:   string, // each addendum message
-	suggestion: string, // the color of 'suggestion' in suggestion addendum messages
-	reference:  string, // the color of 'note' in reference addendum messages
-	clear:      string,
+	levels:   [Level]string, // the color of the level and error code of each diagnostic
+	message:  string, // the base message
+	location: string, // the file path + numeric span
+	gutter:   string, // the line number gutter for showing files
+	span:     string, // the color of the pointer of the span
+	addendum: string, // each addendum message
+	label:    [Note_Disposition]string, // the color of the label in positive addendum messages
+	clear:    string,
 }
 
 @(rodata)
@@ -53,8 +52,11 @@ DEFAULT_THEME_3BIT := Color_Scheme {
 	location = (ansi.CSI + ansi.FG_DEFAULT + ansi.SGR),
 	gutter = (ansi.CSI + ansi.FG_BLUE + ansi.SGR),
 	span = (ansi.CSI + ansi.FG_YELLOW + ansi.SGR),
-	suggestion = (ansi.CSI + ansi.FG_GREEN + ansi.SGR),
-	reference = (ansi.CSI + ansi.FG_MAGENTA + ansi.SGR),
+	label = {
+		.Positive = (ansi.CSI + ansi.FG_GREEN + ansi.SGR),
+		.Neutral = (ansi.CSI + ansi.FG_MAGENTA + ansi.SGR),
+		.Negative = (ansi.CSI + ansi.FG_RED + ansi.SGR),
+	},
 	clear = (ansi.CSI + ansi.RESET + ansi.SGR),
 }
 
@@ -70,8 +72,11 @@ DEFAULT_THEME_4BIT := Color_Scheme {
 	location = (ansi.CSI + ansi.FAINT + ";" + ansi.FG_DEFAULT + ansi.SGR),
 	gutter = (ansi.CSI + ansi.FG_BLUE + ansi.SGR),
 	span = (ansi.CSI + ansi.BOLD + ";" + ansi.FG_BRIGHT_YELLOW + ansi.SGR),
-	suggestion = (ansi.CSI + ansi.FG_BRIGHT_GREEN + ansi.SGR),
-	reference = (ansi.CSI + ansi.FG_BRIGHT_MAGENTA + ansi.SGR),
+	label = {
+		.Positive = (ansi.CSI + ansi.FG_BRIGHT_GREEN + ansi.SGR),
+		.Neutral = (ansi.CSI + ansi.FG_BRIGHT_MAGENTA + ansi.SGR),
+		.Negative = (ansi.CSI + ansi.FG_RED + ansi.SGR),
+	},
 	clear = (ansi.CSI + ansi.RESET + ansi.SGR),
 }
 
@@ -192,19 +197,20 @@ _report_pretty :: proc() {
 
 				for addendum in diag.extra {
 					switch a in addendum {
-					case Suggestion:
+					case Note:
 						fmt.eprintfln(
-							"\t%ssuggestion%s: %s%s%s",
-							_report_theme.suggestion,
+							"\t%s%s%s: %s%s%s",
+							_report_theme.label[a.disposition],
+							a.label,
 							_report_theme.clear,
 							_report_theme.addendum,
-							a,
+							a.message,
 							_report_theme.clear,
 						)
 					case Reference:
 						fmt.eprintfln(
 							"\t%snote%s: %s%s%s",
-							_report_theme.reference,
+							_report_theme.label[.Neutral],
 							_report_theme.clear,
 							_report_theme.addendum,
 							a.message,

@@ -163,4 +163,11 @@ const LONG_STRING = """
 """ + "strong bad"+
 \"this\interprets\backslashes\literally";const x23 = ""; \\23x45 1x
 
-func main() {;;}
+func main() {
+	let a = 1.234;
+	let b = 3.56;
+	let c: Decimal(5, 1) = a / b;
+
+	let crazy: Decimal(40, 10) = 1234567890.0987654321;
+	let `fail` = crazy * crazy;
+}

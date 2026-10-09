@@ -2,6 +2,7 @@ package lowering
 
 import "base:intrinsics"
 import "core:fmt"
+import "core:log"
 import "core:math/big"
 import "core:reflect"
 
@@ -271,7 +272,14 @@ _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Ope
 		as_int, ok := common.exact_int_to_i256(value.significand)
 		assert(ok)
 		if dec_type, is_dec := constant.type.(hir.Fixed_Decimal); is_dec {
-			mag := max(f32(dec_type.digits), dec_type.magnitude)
+			mag := dec_type.magnitude
+			if mag == 0 && as_int != {0, 0, 0, 0} {
+				log.warnf(
+					"encountered a decimal constant without its magnitude set (at %s)",
+					constant.span,
+				)
+				mag = f32(dec_type.digits)
+			}
 			if mag < common.INT64_DECIMAL_MAX_MAGNITUDE {
 				return mir.Constant(i64(as_int[0]))
 			} else if mag < common.INT128_DECIMAL_MAX_MAGNITUDE {

@@ -39,11 +39,21 @@ Diagnostic :: struct {
 }
 
 Addendum :: union {
-	Suggestion,
 	Reference,
+	Note,
 }
 
-Suggestion :: distinct string
+Note :: struct {
+	label:       string,
+	message:     string,
+	disposition: Note_Disposition,
+}
+
+Note_Disposition :: enum {
+	Negative = -1,
+	Neutral  = 0,
+	Positive = 1,
+}
 
 Reference :: struct {
 	message: string,

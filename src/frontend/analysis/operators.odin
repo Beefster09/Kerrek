@@ -534,53 +534,34 @@ _try_decimal_binop :: proc(
 		return nil, false
 	}
 
-	ldec: hir.Fixed_Decimal
-	switch typ in underlying_type(ltype) {
-	case Flexible_Type:
-		if typ.affinity != .Decimal {
-			return nil, false
+	_get_dec_type :: proc(ct: Comptime_Type) -> (hir.Fixed_Decimal, bool) {
+		// NOTE: this doesn't handle distinct types
+		// distinct Decimals would need to be distinct over the entire Decimal family
+		// but it's unclear if that's really a valuable use case of distinct
+		switch type in ct {
+		case Flexible_Type:
+			if type.affinity != .Decimal {
+				return {}, false
+			}
+			ldec := hir.Fixed_Decimal {
+				digits    = u8(type.digits),
+				scale     = i8(type.scale),
+				flags     = {.Inferred},
+				magnitude = f32(type.digits),
+			}
+			return ldec, true
+		case hir.Type:
+			return type.(hir.Fixed_Decimal)
 		}
-		ldec = {
-			digits    = u8(typ.digits),
-			scale     = i8(typ.scale),
-			flags     = {.Inferred},
-			magnitude = f32(typ.digits),
-		}
-	case hir.Type:
-		ok: bool
-		ldec, ok = typ.(hir.Fixed_Decimal)
-		if !ok {
-			return nil, false
-		}
+
+		return {}, false
 	}
 
-	rdec: hir.Fixed_Decimal
-	switch typ in underlying_type(rtype) {
-	case Flexible_Type:
-		if typ.affinity != .Decimal {
-			return nil, false
-		}
-		rdec = {
-			digits    = u8(typ.digits),
-			scale     = i8(typ.scale),
-			flags     = {.Inferred},
-			magnitude = f32(typ.digits),
-		}
-	case hir.Type:
-		ok: bool
-		rdec, ok = typ.(hir.Fixed_Decimal)
-		if !ok {
-			return nil, false
-		}
-	}
-	l_concrete, l_is_concrete := ltype.(hir.Type)
-	r_concrete, r_is_concrete := rtype.(hir.Type)
-	if l_is_concrete && r_is_concrete {
-		l_distinct, l_is_distinct := l_concrete.(^hir.Distinct_Type)
-		r_distinct, r_is_distinct := r_concrete.(^hir.Distinct_Type)
-		if l_is_distinct != r_is_distinct || l_is_distinct && l_distinct != r_distinct {
-			return nil, false
-		}
+	ldec, left_is_decimal := _get_dec_type(ltype)
+	rdec, right_is_decimal := _get_dec_type(rtype)
+
+	if !(left_is_decimal && right_is_decimal) {
+		return nil, false
 	}
 
 	if binop.op == .Power {
@@ -588,21 +569,6 @@ _try_decimal_binop :: proc(
 	}
 	if binop.op not_in OP_CATEGORY_DEFS[.Rational].supported_binops {
 		return nil, false
-	}
-
-	division_scale := 0
-	if binop.op == .True_Divide {
-		hint_decimal, hint_ok := underlying_type(type_hint).(hir.Type).(hir.Fixed_Decimal)
-		if !hint_ok || hint_decimal.scale < max(ldec.scale, rdec.scale) {
-			diagnostics.emit(
-				.Binop_Not_Defined,
-				binop.span,
-				"decimal division requires a decimal result context whose scale is at least %d",
-				max(ldec.scale, rdec.scale),
-			)
-			return hir.Expression(poison(ts, binop.span)), true
-		}
-		division_scale = int(hint_decimal.scale)
 	}
 
 	result_scale := 0
@@ -631,12 +597,50 @@ _try_decimal_binop :: proc(
 		result_magnitude = f64(ldec.magnitude) + f64(rdec.magnitude)
 
 	case .True_Divide:
-		result_scale = division_scale
+		hint_decimal, hint_ok := underlying_type(type_hint).(hir.Type).(hir.Fixed_Decimal)
+		if !hint_ok {
+			diag := diagnostics.emit(
+				.Decimal_Result_Scale_Required,
+				binop.span,
+				"decimal division requires a decimal result context with a defined scale",
+			)
+			return hir.Expression(poison(ts, binop.span)), true
+		}
+		result_scale = int(hint_decimal.scale)
 		quotient_magnitude :=
 			f64(ldec.magnitude) - f64(ldec.scale) + f64(rdec.scale) + f64(result_scale)
 		result_magnitude = math.log10(math.pow10(quotient_magnitude) + 0.5)
 		result_digits = max(1, int(math.ceil(result_magnitude)))
 		magnitude_ulps = 2
+
+		recommended_scale := int(max(rdec.scale, ldec.scale, 0))
+		if result_scale < recommended_scale {
+			diag := diagnostics.emit(
+				.Dubious_Decimal_Scale,
+				binop.span,
+				"the decimal scale requested here is suspiciously coarse",
+			)
+			diagnostics.suggest(
+				diag,
+				"use at least Decimal(%d, %d)",
+				recommended_scale + (result_digits - result_scale),
+				recommended_scale,
+			)
+			diagnostics.reference(
+				diag,
+				ast.span(binop.lhs),
+				"the lhs is a Decimal(%d, %d)",
+				ldec.digits,
+				ldec.scale,
+			)
+			diagnostics.reference(
+				diag,
+				ast.span(binop.rhs),
+				"the rhs is a Decimal(%d, %d)",
+				rdec.digits,
+				rdec.scale,
+			)
+		}
 
 	case .Floor_Divide:
 		result_scale = 0
@@ -655,13 +659,14 @@ _try_decimal_binop :: proc(
 		return nil, false
 	}
 
+
 	result_decimal: hir.Fixed_Decimal
 	if binop.op in common.ARITHMETIC_BINOPS {
 		if result_scale < int(min(i8)) || result_scale > int(max(i8)) {
 			diagnostics.emit(
 				.Binop_Not_Defined,
 				binop.span,
-				"decimal result scale exceeds the compiler's intermediate range",
+				"decimal result scale exceeds the compiler's representable range",
 			)
 			return hir.Expression(poison(ts, binop.span)), true
 		}
@@ -676,19 +681,17 @@ _try_decimal_binop :: proc(
 		if binop.op == .True_Divide || binop.op == .Floor_Divide {
 			result_digits = max(1, int(math.ceil(magnitude)))
 		}
-		if result_digits > int(max(u8)) {
-			diagnostics.emit(
-				.Binop_Not_Defined,
-				binop.span,
-				"decimal result precision exceeds the compiler's intermediate range",
-			)
-			return hir.Expression(poison(ts, binop.span)), true
-		}
+
 		if magnitude >= common.INT256_DECIMAL_MAX_MAGNITUDE {
-			diagnostics.emit(
+			diag := diagnostics.emit(
 				.Binop_Not_Defined,
 				binop.span,
-				"decimal result exceeds the maximum intermediate magnitude",
+				"this value can't be proven to fit within the 256 bit signed integer range",
+			)
+			diagnostics.note(
+				diag,
+				"the estimated number of bits required is %.2f",
+				magnitude * math.log2_f32(10) + 1,
 			)
 			return hir.Expression(poison(ts, binop.span)), true
 		}
@@ -727,64 +730,38 @@ _try_decimal_binop :: proc(
 				scale    = i32(result_scale),
 			}
 		}
-		return Comptime_Value {
-				value = _comptime_binop(binop.op, l.value, r.value, ts.output.allocator),
-				type = result_type,
-				unit = result_unit if binop.op in common.ARITHMETIC_BINOPS else hir.Indeterminate_Unit.No_Unit,
-			},
-			true
+		result := Comptime_Value {
+			value = _comptime_binop(binop.op, l.value, r.value, ts.output.allocator),
+			type  = result_type,
+			unit  = result_unit if binop.op in common.ARITHMETIC_BINOPS else hir.Indeterminate_Unit.No_Unit,
+		}
+		return result, true
 	}
 
-	l: hir.Expression
-	switch value in u_lhs {
-	case Comptime_Value:
-		ok: bool
-		l, ok = materialize_value(ts, value, ast.expression_span(binop.lhs), ldec)
-		if !ok {
-			return hir.Expression(poison(ts, binop.span)), true
+	_materialize_subexpr :: proc(
+		ts: ^Translation_State,
+		v: Eval_Result,
+		dec_type: hir.Fixed_Decimal,
+		span: common.Span,
+	) -> (
+		hir.Expression,
+		bool,
+	) {
+		switch value in v {
+		case Comptime_Value:
+			return materialize_value(ts, value, span, dec_type)
+		case hir.Expression:
+			return value, true
+		case ^resolver.Import:
+			return nil, false
 		}
-	case hir.Expression:
-		l = value
-		if !types_equal(ltype, hir.Type(ldec)) {
-			_, unit, _ := hir.type_and_unit(l)
-			cast_expr := new(hir.Cast_Expr, ts.output.allocator)
-			cast_expr^ = {
-				span = ast.expression_span(binop.lhs),
-				type = ldec,
-				to   = ldec,
-				unit = unit,
-				expr = l,
-			}
-			l = cast_expr
-		}
-	case ^resolver.Import:
-		return nil, false
+		unreachable()
 	}
 
-	r: hir.Expression
-	switch value in u_rhs {
-	case Comptime_Value:
-		ok: bool
-		r, ok = materialize_value(ts, value, ast.expression_span(binop.rhs), rdec)
-		if !ok {
-			return hir.Expression(poison(ts, binop.span)), true
-		}
-	case hir.Expression:
-		r = value
-		if !types_equal(rtype, hir.Type(rdec)) {
-			_, unit, _ := hir.type_and_unit(r)
-			cast_expr := new(hir.Cast_Expr, ts.output.allocator)
-			cast_expr^ = {
-				span = ast.expression_span(binop.rhs),
-				type = rdec,
-				to   = rdec,
-				unit = unit,
-				expr = r,
-			}
-			r = cast_expr
-		}
-	case ^resolver.Import:
-		return nil, false
+	l, l_materialized := _materialize_subexpr(ts, lhs, ldec, ast.span(binop.lhs))
+	r, r_materialized := _materialize_subexpr(ts, rhs, rdec, ast.span(binop.rhs))
+	if !(l_materialized && r_materialized) {
+		return hir.Expression(poison(ts, binop.span)), true
 	}
 
 	result := new(hir.Binop_Expr, ts.output.allocator)
