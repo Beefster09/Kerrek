@@ -204,6 +204,14 @@ _lower_expression :: proc(fb: ^Func_Builder, expr: hir.Expression) -> mir.Operan
 	case ^hir.Binop_Expr:
 		return _lower_binop(fb, node^)
 
+	case ^hir.Power_Expr:
+		base := _lower_expression(fb, node.base)
+		for i in 0 ..< (size_of(type_of(node.exponent)) * 8) - intrinsics.count_leading_zeros(node.exponent) {
+			bit := (node.exponent >> u8(i)) & 0b1
+			// TODO
+			fmt.panicf("todo")
+		}
+
 	case ^hir.Unit_Reinterpret_Expr:
 		return _lower_expression(fb, node.expr)
 

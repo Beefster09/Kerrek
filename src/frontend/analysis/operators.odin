@@ -235,21 +235,21 @@ _eval_binop :: proc(
 		return hir.Expression(poison(ts, binop.span))
 	}
 
+	if binop.op == .Power {
+		return _eval_static_power(ts, lhs, rhs, binop)
+	}
+
 	if binop.op == .Multiply && is_boolean(ltype) {
-		return _eval_boolean_multiply(ts, lhs, rhs, rtype, binop, binop.rhs)
+		return _eval_boolean_multiply(ts, lhs, rhs, rtype, binop.span, ast.span(binop.rhs))
 	}
 
 	if binop.op == .Multiply && is_boolean(rtype) {
-		return _eval_boolean_multiply(ts, rhs, lhs, ltype, binop, binop.lhs)
+		return _eval_boolean_multiply(ts, rhs, lhs, ltype, binop.span, ast.span(binop.lhs))
 	}
 
 	calculation_hint := type_hint
 	if calculation_hint != nil &&
 	   binop.op not_in OP_CATEGORY_DEFS[_op_category_of(calculation_hint)].supported_binops {
-		calculation_hint = nil
-	}
-	if binop.op == .Power {
-		// FIXME: Propagate result context to the base without coercing the exponent.
 		calculation_hint = nil
 	}
 
@@ -429,13 +429,12 @@ _eval_boolean_multiply :: proc(
 	boolval: Eval_Result,
 	nonbool: Eval_Result,
 	nonbool_type: Comptime_Type,
-	binop: ^ast.Binop_Expr,
-	nonbool_ast: ast.Expression,
+	whole_span, nonbool_span: common.Span,
 ) -> Eval_Result {
 	if !is_zeroable(nonbool_type) {
 		diagnostics.emit(
 			.Nonzeroable_Operand,
-			binop.span,
+			whole_span,
 			"cannot multiply Boolean and %v because %v does not have a well-defined zero value",
 			nonbool_type,
 			nonbool_type,
@@ -460,7 +459,7 @@ _eval_boolean_multiply :: proc(
 
 	case hir.Expression:
 		if known, ok := nonbool.(Comptime_Value); ok {
-			if_true, mat_ok := materialize_value(ts, known, ast.expression_span(nonbool_ast))
+			if_true, mat_ok := materialize_value(ts, known, nonbool_span)
 			if !mat_ok {
 				return nil
 			}
@@ -468,14 +467,14 @@ _eval_boolean_multiply :: proc(
 			assert(has_value)
 			if_false := new(hir.Const_Expr, ts.output.allocator)
 			if_false^ = {
-				span = ast.expression_span(nonbool_ast),
+				span = nonbool_span,
 				value = hir.Zero_Of{type = typ},
 				type = typ,
 				unit = unit,
 			}
 			result := new(hir.Condition_Expr, ts.output.allocator)
 			result^ = {
-				span      = binop.span,
+				span      = whole_span,
 				condition = boolean,
 				if_true   = if_true,
 				if_false  = if_false,
@@ -490,14 +489,14 @@ _eval_boolean_multiply :: proc(
 			assert(has_value)
 			if_false := new(hir.Const_Expr, ts.output.allocator)
 			if_false^ = {
-				span = ast.expression_span(nonbool_ast),
+				span = nonbool_span,
 				value = hir.Zero_Of{type = typ},
 				type = typ,
 				unit = unit,
 			}
 			result := new(hir.Condition_Expr, ts.output.allocator)
 			result^ = {
-				span      = binop.span,
+				span      = whole_span,
 				condition = boolean,
 				if_true   = nonbool_expr,
 				if_false  = if_false,
@@ -509,14 +508,78 @@ _eval_boolean_multiply :: proc(
 	case ^resolver.Import:
 		diagnostics.emit(
 			.Symbol_Not_Operand,
-			ast.expression_span(nonbool_ast),
+			nonbool_span,
 			"imports cannot participate in boolean multiplication",
-			common.BINARY_OP_STRINGS[binop.op],
+		)
+		return hir.Expression(poison(ts, whole_span))
+	}
+
+	unreachable()
+}
+
+_eval_static_power :: proc(
+	ts: ^Translation_State,
+	base: Eval_Result,
+	exp: Eval_Result,
+	binop: ^ast.Binop_Expr,
+) -> Eval_Result {
+	// these were already checked so assume it's valid and discard the ok args
+	ltype, lunit, _ := _type_and_unit(base)
+	rtype, runit, _ := _type_and_unit(exp)
+
+	res_unit, u_lhs, u_rhs, unit_ok := _eval_binop_unit(ts, binop, base, lunit, exp, runit)
+	if !unit_ok {
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	b, base_is_comptime := base.(Comptime_Value)
+	e, exp_is_comptime := exp.(Comptime_Value)
+	if base_is_comptime && exp_is_comptime {
+		return Comptime_Value {
+			value = _comptime_binop(.Power, b.value, e.value, ts.output.allocator),
+			type = ltype,
+			unit = lunit,
+		}
+	}
+
+	if !exp_is_comptime {
+		diagnostics.emit(
+			.Binop_Not_Defined,
+			ast.span(binop.rhs),
+			"power operator requires an integer exponent known at compile-time",
 		)
 		return hir.Expression(poison(ts, binop.span))
 	}
 
-	unreachable()
+	exp_value, exp_ok := e.value.(exact.Rat)
+	if !exp_ok || !exact.is_one(exp_value.denominator) {
+		diagnostics.emit(
+			.Binop_Not_Defined,
+			ast.span(binop.rhs),
+			"power operator requires an integer exponent",
+		)
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	exp_int, in_range := _materialize_int(exp_value, u8)
+	if !in_range {
+		diagnostics.emit(
+			.Binop_Not_Defined,
+			ast.span(binop.rhs),
+			"power operator only supports integer exponents from 0 to 255",
+		)
+		return hir.Expression(poison(ts, binop.span))
+	}
+
+	result := new(hir.Power_Expr, ts.output.allocator)
+	result^ = {
+		span     = binop.span,
+		base     = base.(hir.Expression),
+		exponent = int(exp_int.(u8)),
+		type     = ltype.(hir.Type), // FIXME: this is wrong for decimals
+		unit     = res_unit,
+	}
+	return hir.Expression(result)
 }
 
 _try_decimal_binop :: proc(
@@ -528,11 +591,13 @@ _try_decimal_binop :: proc(
 	Eval_Result,
 	bool,
 ) {
-	ltype, lunit, l_ok := _type_and_unit(lhs)
-	rtype, runit, r_ok := _type_and_unit(rhs)
-	if !l_ok || !r_ok {
+	if binop.op == .Power || binop.op not_in OP_CATEGORY_DEFS[.Rational].supported_binops {
 		return nil, false
 	}
+
+	// these were already checked so assume it's valid and discard the ok args
+	ltype, lunit, _ := _type_and_unit(lhs)
+	rtype, runit, _ := _type_and_unit(rhs)
 
 	_get_dec_type :: proc(ct: Comptime_Type) -> (hir.Fixed_Decimal, bool) {
 		// NOTE: this doesn't handle distinct types
@@ -561,13 +626,6 @@ _try_decimal_binop :: proc(
 	rdec, right_is_decimal := _get_dec_type(rtype)
 
 	if !(left_is_decimal && right_is_decimal) {
-		return nil, false
-	}
-
-	if binop.op == .Power {
-		return nil, false
-	}
-	if binop.op not_in OP_CATEGORY_DEFS[.Rational].supported_binops {
 		return nil, false
 	}
 

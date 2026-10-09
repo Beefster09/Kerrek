@@ -18,6 +18,7 @@ Expression :: union {
 	^Condition_Expr,
 	^Binop_Expr,
 	^Unary_Expr,
+	^Power_Expr,
 	^Address_Of_Expr,
 	^Dereference_Expr,
 	^Cast_Expr,
@@ -48,6 +49,8 @@ type_and_unit :: proc "contextless" (expr: Expression) -> (Type, Realized_Unit, 
 	case ^Binop_Expr:
 		return node.type, node.unit, true
 	case ^Unary_Expr:
+		return node.type, node.unit, true
+	case ^Power_Expr:
 		return node.type, node.unit, true
 	case ^Address_Of_Expr:
 		return node.type, node.unit, true
@@ -91,6 +94,8 @@ set_unit :: proc "contextless" (expr: ^Expression, unit: Realized_Unit) {
 	case ^Binop_Expr:
 		node.unit = unit
 	case ^Unary_Expr:
+		node.unit = unit
+	case ^Power_Expr:
 		node.unit = unit
 	case ^Address_Of_Expr:
 		node.unit = unit
@@ -198,6 +203,12 @@ Unary_Expr :: struct {
 	using _: _Expr_Header,
 	op:      common.Unary_Op,
 	expr:    Expression,
+}
+
+Power_Expr :: struct {
+	using _:  _Expr_Header,
+	base:     Expression,
+	exponent: int,
 }
 
 Address_Of_Expr :: struct {
