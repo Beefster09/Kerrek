@@ -14,7 +14,8 @@ import "../ast"
 import "../diagnostics"
 import "../hir"
 import "../resolver"
-import "../units"
+
+MAX_POWER_EXPONENT :: 24
 
 Operator_Compat_Category :: enum {
 	Empty,
@@ -561,12 +562,14 @@ _eval_static_power :: proc(
 		return hir.Expression(poison(ts, binop.span))
 	}
 
-	exp_int, in_range := _materialize_int(exp_value, u8)
-	if !in_range {
+	exp_u8, exp_in_u8_range := _materialize_int(exp_value, u8)
+	exp_int := int(exp_u8.(u8))
+	if !exp_in_u8_range || exp_int > MAX_POWER_EXPONENT {
 		diagnostics.emit(
 			.Binop_Not_Defined,
 			ast.span(binop.rhs),
-			"power operator only supports integer exponents from 0 to 255",
+			"power operator only supports integer exponents from 0 to %d",
+			MAX_POWER_EXPONENT,
 		)
 		return hir.Expression(poison(ts, binop.span))
 	}
@@ -575,7 +578,7 @@ _eval_static_power :: proc(
 	result^ = {
 		span     = binop.span,
 		base     = base.(hir.Expression),
-		exponent = int(exp_int.(u8)),
+		exponent = exp_int,
 		type     = ltype.(hir.Type), // FIXME: this is wrong for decimals
 		unit     = res_unit,
 	}
@@ -603,6 +606,7 @@ _try_decimal_binop :: proc(
 		// NOTE: this doesn't handle distinct types
 		// distinct Decimals would need to be distinct over the entire Decimal family
 		// but it's unclear if that's really a valuable use case of distinct
+		// when units can cover most of the semantic distinction
 		switch type in ct {
 		case Flexible_Type:
 			if type.affinity != .Decimal {
@@ -632,7 +636,6 @@ _try_decimal_binop :: proc(
 	result_scale := 0
 	result_digits := 0
 	result_magnitude: f64
-	magnitude_ulps := 0
 	#partial switch binop.op {
 	case .Add, .Subtract:
 		result_scale = max(int(ldec.scale), int(rdec.scale))
@@ -647,7 +650,7 @@ _try_decimal_binop :: proc(
 		larger := max(lmagnitude, rmagnitude)
 		smaller := min(lmagnitude, rmagnitude)
 		result_magnitude = larger + math.log10(1 + math.pow10(smaller - larger))
-		magnitude_ulps = 2
+		result_magnitude = math.nextafter(result_magnitude, math.INF_F64)
 
 	case .Multiply:
 		result_scale = int(ldec.scale) + int(rdec.scale)
@@ -669,7 +672,7 @@ _try_decimal_binop :: proc(
 			f64(ldec.magnitude) - f64(ldec.scale) + f64(rdec.scale) + f64(result_scale)
 		result_magnitude = math.log10(math.pow10(quotient_magnitude) + 0.5)
 		result_digits = max(1, int(math.ceil(result_magnitude)))
-		magnitude_ulps = 2
+		result_magnitude = math.nextafter(result_magnitude, math.INF_F64)
 
 		recommended_scale := int(max(rdec.scale, ldec.scale, 0))
 		if result_scale < recommended_scale {
@@ -705,7 +708,7 @@ _try_decimal_binop :: proc(
 		quotient_magnitude := f64(ldec.magnitude) - f64(ldec.scale) + f64(rdec.scale)
 		result_magnitude = math.log10(math.ceil(math.pow10(quotient_magnitude)))
 		result_digits = max(1, int(math.ceil(result_magnitude)))
-		magnitude_ulps = 2
+		result_magnitude = math.nextafter(result_magnitude, math.INF_F64)
 
 	case .Remainder, .Modulo:
 		result_scale = max(int(ldec.scale), int(rdec.scale))
@@ -733,9 +736,7 @@ _try_decimal_binop :: proc(
 		if f64(magnitude) < result_magnitude {
 			magnitude = math.nextafter(magnitude, math.inf_f32(1))
 		}
-		for _ in 0 ..< magnitude_ulps {
-			magnitude = math.nextafter(magnitude, math.inf_f32(1))
-		}
+
 		if binop.op == .True_Divide || binop.op == .Floor_Divide {
 			result_digits = max(1, int(math.ceil(magnitude)))
 		}
@@ -753,6 +754,7 @@ _try_decimal_binop :: proc(
 			)
 			return hir.Expression(poison(ts, binop.span)), true
 		}
+
 		result_decimal = {
 			digits    = u8(result_digits),
 			scale     = i8(result_scale),

@@ -205,12 +205,41 @@ _lower_expression :: proc(fb: ^Func_Builder, expr: hir.Expression) -> mir.Operan
 		return _lower_binop(fb, node^)
 
 	case ^hir.Power_Expr:
-		base := _lower_expression(fb, node.base)
-		for i in 0 ..< (size_of(type_of(node.exponent)) * 8) - intrinsics.count_leading_zeros(node.exponent) {
-			bit := (node.exponent >> u8(i)) & 0b1
-			// TODO
-			fmt.panicf("todo")
+		if node.exponent == 0 {
+			return mir.Constant(f64(1))
 		}
+		type, _, ok := hir.type_and_unit(node.base)
+		assert(ok, "expected type on lhs of ** operator")
+		base := _lower_expression(fb, node.base)
+		mode := _arithmetic_mode(fb, node.base)
+		result: mir.Operand = _one(fb, type)
+		square := base
+		exp_so_far := 1
+		BITS_IN_EXP :: size_of(type_of(node.exponent)) * 8
+		for i in 0 ..< BITS_IN_EXP - intrinsics.count_leading_zeros(node.exponent) {
+			bit := (node.exponent >> u8(i)) & 0b1
+
+			if bit == 1 {
+				next_result := _new_tmp(fb, type)
+				_append_ops(
+					fb,
+					mir.Mul{mode = mode, dest = next_result, lhs = result, rhs = square},
+				)
+				result = mir.Temp{next_result.id}
+			}
+
+			if exp_so_far < node.exponent {
+				next_square := _new_tmp(fb, type)
+				_append_ops(
+					fb,
+					mir.Mul{mode = mode, dest = next_square, lhs = square, rhs = square},
+				)
+				square = mir.Temp{next_square.id}
+				exp_so_far <<= 1
+			}
+		}
+
+		return result
 
 	case ^hir.Unit_Reinterpret_Expr:
 		return _lower_expression(fb, node.expr)
@@ -272,6 +301,46 @@ _lower_expression :: proc(fb: ^Func_Builder, expr: hir.Expression) -> mir.Operan
 	}
 
 	fmt.panicf("MIR lowering not yet implemented for %T", reflect.get_union_variant(expr))
+}
+
+_one :: proc(fb: ^Func_Builder, t: hir.Type) -> mir.Operand {
+	#partial switch type in t {
+	case hir.Fixed_Decimal:
+		return mir.Constant(i64(1))
+	case hir.Primitive_Type:
+		switch type {
+		case .Int128:
+			return mir.Constant(i128(1))
+		case .UInt128:
+			return mir.Constant(u128(1))
+		case .Int64:
+			return mir.Constant(i64(1))
+		case .UInt64:
+			return mir.Constant(u64(1))
+		case .Int32:
+			return mir.Constant(i32(1))
+		case .UInt32:
+			return mir.Constant(u32(1))
+		case .Int16:
+			return mir.Constant(i16(1))
+		case .UInt16:
+			return mir.Constant(u16(1))
+		case .Int8:
+			return mir.Constant(i8(1))
+		case .UInt8:
+			return mir.Constant(u8(1))
+		case .Bin64:
+			return mir.Constant(f64(1))
+		case .Bin32:
+			return mir.Constant(f32(1))
+		case .Bin16:
+			return mir.Constant(f16(1))
+		case .Boolean:
+			return mir.Constant(true)
+		case .Int, .String, .Rune, .Byte, .Type, .Any:
+		}
+	}
+	fmt.panicf("unsupported type for one: %s", t)
 }
 
 _lower_constant :: proc(fb: ^Func_Builder, constant: ^hir.Const_Expr) -> mir.Operand {
