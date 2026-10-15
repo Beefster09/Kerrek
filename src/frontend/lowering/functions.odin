@@ -126,7 +126,6 @@ _new_var :: proc(fb: ^Func_Builder, decl: ^hir.Local_Variable) -> mir.Local_Var 
 
 _new_block :: proc(fb: ^Func_Builder) -> mir.Block_ID {
 	block_id := mir.Block_ID(len(fb.blocks))
-	fb.current_block_id = block_id
 	append(
 		&fb.blocks,
 		WIP_Block {
@@ -153,7 +152,7 @@ _end_block :: proc(fb: ^Func_Builder, end: mir.Terminator, to_block: mir.Block_I
 }
 
 _lower_block :: proc(fb: ^Func_Builder, src: ^hir.Block) {
-	_new_block(fb)
+	fb.current_block_id = _new_block(fb)
 	// TODO: defers, pointer cleanup
 
 	for stmt in src.body {
@@ -212,30 +211,22 @@ _lower_expression :: proc(fb: ^Func_Builder, expr: hir.Expression) -> mir.Operan
 		assert(ok, "expected type on lhs of ** operator")
 		base := _lower_expression(fb, node.base)
 		mode := _arithmetic_mode(fb, node.base)
-		result: mir.Operand = _one(fb, type)
-		square := base
-		exp_so_far := 1
+		result := base
+
 		BITS_IN_EXP :: size_of(type_of(node.exponent)) * 8
-		for i in 0 ..< BITS_IN_EXP - intrinsics.count_leading_zeros(node.exponent) {
-			bit := (node.exponent >> u8(i)) & 0b1
+		bit_count := BITS_IN_EXP - intrinsics.count_leading_zeros(node.exponent)
+		for offset in 1 ..< bit_count {
+			bit_index := bit_count - offset - 1
+			bit := (node.exponent >> u8(bit_index)) & 1
+
+			next_result := _new_tmp(fb, type)
+			_append_ops(fb, mir.Mul{mode = mode, dest = next_result, lhs = result, rhs = result})
+			result = mir.Temp{next_result.id}
 
 			if bit == 1 {
-				next_result := _new_tmp(fb, type)
-				_append_ops(
-					fb,
-					mir.Mul{mode = mode, dest = next_result, lhs = result, rhs = square},
-				)
-				result = mir.Temp{next_result.id}
-			}
-
-			if exp_so_far < node.exponent {
 				next_square := _new_tmp(fb, type)
-				_append_ops(
-					fb,
-					mir.Mul{mode = mode, dest = next_square, lhs = square, rhs = square},
-				)
-				square = mir.Temp{next_square.id}
-				exp_so_far <<= 1
+				_append_ops(fb, mir.Mul{mode = mode, dest = next_square, lhs = result, rhs = base})
+				result = mir.Temp{next_square.id}
 			}
 		}
 
@@ -551,24 +542,28 @@ _lower_binop :: proc(fb: ^Func_Builder, binop: hir.Binop_Expr) -> mir.Operand {
 		result := _new_tmp(fb, binop.type)
 		_append_ops(fb, mir.Add{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 		return mir.Temp{id = result.id}
+
 	case .Subtract:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_tmp(fb, binop.type)
 		_append_ops(fb, mir.Sub{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 		return mir.Temp{id = result.id}
+
 	case .Multiply:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_tmp(fb, binop.type)
 		_append_ops(fb, mir.Mul{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 		return mir.Temp{id = result.id}
+
 	case .True_Divide:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_tmp(fb, binop.type)
 		_append_ops(fb, mir.Div{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 		return mir.Temp{id = result.id}
+
 	case .Floor_Divide:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
@@ -581,12 +576,14 @@ _lower_binop :: proc(fb: ^Func_Builder, binop: hir.Binop_Expr) -> mir.Operand {
 			_append_ops(fb, mir.Truncate{dest = result, value = result})
 		}
 		return result
+
 	case .Remainder:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
 		result := _new_tmp(fb, binop.type)
 		_append_ops(fb, mir.Rem{mode = mode, dest = result, lhs = lhs, rhs = rhs})
 		return mir.Temp{id = result.id}
+
 	case .Modulo:
 		lhs := _lower_expression(fb, binop.lhs)
 		rhs := _lower_expression(fb, binop.rhs)
@@ -595,7 +592,11 @@ _lower_binop :: proc(fb: ^Func_Builder, binop: hir.Binop_Expr) -> mir.Operand {
 
 		before := fb.current_block_id
 		negative := _new_block(fb)
-		_append_ops(fb, mir.Add{mode = mode, dest = result, lhs = result, rhs = rhs})
+		_append_ops(
+			fb,
+			mir.Add{mode = mode, dest = result, lhs = result, rhs = rhs},
+			to_block = negative,
+		)
 		after := _new_block(fb)
 
 		zero := _materialize_number(fb, exact.RAT_ZERO, binop.type)
@@ -605,9 +606,36 @@ _lower_binop :: proc(fb: ^Func_Builder, binop: hir.Binop_Expr) -> mir.Operand {
 			before,
 		)
 		_end_block(fb, mir.Jump{next = after}, negative)
+
+		fb.current_block_id = after
 		return result
+
 	case .Equal, .Not_Equal, .Less, .Less_Equal, .Greater, .Greater_Equal, .Is, .Is_Not, .And, .Or:
-		_lower_binop_cond(fb, binop)
+		mat_bool := _new_mut_tmp(fb, hir.Primitive_Type.Boolean)
+
+		true_block := _new_block(fb)
+		_append_ops(
+			fb,
+			mir.Set{dest = mat_bool, value = mir.Constant(true)},
+			to_block = true_block,
+		)
+
+		false_block := _new_block(fb)
+		_append_ops(
+			fb,
+			mir.Set{dest = mat_bool, value = mir.Constant(false)},
+			to_block = false_block,
+		)
+
+		_lower_binop_cond(fb, binop, true_block, false_block)
+		after := _new_block(fb)
+
+		_end_block(fb, mir.Jump{after}, true_block)
+		_end_block(fb, mir.Jump{after}, false_block)
+
+		fb.current_block_id = after
+		return mat_bool
+
 	case .Power:
 	}
 	fmt.panicf("mir lowering not implemented for binop %s", common.BINARY_OP_STRINGS[binop.op])
@@ -628,14 +656,67 @@ _arithmetic_mode :: proc(fb: ^Func_Builder, input: hir.Expression) -> mir.Arithm
 	return {type = primitive, overflow = overflow}
 }
 
-_lower_binop_cond :: proc(fb: ^Func_Builder, cond: hir.Binop_Expr) {
+_lower_binop_cond :: proc(
+	fb: ^Func_Builder,
+	cond: hir.Binop_Expr,
+	true_block, false_block: mir.Block_ID,
+) {
+	lhs := _lower_expression(fb, cond.lhs)
+	rhs := _lower_expression(fb, cond.rhs)
+
 	#partial switch cond.op {
-	case .Equal, .Not_Equal, .Is, .Is_Not:
-	case .Less, .Less_Equal, .Greater, .Greater_Equal:
-	case .And, .Or:
+	case .Equal:
+		_end_block(
+			fb,
+			mir.Branch_Equal {
+				lhs = lhs,
+				rhs = rhs,
+				eq_branch = true_block,
+				ne_branch = false_block,
+			},
+		)
+	case .Not_Equal:
+		_end_block(
+			fb,
+			mir.Branch_Equal {
+				lhs = lhs,
+				rhs = rhs,
+				eq_branch = false_block,
+				ne_branch = true_block,
+			},
+		)
+	case .Is:
+		panic("TODO: is")
+	case .Is_Not:
+		panic("TODO: is_not")
+	case .Less:
+		_end_block(
+			fb,
+			mir.Branch_Less{lhs = lhs, rhs = rhs, lt_branch = true_block, ge_branch = false_block},
+		)
+	case .Less_Equal:
+		_end_block(
+			fb,
+			mir.Branch_Less{lhs = rhs, rhs = lhs, lt_branch = false_block, ge_branch = true_block},
+		)
+	case .Greater:
+		_end_block(
+			fb,
+			mir.Branch_Less{lhs = rhs, rhs = lhs, lt_branch = true_block, ge_branch = false_block},
+		)
+	case .Greater_Equal:
+		_end_block(
+			fb,
+			mir.Branch_Less{lhs = lhs, rhs = rhs, lt_branch = false_block, ge_branch = true_block},
+		)
+	case .And:
+		panic("TODO: and")
+	case .Or:
+		panic("TODO: or")
+	case:
+		fmt.panicf(
+			"reaching a %s binary operator is not normally possible in conditionals",
+			common.BINARY_OP_STRINGS[cond.op],
+		)
 	}
-	fmt.panicf(
-		"reaching a %s binary operator is not normally possible in conditionals",
-		common.BINARY_OP_STRINGS[cond.op],
-	)
 }

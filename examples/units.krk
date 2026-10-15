@@ -170,6 +170,7 @@ func main() {
 	let d = c ** 5;
 	let e: Bin64 = 1.4628;
 	let f = e ** 16;
+	let g = a < b;
 
 	let crazy: Decimal(25, 10) = 1234567890.0987654321;
 	let `fail` = crazy * crazy;
