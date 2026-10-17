@@ -418,6 +418,11 @@ types_equal :: proc(a, b: Comptime_Type) -> bool {
 	return false
 }
 
+is_assignable_to :: proc(dest, value: hir.Type) -> bool {
+	// NOTE: this might be more complicated later
+	return _type_implicitly_converts(dest, value)
+}
+
 is_integer :: proc(t: Comptime_Type) -> bool {
 	switch comptime_type in t {
 	case Flexible_Type:

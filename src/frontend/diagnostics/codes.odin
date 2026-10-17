@@ -171,6 +171,10 @@ Code :: enum {
 	Dubious_Decimal_Scale,
 	// An expression is not valid as a condition
 	Invalid_Condition,
+	// An expression is not valid as a left-side expression of an assignment
+	Invalid_Assign_Destination,
+	// A rhs expression is not assignable to its corresponding lhs expression
+	Assignment_Type_Mismatch,
 	// == MISC ==
 
 	// this part of the compiler is not yet implemented
@@ -579,6 +583,16 @@ CODE_METADATA := [Code]Code_Metadata {
 		origin = .Semantic,
 		default_level = .Error,
 		summary = "An expression is not valid as a condition",
+	},
+	.Invalid_Assign_Destination = {
+		origin = .Semantic,
+		default_level = .Error,
+		summary = "An expression is not valid as a left-side expression of an assignment",
+	},
+	.Assignment_Type_Mismatch = {
+		origin = .Semantic,
+		default_level = .Error,
+		summary = "A rhs expression is not assignable to its corresponding lhs expression",
 	},
 	// MISC
 	.Not_Implemented = {

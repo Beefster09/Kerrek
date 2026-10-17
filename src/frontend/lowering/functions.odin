@@ -172,7 +172,8 @@ _lower_block :: proc(fb: ^Func_Builder, src: ^hir.Block) {
 				_append_ops(fb, mir.Set{dest = var, value = _lower_expression(fb, stmt.expr)})
 			}
 		case ^hir.Assign_Statement:
-			panic("TODO")
+			panic("TODO: Assign_Statement")
+
 		case ^hir.Return_Statement:
 			result: mir.Operand
 			if stmt.value != nil {

@@ -48,14 +48,91 @@ build_block :: proc(
 
 
 		case ^ast.Assign_Statement:
-			for dest in stmt.dests {
-				evaluate(ts, dest, &locals)
-			}
-			for expr in stmt.exprs {
-				evaluate(ts, expr, &locals)
+			dests := make([]hir.Expression, len(stmt.dests), ts.output.allocator)
+			lhs_ok := true
+			process_lhs: for dest, i in stmt.dests {
+				switch d in evaluate(ts, dest, &locals) {
+				case Comptime_Value:
+					diagnostics.emit(
+						.Invalid_Assign_Destination,
+						ast.span(dest),
+						"constants are not assignable",
+					)
+				case hir.Expression:
+					if !_is_writable_here(ts, d, func, outer_scope) {
+						lhs_ok = false
+						continue process_lhs
+					}
+					dests[i] = d
+				case ^resolver.Import:
+					diagnostics.emit(
+						.Invalid_Assign_Destination,
+						ast.span(dest),
+						"imports are not assignable",
+					)
+				}
 			}
 
-			diagnostics.emit(.Not_Implemented, stmt.span, "assignments not fully implemented yet")
+			values := make([]hir.Expression, len(stmt.exprs), ts.output.allocator)
+			rhs_ok := true
+			process_rhs: for expr, i in stmt.exprs {
+				lhs_type, lhs_unit, lhs_type_ok := hir.type_and_unit(dests[i])
+				value, value_ok := build_expr(
+					ts,
+					expr,
+					&locals,
+					type_hint = lhs_type if lhs_type_ok else nil,
+				)
+				rhs_type, _, rhs_type_ok := hir.type_and_unit(value)
+
+				if !value_ok || !rhs_type_ok {
+					rhs_ok = false
+					continue process_rhs
+				}
+
+				if !is_assignable_to(lhs_type, rhs_type) {
+					diag := diagnostics.emit(
+						.Assignment_Type_Mismatch,
+						ast.span(expr),
+						"this expression is not assignable to %s",
+						lhs_type,
+					)
+					diagnostics.note(diag, "the type of this expression is %s", rhs_type)
+					if len(stmt.exprs) > 1 {
+						diagnostics.reference(
+							diag,
+							hir.span(dests[i]),
+							"this is the corresponding destination expression",
+						)
+					}
+					rhs_ok = false
+					continue process_rhs
+				}
+
+				if !types_equal(lhs_type, rhs_type) {
+					cast_expr := new(hir.Cast_Expr, ts.output.allocator)
+					cast_expr^ = {
+						span = ast.span(expr),
+						expr = value,
+						to   = lhs_type,
+						type = lhs_type,
+						unit = lhs_unit,
+					}
+					value = cast_expr
+				}
+
+				values[i] = value
+			}
+
+			if lhs_ok && rhs_ok {
+				assignment := new(hir.Assign_Statement, ts.output.allocator)
+				assignment^ = {
+					span  = stmt.span,
+					dests = dests,
+					exprs = values,
+				}
+				append(&body, assignment)
+			}
 
 		case ^ast.Local_Variable:
 			same_name := false
@@ -308,6 +385,126 @@ _build_var :: proc(
 		expr = value,
 	}
 	return result
+}
+
+_is_writable_here :: proc(
+	ts: ^Translation_State,
+	expr: hir.Expression,
+	func: ^resolver.Function,
+	scope: resolver.Scope,
+) -> bool {
+	switch node in expr {
+	case ^hir.Var_Expr:
+		if _, ok := node.references.(^hir.Local_Variable); ok {
+			return true
+		}
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"only local variables are assignable here",
+		)
+		return false
+	case ^hir.Dereference_Expr:
+		return true
+	case ^hir.Field_Access_Expr:
+		return _is_writable_here(ts, node.base, func, scope)
+	case ^hir.Index_Expr:
+		return _is_writable_here(ts, node.collection, func, scope)
+	case ^hir.Const_Expr:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"constant values are not assignable",
+		)
+		return false
+	case ^hir.Enum_Value:
+		diagnostics.emit(.Invalid_Assign_Destination, node.span, "enum values are not assignable")
+		return false
+	case ^hir.Move_Expr:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"move expressions are not assignable",
+		)
+		return false
+	case ^hir.Condition_Expr:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"conditional expressions are not assignable",
+		)
+		return false
+	case ^hir.Binop_Expr:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"binary expressions are not assignable",
+		)
+		return false
+	case ^hir.Unary_Expr:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"unary expressions are not assignable",
+		)
+		return false
+	case ^hir.Power_Expr:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"power expressions are not assignable",
+		)
+		return false
+	case ^hir.Address_Of_Expr:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"address expressions are not assignable",
+		)
+		return false
+	case ^hir.Cast_Expr:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"cast expressions are not assignable",
+		)
+		return false
+	case ^hir.Unit_Conversion_Expr:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"unit conversions are not assignable",
+		)
+		return false
+	case ^hir.Unit_Reinterpret_Expr:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"unit reinterpretations are not assignable",
+		)
+		return false
+	case ^hir.Static_Func_Expr:
+		diagnostics.emit(.Invalid_Assign_Destination, node.span, "functions are not assignable")
+		return false
+	case ^hir.Static_Call_Expr:
+		diagnostics.emit(.Invalid_Assign_Destination, node.span, "call results are not assignable")
+		return false
+	case ^hir.Dynamic_Call_Expr:
+		diagnostics.emit(.Invalid_Assign_Destination, node.span, "call results are not assignable")
+		return false
+	case hir.Type, nil:
+		diagnostics.emit(.Invalid_Assign_Destination, {}, "types are not assignable")
+		return false
+	case ^hir.Poison:
+		diagnostics.emit(
+			.Invalid_Assign_Destination,
+			node.span,
+			"invalid expressions are not assignable",
+		)
+		return false
+	}
+
+	unreachable()
 }
 
 _build_if_stmt :: proc(

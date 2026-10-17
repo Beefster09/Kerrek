@@ -32,6 +32,52 @@ Expression :: union {
 	^Poison,
 }
 
+expression_span :: proc "contextless" (expr: Expression) -> Span {
+	switch node in expr {
+	case ^Var_Expr:
+		return node.span
+	case ^Const_Expr:
+		return node.span
+	case ^Field_Access_Expr:
+		return node.span
+	case ^Enum_Value:
+		return node.span
+	case ^Move_Expr:
+		return node.span
+	case ^Condition_Expr:
+		return node.span
+	case ^Binop_Expr:
+		return node.span
+	case ^Unary_Expr:
+		return node.span
+	case ^Power_Expr:
+		return node.span
+	case ^Address_Of_Expr:
+		return node.span
+	case ^Dereference_Expr:
+		return node.span
+	case ^Cast_Expr:
+		return node.span
+	case ^Unit_Conversion_Expr:
+		return node.span
+	case ^Unit_Reinterpret_Expr:
+		return node.span
+	case ^Index_Expr:
+		return node.span
+	case ^Static_Func_Expr:
+		return node.span
+	case ^Static_Call_Expr:
+		return node.span
+	case ^Dynamic_Call_Expr:
+		return node.span
+	case Type:
+		return {}
+	case ^Poison:
+		return node.span
+	}
+	return {}
+}
+
 type_and_unit :: proc "contextless" (expr: Expression) -> (Type, Realized_Unit, bool) {
 	switch node in expr {
 	case ^Var_Expr:
@@ -120,6 +166,8 @@ set_unit :: proc "contextless" (expr: ^Expression, unit: Realized_Unit) {
 has_value :: proc "contextless" (expr: Expression) -> bool {
 	#partial switch node in expr {
 	case ^Dynamic_Call_Expr:
+		return node.type != nil && node.unit != nil
+	case ^Static_Call_Expr:
 		return node.type != nil && node.unit != nil
 	case ^Poison, nil:
 		return false

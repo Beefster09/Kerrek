@@ -139,7 +139,7 @@ func flapjacks_required(num_workers: Int | man) -> Bin64 | count
 	let e = a + b * 123 mod c;
 	let f = celsius_to_fahrenheit(21.4532);
 
-	\\ fhqwhgads();
+	fhqwhgads();
 
 	let ddd: Decimal(76, 6) = 1234567890123456789012345678901234567890123456789012345678901234567890.123456;
 	let eee: Decimal(50, 18) = -987654321987654321987654321.12345689578378362;
@@ -173,7 +173,7 @@ func main() {
 
 	if a < b {
 		fhqwhgads();
-	} else if f < 123456 {
+	} else if false {
 		burninate_peasants();
 	} else {
 		return;
@@ -182,3 +182,7 @@ func main() {
 	let crazy: Decimal(25, 10) = 1234567890.0987654321;
 	let `fail` = crazy * crazy;
 }
+
+
+func fhqwhgads() {}
+func burninate_peasants() {}

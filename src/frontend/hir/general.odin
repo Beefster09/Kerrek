@@ -134,5 +134,6 @@ Poison :: struct {
 
 
 span :: proc {
+	expression_span,
 	statement_span,
 }
