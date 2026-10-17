@@ -112,7 +112,7 @@ _match :: proc(ps: ^Parser_State, expected: ..union {
 	return results, true
 }
 
-_just_match :: proc(ps: ^Parser_State, expected: ..union {
+_would_match :: proc(ps: ^Parser_State, expected: ..union {
 		Punctuation,
 		Keyword,
 		Directive,
@@ -139,8 +139,19 @@ _just_match :: proc(ps: ^Parser_State, expected: ..union {
 		}
 	}
 
-	ps.cur_token += len(expected)
 	return true
+}
+
+_just_match :: proc(ps: ^Parser_State, expected: ..union {
+		Punctuation,
+		Keyword,
+		Directive,
+	}) -> bool {
+	if #force_inline _would_match(ps, ..expected) {
+		ps.cur_token += len(expected)
+		return true
+	}
+	return false
 }
 
 _match1 :: proc(

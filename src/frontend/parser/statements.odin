@@ -35,7 +35,6 @@ _block :: proc(ps: ^Parser_State) -> ^ast.Block {
 	}
 }
 
-
 _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 	tok, ok := _peek(ps)
 	if !ok {
@@ -67,6 +66,12 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 		stmt = _const_or_var(ps, ast.Local_Variable)
 	case Keyword.Const:
 		stmt = _const_or_var(ps, ast.Constant_Def)
+
+	case Keyword.If:
+		return _if(ps)
+
+	case Keyword.Loop:
+		return _loop(ps)
 
 	case:
 		expr := _expr(ps)
@@ -133,5 +138,46 @@ _statement :: proc(ps: ^Parser_State) -> ast.Statement {
 	}
 	_error_here(ps, "expected end of statement here")
 	_attempt_recovery(ps)
+	return nil
+}
+
+
+_if :: proc(ps: ^Parser_State) -> ^ast.If_Statement {
+	if_tok, ok := _pop(ps)
+	assert(ok && if_tok.what == Keyword.If)
+
+	condition := _expr(ps)
+	body := _block(ps)
+	alt: type_of(ast.If_Statement{}.alt)
+	end_span := body.span
+
+	if _just_match(ps, Keyword.Else) {
+		if _would_match(ps, Keyword.If) {
+			alt_if := _if(ps)
+			end_span = alt_if.span
+			alt = alt_if
+		} else {
+			alt_block := _block(ps)
+			end_span = alt_block.span
+			alt = alt_block
+		}
+	}
+
+	ifstmt := new(ast.If_Statement)
+	ifstmt^ = {
+		span      = common.merge_spans(if_tok.span, end_span),
+		condition = condition,
+		body      = body,
+		alt       = alt,
+	}
+
+	return ifstmt
+}
+
+
+_loop :: proc(ps: ^Parser_State) -> ast.Statement {
+	loop_tok, ok := _pop(ps)
+	assert(ok && loop_tok.what == Keyword.Loop)
+
 	return nil
 }

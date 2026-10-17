@@ -332,12 +332,13 @@ _render_span :: proc(sf: ^common.Source_File, span: common.Span, indent := 0) {
 		}
 
 		w := os.to_writer(os.stderr)
+		span_run := int(span.start.col) - min_indent
 
 		_render_gutter(' ', gutter_width, indent)
 
 		io.write_string(w, _report_theme.span)
 		io.write_rune(w, MULTILINE_SPAN_TOP)
-		for _ in 1 ..< span.start.col {
+		for _ in 1 ..< span_run {
 			io.write_rune(w, MULTILINE_SPAN_TOP_RUNNER)
 		}
 		io.write_rune(w, MULTILINE_SPAN_TOP_RUNNER)
@@ -370,7 +371,7 @@ _render_span :: proc(sf: ^common.Source_File, span: common.Span, indent := 0) {
 		_render_gutter(' ', gutter_width, indent)
 		io.write_string(w, _report_theme.span)
 		io.write_rune(w, MULTILINE_SPAN_BOTTOM)
-		for _ in 2 ..< span.end.col {
+		for _ in 2 ..< span_run {
 			io.write_rune(w, MULTILINE_SPAN_BOTTOM_RUNNER)
 		}
 		io.write_rune(w, MULTILINE_SPAN_BOTTOM_RUNNER)

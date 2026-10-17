@@ -26,6 +26,7 @@ build_block :: proc(
 			if inner != nil {
 				append(&body, inner)
 			}
+
 		case ^ast.Expr_Statement:
 			expr, ok := build_expr(ts, stmt.expr, &locals)
 			if !ok {
@@ -120,6 +121,14 @@ build_block :: proc(
 				)
 				all_ok = false
 			}
+
+		case ^ast.If_Statement:
+			diagnostics.emit(.Not_Implemented, stmt.span, "TODO: if")
+		case ^ast.Each_Loop:
+			diagnostics.emit(.Not_Implemented, stmt.span, "TODO: loop i, x in c {...}")
+		case ^ast.Step_Loop:
+			diagnostics.emit(.Not_Implemented, stmt.span, "TODO: loop step while {...}")
+
 		case ^ast.Return_Statement:
 			ret := _build_return(ts, stmt, func, &locals)
 			if ret == nil {
