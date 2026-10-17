@@ -1,5 +1,7 @@
 package ast
 
+import "../../common"
+
 Statement :: union {
 	^Return_Statement,
 	^Expr_Statement,
@@ -59,21 +61,32 @@ If_Statement :: struct {
 }
 
 Each_Loop :: struct {
+	span:  Span,
+	label: Maybe(Name),
+	index: Maybe(Name),
+	value: Name,
+	over:  union {
+		Expression,
+		^Range_Expr,
+	},
+	body:  ^Block,
+}
+
+Range_Expr :: struct {
 	span:      Span,
-	index_var: Maybe(Name),
-	value_var: Name,
-	body:      ^Block,
+	start:     Expression,
+	end:       Expression,
+	inclusive: bool,
 }
 
 Step_Loop :: struct {
-	span:         Span,
-	initializers: []Local_Variable,
-	steps:        []Assign_Statement,
-	condition:    Expression,
-	body:         ^Block,
-	order:        enum {
-		Cond_Body_Step, // traditional 3-clause for
-		Step_Cond_Body, // while (x = next())
-		Body_Cond_Step, // do ... while
-	},
+	span:      Span,
+	label:     Maybe(Name),
+	init:      []Local_Variable,
+	steps:     []Assign_Statement,
+	condition: Expression,
+	body:      ^Block,
+	order:     Step_Loop_Order,
 }
+
+Step_Loop_Order :: common.Step_Loop_Order

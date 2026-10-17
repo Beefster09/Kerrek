@@ -160,6 +160,12 @@ _lower_block :: proc(fb: ^Func_Builder, src: ^hir.Block) {
 			_append_ops(fb, mir.Debug_Marker{hir.span(stmt)})
 		}
 		switch stmt in stmt {
+		case ^hir.If_Statement:
+			panic("TODO: If_Statement")
+		case ^hir.Each_Loop:
+			panic("TODO: Each_Loop")
+		case ^hir.Step_Loop:
+			panic("TODO: Step_Loop")
 		case ^hir.Local_Variable:
 			var := _new_var(fb, stmt)
 			if stmt.expr != nil {

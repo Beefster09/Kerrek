@@ -113,6 +113,12 @@ Pointer_Ownership :: enum {
 	Unsafe,
 }
 
+Step_Loop_Order :: enum {
+	Cond_Body_Step, // traditional 3-clause for
+	Step_Cond_Body, // while (x = next())
+	Body_Cond_Step, // do ... while
+}
+
 Unary_Op :: enum {
 	Positive = 1,
 	Negate,

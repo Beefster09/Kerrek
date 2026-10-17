@@ -15,6 +15,8 @@ build_block :: proc(
 	outer_scope: resolver.Scope,
 ) -> ^hir.Block {
 	locals := resolver.temp_scope(outer_scope)
+
+	block := new(hir.Block, ts.output.allocator)
 	body := make([dynamic]hir.Statement, ts.output.allocator)
 
 	all_ok := true
@@ -52,6 +54,8 @@ build_block :: proc(
 			for expr in stmt.exprs {
 				evaluate(ts, expr, &locals)
 			}
+
+			diagnostics.emit(.Not_Implemented, stmt.span, "assignments not fully implemented yet")
 
 		case ^ast.Local_Variable:
 			same_name := false
@@ -123,7 +127,13 @@ build_block :: proc(
 			}
 
 		case ^ast.If_Statement:
-			diagnostics.emit(.Not_Implemented, stmt.span, "TODO: if")
+			if_stmt := _build_if_stmt(ts, stmt, func, &locals)
+			if if_stmt == nil {
+				all_ok = false
+				continue process_stmts
+			}
+			append(&body, if_stmt)
+
 		case ^ast.Each_Loop:
 			diagnostics.emit(.Not_Implemented, stmt.span, "TODO: loop i, x in c {...}")
 		case ^ast.Step_Loop:
@@ -140,7 +150,6 @@ build_block :: proc(
 		}
 	}
 
-	block := new(hir.Block, ts.output.allocator)
 	block^ = {
 		span = src.span,
 		body = body[:],
@@ -298,6 +307,73 @@ _build_var :: proc(
 		unit = unit,
 		expr = value,
 	}
+	return result
+}
+
+_build_if_stmt :: proc(
+	ts: ^Translation_State,
+	src: ^ast.If_Statement,
+	func: ^resolver.Function,
+	scope: resolver.Scope,
+) -> ^hir.If_Statement {
+	cond, cond_ok := build_expr(ts, src.condition, scope, type_hint = hir.Primitive_Type.Boolean)
+
+	// evaluate and typecheck the body of the if and else even if the condition
+	// couldn't be evaluated or is otherwise invalid
+	// it's not very useful if one bad if suppresses other checks within the block
+	body := build_block(ts, src.body, func, scope)
+
+	alt: type_of(hir.If_Statement{}.alt) = nil
+	switch alt_src in src.alt {
+	case ^ast.Block:
+		alt = build_block(ts, alt_src, func, scope)
+	case ^ast.If_Statement:
+		alt = _build_if_stmt(ts, alt_src, func, scope)
+	}
+
+	if !cond_ok {
+		// error diagnostic already emitted
+		return nil
+	}
+
+	cond_type, _, has_value := hir.type_and_unit(cond)
+	if !has_value {
+		diagnostics.emit(
+			.Invalid_Condition,
+			ast.span(src.condition),
+			"expressions used in conditions must return a value",
+		)
+		return nil
+	}
+
+	cond_type_ok := false
+	#partial switch ct in cond_type {
+	case hir.Primitive_Type:
+		cond_type_ok = ct == .Boolean
+	case ^hir.Optional_Type:
+		cond_type_ok = true
+	case ^hir.Pointer_Type:
+		cond_type_ok = ct.ownership == .Weak
+	}
+
+	if !cond_type_ok {
+		diagnostics.emit(
+			.Invalid_Condition,
+			ast.span(src.condition),
+			"condition must be a boolean, optional, or weak pointer (got %s)",
+			cond_type,
+		)
+		return nil
+	}
+
+	result := new(hir.If_Statement, ts.output.allocator)
+	result^ = {
+		span      = src.span,
+		condition = cond,
+		body      = body,
+		alt       = alt,
+	}
+
 	return result
 }
 
