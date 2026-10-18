@@ -144,6 +144,8 @@ _materialize_decimal :: proc(
 	hir.Value,
 	bool,
 ) {
+	result := exact.rat_to_decimal_rounded(value, int(target.scale))
+
 	switch spec.affinity {
 	case .Rational:
 	// inexact ok; nothing special to check
@@ -157,7 +159,11 @@ _materialize_decimal :: proc(
 			}
 		}
 	case .Decimal:
-		if int(spec.digits) > int(target.digits) && int(spec.scale) > int(target.scale) {
+		if !exact.eq(
+			exact.decimal_to_rat(result, context.temp_allocator),
+			value,
+			context.temp_allocator,
+		) {
 			return nil, false
 		}
 	case .Binary_Float:
@@ -168,7 +174,6 @@ _materialize_decimal :: proc(
 		unreachable()
 	}
 
-	result := exact.rat_to_decimal_rounded(value, int(target.scale))
 	if exact.decimal_digit_count(result.significand) > int(target.digits) {
 		return nil, false
 	}

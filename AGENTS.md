@@ -12,7 +12,7 @@ If a comment is necessary, keep it brief, ideally one line of 20 words or less.
 Do not modify tests to match current behavior. Fix the code, not the test.
 If a test is inconsistent with the spec, fix the test, not the spec.
 When writing a test, mutate the implementation to check that you're testing real behavior
-Do not write trivial tests
+Do not write trivial tests; always look for and exercise edge cases and do not simply aim for code coverage
 Prefer table-based tests when possible
 
 Test end-to-end as much as possible. For instance, semantic analysis passes should pass in the minimal amount of source code to produce the desired outcome rather than constructed AST.

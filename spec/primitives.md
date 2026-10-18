@@ -14,7 +14,9 @@ Numeric types additionally support all implicit conversions which can losslessly
 
 ## Compile-time numerics
 
-Numbers at compile time should be stored as losslessly as possible (e.g. rationals/BigRat/Fraction) and only truncated when the destination demands a concrete type.
+Numbers at compile time should be stored as losslessly as possible (e.g. rationals/BigRat/Fraction).
+
+When materializing into `Decimal(digits, scale)`, rational flex-values are rounded according to the decimal rounding rules. Decimal flex-values, including decimal literals and the results of addition, subtraction, and multiplication on them, must be exactly representable at the destination scale; otherwise explicit narrowing is required.
 
 When an irrational number is demanded by some calculation, the result must have at least as much precision as the input values, or a double-precision float, whichever is more precise.
 
@@ -68,13 +70,11 @@ Remainder and modulo narrow into the magnitude of the divisor/modulus and the la
 
 ## Binary Floats
 
-Floats are inaccessible in the prelude namespace and exposed via `intrinsics:float`. As useful as they are, they have some non-obvious subtleties to them which trip up many programmers and silently make programs incorrect. By placing them out of reach of the prelude namespace, it helps to add some friction so that programmers are more inclined to reach for the tools that are more likely to be correct. Use floats only when you know for sure you need them.
+Floats are inaccessible in the prelude namespace and exposed via `core:float`. As useful as they are, they have some non-obvious subtleties to them which trip up many programmers and silently make programs incorrect. By placing them out of reach of the prelude namespace, it helps to add some friction so that programmers are more inclined to reach for the tools that are more likely to be correct. Use floats only when you know for sure you need them.
 
-The `intrinsics:float` backage exposes three types:
-
-- `Binary64`
-- `Binary32`
-- `Binary16`
+- `Bin64`
+- `Bin32`
+- `Bin16`
 
 Their unusual naming is intentional to highlight their somewhat surprising behavior and steer users toward using `Decimal(digits, scale)` types when that will suffice.
 
@@ -84,7 +84,7 @@ All mathematical binary operators are supported for binary floats except for `==
 
 This additionally means that floats are not allowed to be the keys of a map.
 
-if you would like to opt into the conventional equality operator, with all of its sharp edges, it is available as the `ieee_equal` function in `intrinsics:float`. Otherwise, you may prefer one of the approximate equality functions:
+if you would like to opt into the conventional equality operator, with all of its sharp edges, it is available as the `ieee_equal` function in `core:float`. Otherwise, you may prefer one of the approximate equality functions:
 
 ```kerrek
 float.approx_equal(0.1f + 0.2f, 0.3f, 0.000001f);  \\ values are within 0.000001f of each other

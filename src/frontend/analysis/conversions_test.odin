@@ -238,6 +238,11 @@ NON_SIGNED_INTEGER_PRIMITIVES := [?]hir.Primitive_Type {
 }
 
 
+_fixed_decimal_types_equal :: proc(a, b: hir.Fixed_Decimal) -> bool {
+	return a.digits == b.digits && a.scale == b.scale
+}
+
+
 _expect_fixed_decimal_coercion :: proc(
 	t: ^testing.T,
 	name: string,
@@ -265,7 +270,7 @@ _expect_fixed_decimal_coercion :: proc(
 	if is_decimal {
 		testing.expectf(
 			t,
-			actual_decimal == expected,
+			_fixed_decimal_types_equal(actual_decimal, expected),
 			"%s: expected Decimal(%d, %d), got Decimal(%d, %d)",
 			name,
 			expected.digits,
@@ -404,8 +409,6 @@ test_materialize_numeric_values :: proc(t: ^testing.T) {
 	}
 
 	flex_integer := Comptime_Type(Flexible_Type{affinity = .Integer})
-	flex_decimal := Comptime_Type(Flexible_Type{affinity = .Decimal})
-
 	cases := []struct {
 		name:     string,
 		target:   hir.Type,
@@ -422,26 +425,32 @@ test_materialize_numeric_values :: proc(t: ^testing.T) {
 		{"above UInt8", hir.Primitive_Type.UInt8, {256, 1}, flex_integer, false},
 		{"Byte maximum", hir.Primitive_Type.Byte, {255, 1}, flex_integer, true},
 		{"above Byte", hir.Primitive_Type.Byte, {256, 1}, flex_integer, false},
-		{"fractional integer", hir.Primitive_Type.Int64, {3, 2}, flex_decimal, false},
+		{
+			"fractional integer",
+			hir.Primitive_Type.Int64,
+			{3, 2},
+			Flexible_Type{affinity = .Decimal, digits = 2, scale = 1},
+			false,
+		},
 		{
 			"Decimal boundary",
 			hir.Fixed_Decimal{digits = 3, scale = 2},
 			{999, 100},
-			flex_decimal,
+			Flexible_Type{affinity = .Decimal, digits = 3, scale = 2},
 			true,
 		},
 		{
 			"Decimal overflow",
 			hir.Fixed_Decimal{digits = 3, scale = 2},
 			{10, 1},
-			flex_decimal,
+			Flexible_Type{affinity = .Decimal, digits = 3, scale = 1},
 			false,
 		},
 		{
 			"Decimal excess scale",
 			hir.Fixed_Decimal{digits = 3, scale = 2},
 			{1, 1000},
-			flex_decimal,
+			Flexible_Type{affinity = .Decimal, digits = 1, scale = 3},
 			false,
 		},
 		{
