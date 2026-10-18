@@ -1,6 +1,7 @@
 package lowering
 
 import "core:fmt"
+import "core:slice"
 
 import "../../common"
 import "../hir"
@@ -14,6 +15,7 @@ Func_Builder :: struct {
 	params_by_sym_id: map[common.Symbol_ID]mir.Parameter,
 	blocks:           [dynamic]WIP_Block,
 	current_block_id: mir.Block_ID,
+	next_order_key:   u64,
 }
 
 WIP_Block :: struct {
@@ -31,6 +33,7 @@ lower_func :: proc(ctx: ^Translation_Context, fn: ^hir.Func_Definition) -> mir.F
 		vars_by_sym_id   = make(map[common.Symbol_ID]mir.Local_Var, context.temp_allocator),
 		params_by_sym_id = make(map[common.Symbol_ID]mir.Parameter, context.temp_allocator),
 		blocks           = make([dynamic]WIP_Block, context.temp_allocator),
+		next_order_key   = 1,
 	}
 
 	params := make([]mir.Parameter_Def, len(fn.params), ctx.allocator)
@@ -51,6 +54,22 @@ lower_func :: proc(ctx: ^Translation_Context, fn: ^hir.Func_Definition) -> mir.F
 	if fb.blocks[fb.current_block_id].end == nil {
 		_end_block(&fb, mir.Return{})
 	}
+
+	slice.sort_by_cmp(fb.blocks[:], proc(a, b: WIP_Block) -> slice.Ordering {
+		if a.order_key < b.order_key {
+			return .Less
+		} else if a.order_key > b.order_key {
+			return .Greater
+		}
+
+		if a.idx < b.idx {
+			return .Less
+		} else if a.idx > b.idx {
+			return .Greater
+		}
+
+		return .Equal
+	})
 
 	blocks := make([]mir.Block, len(fb.blocks), ctx.allocator)
 	for block, i in fb.blocks {
@@ -122,7 +141,7 @@ _new_var :: proc(fb: ^Func_Builder, decl: ^hir.Local_Variable) -> mir.Local_Var 
 	return var
 }
 
-_new_block :: proc(fb: ^Func_Builder) -> mir.Block_ID {
+_new_block :: proc(fb: ^Func_Builder, order_next := true) -> mir.Block_ID {
 	block_id := mir.Block_ID(len(fb.blocks))
 	append(
 		&fb.blocks,
@@ -131,7 +150,17 @@ _new_block :: proc(fb: ^Func_Builder) -> mir.Block_ID {
 			ops = make([dynamic]mir.Instruction, allocator = fb.ctx.allocator),
 		},
 	)
+	if order_next {
+		fb.blocks[block_id].order_key = fb.next_order_key
+		fb.next_order_key += 1
+	}
 	return block_id
+}
+
+_append_block :: proc(fb: ^Func_Builder, block_id: mir.Block_ID) {
+	assert(fb.blocks[block_id].order_key == 0, "block order already assigned")
+	fb.blocks[block_id].order_key = fb.next_order_key
+	fb.next_order_key += 1
 }
 
 _append_ops :: proc(fb: ^Func_Builder, ops: ..mir.Instruction, to_block: mir.Block_ID = -1) {
@@ -207,7 +236,7 @@ _lower_if_stmt :: proc(fb: ^Func_Builder, stmt: ^hir.If_Statement) -> (after_blo
 	before := fb.current_block_id
 	true_start, true_end := _lower_block(fb, stmt.body)
 	false_start, false_end: mir.Block_ID
-	after := _new_block(fb)
+	after := _new_block(fb, order_next = false)
 
 	switch alt in stmt.alt {
 	case ^hir.Block:
@@ -233,6 +262,7 @@ _lower_if_stmt :: proc(fb: ^Func_Builder, stmt: ^hir.If_Statement) -> (after_blo
 		_end_block(fb, mir.Jump{after}, false_end)
 	}
 
+	_append_block(fb, after)
 	fb.current_block_id = after
 	return after
 }
