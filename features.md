@@ -33,9 +33,9 @@ You should prefer a fixed point Decimal type unless you know you need a binary f
 Float types are not available in the builtin namespace in Kerrek. Rather, you must import them from the intrinsics:float package:
 
 ```kerrek
-import intrinsics:float using Binary64
+import intrinsics:float using Real64
 
-func burninate_cottage(fieriness: Binary64) -> Binary64 {
+func burninate_cottage(fieriness: Real64) -> Real64 {
 	return fieriness * 10
 }
 ```
@@ -43,10 +43,10 @@ func burninate_cottage(fieriness: Binary64) -> Binary64 {
 Equality operators are not permitted for floating point types, however `<` and its friends are still supported, and a handful of useful equality and approx equality tests are provided in the intrinsics:float package:
 
 ```kerrek
-import intrinsics:float using Binary64
+import intrinsics:float using Real64
 import core:units/si
 
-func throw_baby(initial_velocity: Binary64 | si.Meter per si.Second) -> Binary64 | si.Meter {
+func throw_baby(initial_velocity: Real64 | si.Meter per si.Second) -> Real64 | si.Meter {
 	if floats.approx_equal(initial_velocity, 0, 0.001) {
 		return 0
 	}

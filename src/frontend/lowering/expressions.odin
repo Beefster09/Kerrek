@@ -149,11 +149,11 @@ _one :: proc(fb: ^Func_Builder, t: hir.Type) -> mir.Operand {
 			return mir.Constant(i8(1))
 		case .UInt8:
 			return mir.Constant(u8(1))
-		case .Bin64:
+		case .Real64:
 			return mir.Constant(f64(1))
-		case .Bin32:
+		case .Real32:
 			return mir.Constant(f32(1))
-		case .Bin16:
+		case .Real16:
 			return mir.Constant(f16(1))
 		case .Boolean:
 			return mir.Constant(true)
@@ -300,11 +300,11 @@ _materialize_number :: proc(fb: ^Func_Builder, value: exact.Rat, type: hir.Type)
 	if analysis.is_binfloat(type) {
 		prim_type := analysis.underlying_type(type).(hir.Type).(hir.Primitive_Type)
 		#partial switch prim_type {
-		case .Bin64:
+		case .Real64:
 			return mir.Constant(exact.to_float(value, f64))
-		case .Bin32:
+		case .Real32:
 			return mir.Constant(exact.to_float(value, f32))
-		case .Bin16:
+		case .Real16:
 			return mir.Constant(exact.to_float(value, f16))
 		}
 		unreachable()

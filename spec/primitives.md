@@ -72,9 +72,9 @@ Remainder and modulo narrow into the magnitude of the divisor/modulus and the la
 
 Floats are inaccessible in the prelude namespace and exposed via `core:float`. As useful as they are, they have some non-obvious subtleties to them which trip up many programmers and silently make programs incorrect. By placing them out of reach of the prelude namespace, it helps to add some friction so that programmers are more inclined to reach for the tools that are more likely to be correct. Use floats only when you know for sure you need them.
 
-- `Bin64`
-- `Bin32`
-- `Bin16`
+- `Real64`
+- `Real32`
+- `Real16`
 
 Their unusual naming is intentional to highlight their somewhat surprising behavior and steer users toward using `Decimal(digits, scale)` types when that will suffice.
 

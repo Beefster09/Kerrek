@@ -183,11 +183,11 @@ _materialize_decimal :: proc(
 
 _materialize_primitive :: proc(prim: hir.Primitive_Type, value: exact.Rat) -> (hir.Value, bool) {
 	switch prim {
-	case .Bin64:
+	case .Real64:
 		return exact.to_float(value, f64), true
-	case .Bin32:
+	case .Real32:
 		return exact.to_float(value, f32), true
-	case .Bin16:
+	case .Real16:
 		return exact.to_float(value, f16), true
 
 	case .Int128:

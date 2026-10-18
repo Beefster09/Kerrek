@@ -52,7 +52,7 @@ infer_type :: proc(evaluated_type: Comptime_Type, span: common.Span) -> (hir.Typ
 			}
 			return dec, true
 		case .Binary_Float:
-			return hir.Primitive_Type.Bin64, true
+			return hir.Primitive_Type.Real64, true
 		case .Boolean:
 			return hir.Primitive_Type.Boolean, true
 		case .String:
@@ -598,9 +598,9 @@ _primitive_zero :: proc(type: Comptime_Type) -> common.Primitive_Value {
 			     .UInt32,
 			     .UInt16,
 			     .UInt8,
-			     .Bin64,
-			     .Bin32,
-			     .Bin16:
+			     .Real64,
+			     .Real32,
+			     .Real16:
 				return exact.RAT_ZERO
 			case .Rune:
 				return rune(0)

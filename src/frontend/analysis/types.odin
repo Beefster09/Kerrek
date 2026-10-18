@@ -286,12 +286,12 @@ _primitive_type :: proc(builtin: ^resolver.Builtin) -> (hir.Primitive_Type, bool
 		return .UInt16, true
 	case "UInt8":
 		return .UInt8, true
-	case "Bin64":
-		return .Bin64, true
-	case "Bin32":
-		return .Bin32, true
-	case "Bin16":
-		return .Bin16, true
+	case "Real64":
+		return .Real64, true
+	case "Real32":
+		return .Real32, true
+	case "Real16":
+		return .Real16, true
 	case "Boolean":
 		return .Boolean, true
 	case "String":
@@ -450,7 +450,7 @@ is_integer :: proc(t: Comptime_Type) -> bool {
 			     .UInt16,
 			     .UInt8:
 				return true
-			case .Bin64, .Bin32, .Bin16, .Boolean, .String, .Rune, .Byte, .Any, .Type:
+			case .Real64, .Real32, .Real16, .Boolean, .String, .Rune, .Byte, .Any, .Type:
 				return false
 			}
 		}
@@ -483,7 +483,7 @@ is_binfloat :: proc(t: Comptime_Type) -> bool {
 			return is_binfloat(concrete.underlying)
 		case hir.Primitive_Type:
 			#partial switch concrete {
-			case .Bin64, .Bin32, .Bin16:
+			case .Real64, .Real32, .Real16:
 				return true
 			}
 		}

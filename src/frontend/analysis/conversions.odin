@@ -62,7 +62,7 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 		numeric_class = .Integer,
 	},
 	.Int32 = {
-		implicitly_to = {.Any, .Int32, .Int64, .Int128, .Bin64},
+		implicitly_to = {.Any, .Int32, .Int64, .Int128, .Real64},
 		explicit_group = .Numeric,
 		size_bytes = 4,
 		significant_bits = 31,
@@ -71,7 +71,7 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 		numeric_class = .Integer,
 	},
 	.Int16 = {
-		implicitly_to = {.Any, .Int16, .Int32, .Int64, .Int128, .Bin32, .Bin64},
+		implicitly_to = {.Any, .Int16, .Int32, .Int64, .Int128, .Real32, .Real64},
 		explicit_group = .Numeric,
 		size_bytes = 2,
 		significant_bits = 15,
@@ -80,7 +80,7 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 		numeric_class = .Integer,
 	},
 	.Int8 = {
-		implicitly_to = {.Any, .Int8, .Int16, .Int32, .Int64, .Int128, .Bin16, .Bin32, .Bin64},
+		implicitly_to = {.Any, .Int8, .Int16, .Int32, .Int64, .Int128, .Real16, .Real32, .Real64},
 		explicit_group = .Numeric,
 		size_bytes = 1,
 		significant_bits = 7,
@@ -107,7 +107,7 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 		numeric_class = .Integer,
 	},
 	.UInt32 = {
-		implicitly_to = {.Any, .UInt32, .UInt64, .UInt128, .Int64, .Int128, .Bin64},
+		implicitly_to = {.Any, .UInt32, .UInt64, .UInt128, .Int64, .Int128, .Real64},
 		explicit_group = .Numeric,
 		size_bytes = 4,
 		significant_bits = 32,
@@ -125,8 +125,8 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 			.Int32,
 			.Int64,
 			.Int128,
-			.Bin32,
-			.Bin64,
+			.Real32,
+			.Real64,
 		},
 		explicit_group = .Numeric,
 		size_bytes = 2,
@@ -147,9 +147,9 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 			.Int32,
 			.Int64,
 			.Int128,
-			.Bin16,
-			.Bin32,
-			.Bin64,
+			.Real16,
+			.Real32,
+			.Real64,
 		},
 		explicit_group = .Numeric,
 		size_bytes = 1,
@@ -158,8 +158,8 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 		signedness = .Unsigned,
 		numeric_class = .Integer,
 	},
-	.Bin64 = {
-		implicitly_to = {.Any, .Bin64},
+	.Real64 = {
+		implicitly_to = {.Any, .Real64},
 		explicit_group = .Numeric,
 		size_bytes = 8,
 		significant_bits = 53,
@@ -167,8 +167,8 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 		signedness = .Signed,
 		numeric_class = .Float,
 	},
-	.Bin32 = {
-		implicitly_to = {.Any, .Bin32, .Bin64},
+	.Real32 = {
+		implicitly_to = {.Any, .Real32, .Real64},
 		explicit_group = .Numeric,
 		size_bytes = 4,
 		significant_bits = 24,
@@ -176,8 +176,8 @@ PRIMITIVE_TYPE_METADATA := [hir.Primitive_Type]struct #all_or_none {
 		signedness = .Signed,
 		numeric_class = .Float,
 	},
-	.Bin16 = {
-		implicitly_to = {.Any, .Bin16, .Bin32, .Bin64},
+	.Real16 = {
+		implicitly_to = {.Any, .Real16, .Real32, .Real64},
 		explicit_group = .Numeric,
 		size_bytes = 2,
 		significant_bits = 11,
@@ -400,9 +400,9 @@ _flex_converts_to :: proc(flex: Flexible_Type, to: Comptime_Type) -> bool {
 				     .UInt32,
 				     .UInt16,
 				     .UInt8,
-				     .Bin64,
-				     .Bin32,
-				     .Bin16,
+				     .Real64,
+				     .Real32,
+				     .Real16,
 				     .Byte,
 				     .Any:
 					return true
@@ -415,13 +415,13 @@ _flex_converts_to :: proc(flex: Flexible_Type, to: Comptime_Type) -> bool {
 				fallthrough
 			case .Binary_Float:
 				return(
-					concrete == .Bin64 ||
-					concrete == .Bin32 ||
-					concrete == .Bin16 ||
+					concrete == .Real64 ||
+					concrete == .Real32 ||
+					concrete == .Real16 ||
 					concrete == .Any \
 				)
 			case .Rational:
-				return concrete == .Bin64 || concrete == .Bin32 || concrete == .Bin16
+				return concrete == .Real64 || concrete == .Real32 || concrete == .Real16
 			case .Boolean:
 				return concrete == .Boolean || concrete == .Any
 			case .String:

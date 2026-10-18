@@ -37,12 +37,12 @@ lower_type :: proc(ctx: ^Translation_Context, type: hir.Type) -> mir.Type {
 			return mir.Primitive_Type.UInt16
 		case .UInt8:
 			return mir.Primitive_Type.UInt8
-		case .Bin64:
-			return mir.Primitive_Type.Bin64
-		case .Bin32:
-			return mir.Primitive_Type.Bin32
-		case .Bin16:
-			return mir.Primitive_Type.Bin16
+		case .Real64:
+			return mir.Primitive_Type.Real64
+		case .Real32:
+			return mir.Primitive_Type.Real32
+		case .Real16:
+			return mir.Primitive_Type.Real16
 		case .Boolean:
 			return mir.Primitive_Type.Boolean
 		case .String:

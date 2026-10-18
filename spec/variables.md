@@ -19,7 +19,7 @@ let uninitialized: SomeEnum = ...;
 - A plain numeric literal in hex, octal, or binary is inferred as `UInt64`
 - An expression made of integer literals and no fractional division (floor division is ok) is inferred as `Int`
 - Fractional decimal literals are inferred as `Decimal(18, x)`, where `x` is the number of digits after the decimal point, assuming there are no more than 18 provided digits
-- Hex float literals are inferred as `Bin64`
+- Hex float literals are inferred as `Real64`
 - Any other numeric value *cannot be inferred*
 
 - String literals are inferred as `String`

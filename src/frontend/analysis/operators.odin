@@ -176,7 +176,7 @@ _op_category_of :: proc(typ: Comptime_Type) -> Operator_Compat_Category {
 			     .UInt16,
 			     .UInt8:
 				return .Integer
-			case .Bin64, .Bin32, .Bin16:
+			case .Real64, .Real32, .Real16:
 				return .Bin_Float
 			case .Byte, .Type:
 				return .Opaque
